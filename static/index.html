@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+ <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ASR识别演示</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; margin: 0; background: #0f1216; color: #e6e6e6; }
+    .container { max-width: 900px; margin: 0 auto; padding: 24px; }
+    .card { background: #171a21; border: 1px solid #252a33; border-radius: 12px; padding: 16px; }
+    .row { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    .label { font-size: 14px; color: #a9b2c0; }
+    .input { display: flex; align-items: center; gap: 10px; }
+    input[type="file"] { padding: 8px; }
+    input[type="text"] { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #2a313d; background: #101318; color: #e6e6e6; }
+    .audio { width: 100%; }
+    .actions { display: flex; gap: 10px; align-items: center; }
+    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #2a313d; background: #1e2430; color: #e6e6e6; cursor: pointer; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    .status { font-size: 13px; color: #96a2b2; }
+    .split { height: 1px; background: #252a33; margin: 18px 0; }
+    .text-area { width: 100%; min-height: 120px; border-radius: 10px; border: 1px solid #2a313d; background: #0f1319; color: #e6e6e6; padding: 12px; box-sizing: border-box; white-space: pre-wrap; }
+    .grid { display: grid; grid-template-columns: 1fr 120px 120px 70px 100px; gap: 8px; align-items: center; }
+    .grid.header { font-size: 13px; color: #9aa6b2; }
+    .chip { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid #2a313d; background: #12161c; display: inline-block; }
+    .segment { padding: 8px; border-radius: 8px; border: 1px solid #1f2430; background: #141922; }
+    .segments { display: grid; gap: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>ASR识别演示</h2>
+    <div class="card">
+      <div class="row">
+        <div>
+          <div class="label">选择音频文件</div>
+          <div class="input">
+            <input id="file" type="file" accept="audio/*">
+            <button id="clearBtn">清空</button>
+          </div>
+        </div>
+        <div>
+          <div class="label">接口地址</div>
+          <input id="endpoint" type="text" value="/asr">
+        </div>
+        <div>
+          <label class="label" style="display:flex;align-items:center;gap:8px">
+            <input id="advToggle" type="checkbox" checked>
+            启用高级识别（标点/VAD/说话人）
+          </label>
+        </div>
+        <div>
+          <audio id="player" class="audio" controls></audio>
+        </div>
+        <div class="actions">
+          <button id="recognizeBtn">开始识别</button>
+          <button id="copyBtn">复制全文</button>
+          <span id="status" class="status"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="split"></div>
+
+    <div class="card">
+      <div class="label">识别全文</div>
+      <div id="resultText" class="text-area"></div>
+    </div>
+
+    <div class="split"></div>
+
+    <div class="card">
+      <div class="label">分段结果</div>
+      <div class="grid header">
+        <div>文本</div>
+        <div>开始</div>
+        <div>结束</div>
+        <div>说话人</div>
+        <div>操作</div>
+      </div>
+      <div id="segments" class="segments"></div>
+    </div>
+    
+    <div class="split"></div>
+    
+    <div class="card">
+      <div class="label">调试信息</div>
+      <div id="debugInfo" class="text-area" style="min-height:80px"></div>
+    </div>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('file');
+    const player = document.getElementById('player');
+    const endpointInput = document.getElementById('endpoint');
+    const recognizeBtn = document.getElementById('recognizeBtn');
+    const copyBtn = document.getElementById('copyBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const statusEl = document.getElementById('status');
+    const resultTextEl = document.getElementById('resultText');
+    const segmentsEl = document.getElementById('segments');
+    const debugEl = document.getElementById('debugInfo');
+
+    let currentFileUrl = null;
+    let lastFullText = '';
+    let lastSegments = [];
+
+    function msToTime(ms) {
+      const s = Math.max(0, Math.floor(ms / 1000));
+      const mm = String(Math.floor(s / 60)).padStart(2, '0');
+      const ss = String(s % 60).padStart(2, '0');
+      return `${mm}:${ss}`;
+    }
+
+    function resetUI() {
+      resultTextEl.textContent = '';
+      segmentsEl.innerHTML = '';
+      statusEl.textContent = '';
+      debugEl.textContent = '';
+      lastFullText = '';
+      lastSegments = [];
+    }
+
+    fileInput.addEventListener('change', () => {
+      resetUI();
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) {
+        if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
+        player.removeAttribute('src');
+        player.load();
+        return;
+      }
+      if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
+      currentFileUrl = URL.createObjectURL(file);
+      player.src = currentFileUrl;
+      player.load();
+    });
+
+    clearBtn.addEventListener('click', () => {
+      fileInput.value = '';
+      if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
+      currentFileUrl = null;
+      player.removeAttribute('src');
+      player.load();
+      resetUI();
+    });
+
+    copyBtn.addEventListener('click', async () => {
+      if (!lastFullText) return;
+      try {
+        await navigator.clipboard.writeText(lastFullText);
+        statusEl.textContent = '已复制';
+        setTimeout(() => statusEl.textContent = '', 1200);
+      } catch (e) {}
+    });
+
+    recognizeBtn.addEventListener('click', async () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) { statusEl.textContent = '请先选择音频文件'; return; }
+      const endpoint = endpointInput.value.trim() || '/asr';
+      statusEl.textContent = '正在识别…';
+      recognizeBtn.disabled = true;
+      try {
+        const fd = new FormData();
+        fd.append('audio', file);
+        const adv = document.getElementById('advToggle').checked;
+        fd.append('enable_advanced', adv ? 'true' : 'false');
+        const resp = await fetch(endpoint, { method: 'POST', body: fd });
+        const text = await resp.text();
+        const headers = [];
+        resp.headers.forEach((v, k) => headers.push(`${k}: ${v}`));
+        debugEl.textContent = `HTTP ${resp.status} ${resp.statusText}\n${headers.join('\n')}\n\n${text.slice(0, 2000)}`;
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+        }
+        let data;
+        try { data = JSON.parse(text); } catch { throw new Error('响应不可解析为JSON'); }
+        const { fullText, segments } = normalizeResult(data);
+        lastFullText = fullText || '';
+        lastSegments = Array.isArray(segments) ? segments : [];
+        renderResult(lastFullText, lastSegments);
+        statusEl.textContent = '完成';
+        setTimeout(() => statusEl.textContent = '', 1200);
+      } catch (err) {
+        statusEl.textContent = `错误：${err.message}`;
+        if (/Failed to fetch|Load failed/i.test(err.message)) {
+          debugEl.textContent += `\n\n可能的原因：\n- 接口未启动或地址错误（当前：${endpointInput.value.trim()}）\n- 跨域限制（不同源端口导致被浏览器拦截）\n- 证书/网络被阻止\n\n建议：\n- 用 curl 验证：curl -X POST -F "audio=@test.wav" ${endpointInput.value.trim() || '/asr'}\n- 同源部署：将页面由 Flask 提供，并把接口地址改为 /asr\n- 或在 Flask 启用 CORS（仅暴露必要路由）`;
+        }
+      } finally {
+        recognizeBtn.disabled = false;
+      }
+    });
+
+    function normalizeResult(data) {
+      if (Array.isArray(data)) {
+        const full = data[0] && typeof data[0].text === 'string' ? data[0].text : '';
+        return { fullText: full, segments: data.slice(1) };
+      }
+      if (data && Array.isArray(data.segments)) {
+        const full = typeof data.text === 'string' ? data.text : data.segments.map(s => s && s.text || '').join('');
+        return { fullText: full, segments: data.segments };
+      }
+      const full = data && typeof data.text === 'string' ? data.text : '';
+      const segs = data && Array.isArray(data) ? data : [];
+      return { fullText: full, segments: segs };
+    }
+
+    function renderResult(fullText, segments) {
+      resultTextEl.textContent = fullText || '';
+      segmentsEl.innerHTML = '';
+      const list = Array.isArray(segments) ? segments : [];
+      for (const s of list) {
+        const row = document.createElement('div');
+        row.className = 'segment';
+        const g = document.createElement('div');
+        g.className = 'grid';
+        const textCell = document.createElement('div');
+        textCell.textContent = s && typeof s.text === 'string' ? s.text : '';
+        const startCell = document.createElement('div');
+        startCell.textContent = msToTime(s && typeof s.start === 'number' ? s.start : 0);
+        const endCell = document.createElement('div');
+        endCell.textContent = msToTime(s && typeof s.end === 'number' ? s.end : 0);
+        const spkCell = document.createElement('div');
+        spkCell.innerHTML = `<span class="chip">${typeof s.spk === 'number' ? s.spk : '-'}</span>`;
+        const actionCell = document.createElement('div');
+        const playBtn = document.createElement('button');
+        playBtn.textContent = '播放片段';
+        playBtn.addEventListener('click', () => {
+          const startMs = s && typeof s.start === 'number' ? s.start : 0;
+          const endMs = s && typeof s.end === 'number' ? s.end : null;
+          if (!isNaN(player.duration)) {
+            player.currentTime = startMs / 1000;
+            player.play();
+            if (endMs && endMs > startMs) {
+              const target = endMs / 1000;
+              const handler = () => {
+                if (player.currentTime >= target) {
+                  player.pause();
+                  player.removeEventListener('timeupdate', handler);
+                }
+              };
+              player.addEventListener('timeupdate', handler);
+            }
+          }
+        });
+        actionCell.appendChild(playBtn);
+        g.appendChild(textCell);
+        g.appendChild(startCell);
+        g.appendChild(endCell);
+        g.appendChild(spkCell);
+        g.appendChild(actionCell);
+        row.appendChild(g);
+        segmentsEl.appendChild(row);
+      }
+    }
+  </script>
+</body>
+</html>
