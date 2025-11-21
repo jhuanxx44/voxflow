@@ -229,18 +229,31 @@
         playBtn.addEventListener('click', () => {
           const startMs = s && typeof s.start === 'number' ? s.start : 0;
           const endMs = s && typeof s.end === 'number' ? s.end : null;
+          
           if (!isNaN(player.duration)) {
-            player.currentTime = startMs / 1000;
+            // HTML5 audio 接受秒为单位的浮点数，保留毫秒精度
+            const startTime = startMs / 1000;
+            const endTime = endMs ? endMs / 1000 : player.duration;
+
+            player.currentTime = startTime;
             player.play();
+
+            // 如果有结束时间，使用 requestAnimationFrame 进行高精度监控
             if (endMs && endMs > startMs) {
-              const target = endMs / 1000;
-              const handler = () => {
-                if (player.currentTime >= target) {
+              const checkTime = () => {
+                // 如果用户手动暂停了，或者播放时间超过了结束时间
+                if (player.paused) return; 
+                
+                if (player.currentTime >= endTime) {
                   player.pause();
-                  player.removeEventListener('timeupdate', handler);
+                  // 可选：为了听感更自然，暂停后可以将进度条稍微回拨一点点，或者仅仅暂停
+                } else {
+                  // 继续下一帧检测
+                  requestAnimationFrame(checkTime);
                 }
               };
-              player.addEventListener('timeupdate', handler);
+              // 启动检测循环
+              requestAnimationFrame(checkTime);
             }
           }
         });
