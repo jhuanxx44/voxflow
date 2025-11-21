@@ -64,7 +64,7 @@
     <div class="split"></div>
 
     <div class="card">
-      <div class="label">识别全文</div>
+      <div class="label">识别全文（点击句子可直接跳转）</div>
       <div id="resultText" class="text-area"></div>
     </div>
 
@@ -207,9 +207,36 @@
     }
 
     function renderResult(fullText, segments) {
-      resultTextEl.textContent = fullText || '';
+      resultTextEl.innerHTML = '';
       segmentsEl.innerHTML = '';
+      if (!fullText) return;
+      // 为全文按句/按段拆分并添加点击 seek
       const list = Array.isArray(segments) ? segments : [];
+      let cursor = 0;
+      for (const s of list) {
+        if (typeof s.text !== 'string') continue;
+        const start = s.start || 0;
+        const end = s.end || start;
+        const span = document.createElement('span');
+        span.textContent = s.text;
+        span.style.cursor = 'pointer';
+        span.title = `点击跳转 ${msToTime(start)}-${msToTime(end)}`;
+        span.addEventListener('click', () => {
+          if (!isNaN(player.duration)) {
+            player.currentTime = start / 1000;
+            player.play().catch(() => {});
+          }
+        });
+        resultTextEl.appendChild(span);
+        cursor += s.text.length;
+      }
+      // 剩余未匹配文本（兜底）
+      if (cursor < fullText.length) {
+        const rest = document.createElement('span');
+        rest.textContent = fullText.slice(cursor);
+        resultTextEl.appendChild(rest);
+      }
+      // 分段表格
       for (const s of list) {
         const row = document.createElement('div');
         row.className = 'segment';
