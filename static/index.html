@@ -26,6 +26,9 @@
     .chip { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid #2a313d; background: #12161c; display: inline-block; }
     .segment { padding: 8px; border-radius: 8px; border: 1px solid #1f2430; background: #141922; }
     .segments { display: grid; gap: 8px; }
+    .sentence { margin-right: 0.25em; cursor: pointer; transition: background 0.2s; }
+    .sentence:hover { background: rgba(255,255,255,0.08); }
+    .sentence.active { background: #2a5a9c; color: #fff; border-radius: 4px; }
   </style>
 </head>
 <body>
@@ -105,6 +108,8 @@
     let currentFileUrl = null;
     let lastFullText = '';
     let lastSegments = [];
+    let sentenceSpans = []; // 保存所有句子 span 引用
+    let highlightRAF = null;
 
     function msToTime(ms) {
       const s = Math.max(0, Math.floor(ms / 1000));
@@ -114,12 +119,14 @@
     }
 
     function resetUI() {
-      resultTextEl.textContent = '';
+      if (highlightRAF) { cancelAnimationFrame(highlightRAF); highlightRAF = null; }
+      resultTextEl.innerHTML = '';
       segmentsEl.innerHTML = '';
       statusEl.textContent = '';
       debugEl.textContent = '';
       lastFullText = '';
       lastSegments = [];
+      sentenceSpans = [];
     }
 
     fileInput.addEventListener('change', () => {
@@ -144,6 +151,33 @@
       player.removeAttribute('src');
       player.load();
       resetUI();
+    });
+
+    // 监听播放/暂停，控制高亮循环
+    player.addEventListener('play', () => {
+      if (highlightRAF) cancelAnimationFrame(highlightRAF);
+      function updateHighlight() {
+        if (!player.paused && !isNaN(player.duration)) {
+          const ct = player.currentTime * 1000;
+          let active = null;
+          for (const sp of sentenceSpans) {
+            const s = Number(sp.dataset.start);
+            const e = Number(sp.dataset.end);
+            if (ct >= s && ct < e) { active = sp; break; }
+          }
+          sentenceSpans.forEach(sp => sp.classList.toggle('active', sp === active));
+        }
+        if (!player.paused) highlightRAF = requestAnimationFrame(updateHighlight);
+      }
+      updateHighlight();
+    });
+    player.addEventListener('pause', () => {
+      if (highlightRAF) { cancelAnimationFrame(highlightRAF); highlightRAF = null; }
+      sentenceSpans.forEach(sp => sp.classList.remove('active'));
+    });
+    player.addEventListener('ended', () => {
+      if (highlightRAF) { cancelAnimationFrame(highlightRAF); highlightRAF = null; }
+      sentenceSpans.forEach(sp => sp.classList.remove('active'));
     });
 
     copyBtn.addEventListener('click', async () => {
@@ -207,8 +241,11 @@
     }
 
     function renderResult(fullText, segments) {
+      // 清理高亮循环
+      if (highlightRAF) { cancelAnimationFrame(highlightRAF); highlightRAF = null; }
       resultTextEl.innerHTML = '';
       segmentsEl.innerHTML = '';
+      sentenceSpans = [];
       if (!fullText) return;
       // 为全文按句/按段拆分并添加点击 seek
       const list = Array.isArray(segments) ? segments : [];
@@ -218,8 +255,10 @@
         const start = s.start || 0;
         const end = s.end || start;
         const span = document.createElement('span');
+        span.className = 'sentence';
         span.textContent = s.text;
-        span.style.cursor = 'pointer';
+        span.dataset.start = start;
+        span.dataset.end = end;
         span.title = `点击跳转 ${msToTime(start)}-${msToTime(end)}`;
         span.addEventListener('click', () => {
           if (!isNaN(player.duration)) {
@@ -228,6 +267,7 @@
           }
         });
         resultTextEl.appendChild(span);
+        sentenceSpans.push(span);
         cursor += s.text.length;
       }
       // 剩余未匹配文本（兜底）
@@ -236,6 +276,7 @@
         rest.textContent = fullText.slice(cursor);
         resultTextEl.appendChild(rest);
       }
+      // 高亮循环已移到 play 事件监听中，无需重复启动
       // 分段表格
       for (const s of list) {
         const row = document.createElement('div');
