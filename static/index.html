@@ -28,7 +28,7 @@
     .segments { display: grid; gap: 8px; }
     .sentence { margin-right: 0.25em; cursor: pointer; transition: background 0.2s; }
     .sentence:hover { background: rgba(255,255,255,0.08); }
-    .sentence.active { background: #2a5a9c; color: #fff; border-radius: 4px; }
+    .sentence.active { background: var(--hl, #2a5a9c); color: #fff; border-radius: 4px; }
   </style>
 </head>
 <body>
@@ -105,6 +105,7 @@
     const segmentsEl = document.getElementById('segments');
     const debugEl = document.getElementById('debugInfo');
 
+    const SPEAKER_COLORS = ['#2a5a9c','#9c2a5a','#2a9c5a','#a15f3f','#c0392b','#16a085','#f39c12','#8e44ad','#27ae60','#2980b9'];
     let currentFileUrl = null;
     let lastFullText = '';
     let lastSegments = [];
@@ -259,6 +260,11 @@
         span.textContent = s.text;
         span.dataset.start = start;
         span.dataset.end = end;
+        if (typeof s.spk === 'number') {
+          span.dataset.spk = String(s.spk);
+          const color = SPEAKER_COLORS[Math.abs(s.spk) % SPEAKER_COLORS.length];
+          span.style.setProperty('--hl', color);
+        }
         span.title = `点击跳转 ${msToTime(start)}-${msToTime(end)}`;
         span.addEventListener('click', () => {
           if (!isNaN(player.duration)) {
