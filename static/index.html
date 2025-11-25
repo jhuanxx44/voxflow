@@ -61,6 +61,12 @@
           </label>
         </div>
         <div>
+          <label class="label" style="display:flex;align-items:center;gap:8px">
+            <input id="editModeToggle" type="checkbox">
+            逐字编辑模式（关闭为逐段编辑）
+          </label>
+        </div>
+        <div>
           <div class="label">热词配置（多个热词用空格分隔，如：阿里巴巴 魔搭 达摩院）</div>
           <input id="hotwords" type="text" placeholder="输入热词，用空格分隔">
         </div>
@@ -123,7 +129,7 @@
     let currentFileUrl = null;
     let lastFullText = '';
     let lastSegments = [];
-    let sentenceSpans = []; 
+    let sentenceSpans = [];
     let highlightRAF = null;
     let composition = [];
     let dragSrcIdx = null;
@@ -135,11 +141,16 @@
     let hasEdited = false;
     let usedHotwords = null;
 
+    // 逐字编辑相关状态
+    let charLevelData = [];        // 字级别数据数组
+    let charComposition = [];      // 字级别的编辑序列
+    let isCharEditMode = false;    // 当前是否为逐字编辑模式
+
     const ctxMenu = (() => {
       const el = document.createElement('div');
       el.className = 'ctx-menu';
       const delBtn = document.createElement('button');
-      delBtn.textContent = '删除选中句子';
+      delBtn.textContent = '删除';
       el.appendChild(delBtn);
       document.body.appendChild(el);
       return { el, delBtn, targetPos: null };
@@ -150,6 +161,70 @@
       const mm = String(Math.floor(s / 60)).padStart(2, '0');
       const ss = String(s % 60).padStart(2, '0');
       return `${mm}:${ss}`;
+    }
+
+    // 从segments构建字级别数据
+    function buildCharLevelData(segments) {
+      const chars = [];
+      segments.forEach((seg, segIndex) => {
+        const text = seg.text || '';
+        const timestamps = seg.timestamp || [];
+        const segStart = seg.start || 0;
+        const segEnd = seg.end || segStart;
+        const spk = seg.spk;
+
+        // 如果有timestamp数组，使用它
+        if (Array.isArray(timestamps) && timestamps.length > 0) {
+          // timestamp是二维数组，每个元素是[start, end]
+          for (let i = 0; i < text.length; i++) {
+            let start, end;
+            if (i < timestamps.length) {
+              // 有对应的timestamp
+              const ts = timestamps[i];
+              start = Array.isArray(ts) && ts.length >= 1 ? ts[0] : segStart;
+              end = Array.isArray(ts) && ts.length >= 2 ? ts[1] : start;
+            } else {
+              // 超出timestamp数组的字符（通常是标点），使用段落结束时间
+              // 或者基于最后一个有timestamp的字符进行推算
+              const lastTs = timestamps[timestamps.length - 1];
+              const lastEnd = Array.isArray(lastTs) && lastTs.length >= 2 ? lastTs[1] : segStart;
+              const remainingChars = text.length - timestamps.length;
+              const remainingTime = segEnd - lastEnd;
+              const charDuration = remainingChars > 0 ? remainingTime / remainingChars : 0;
+              const offset = i - timestamps.length;
+              start = lastEnd + offset * charDuration;
+              end = start + charDuration;
+            }
+            chars.push({
+              char: text[i],
+              start: start,
+              end: end,
+              segmentIndex: segIndex,
+              charIndex: i,
+              spk: spk,
+              previewable: true
+            });
+          }
+        } else {
+          // 没有timestamp，平均分配时间
+          const duration = segEnd - segStart;
+          const charDuration = text.length > 0 ? duration / text.length : 0;
+          for (let i = 0; i < text.length; i++) {
+            const start = segStart + i * charDuration;
+            const end = start + charDuration;
+            chars.push({
+              char: text[i],
+              start: start,
+              end: end,
+              segmentIndex: segIndex,
+              charIndex: i,
+              spk: spk,
+              previewable: true
+            });
+          }
+        }
+      });
+      return chars;
     }
 
     // 普通模式下的高亮逻辑
@@ -186,6 +261,8 @@
       lastSegments = [];
       sentenceSpans = [];
       composition = [];
+      charLevelData = [];
+      charComposition = [];
       dragSrcIdx = null;
       hasEdited = false;
     }
@@ -267,6 +344,16 @@
         statusEl.textContent = '已复制';
         setTimeout(() => statusEl.textContent = '', 1200);
       } catch (e) {}
+    });
+
+    // 编辑模式切换
+    const editModeToggle = document.getElementById('editModeToggle');
+    editModeToggle.addEventListener('change', () => {
+      isCharEditMode = editModeToggle.checked;
+      // 切换模式时重新渲染
+      if (lastSegments.length > 0) {
+        renderResult(lastFullText, lastSegments);
+      }
     });
 
     // --- 核心：编辑后播放逻辑 (修复版) ---
@@ -351,7 +438,12 @@
 
     const resetEditBtn = document.getElementById('resetEditBtn');
     resetEditBtn.onclick = () => {
-      composition = Array.from({ length: lastSegments.length }, (_, i) => i);
+      // 根据当前模式重置
+      if (isCharEditMode) {
+        charComposition = Array.from({ length: charLevelData.length }, (_, i) => i);
+      } else {
+        composition = Array.from({ length: lastSegments.length }, (_, i) => i);
+      }
       hasEdited = true;
       renderResult(lastFullText, lastSegments);
     };
@@ -361,10 +453,25 @@
       ctxMenu.el.style.display = 'none';
       const pos = ctxMenu.targetPos;
       if (typeof pos !== 'number') return;
-      if (pos >= 0 && pos < composition.length) {
-        composition.splice(pos, 1);
-        hasEdited = true;
-        renderResult(lastFullText, lastSegments);
+
+      // 停止当前播放，避免索引错位
+      if (editedPlaying) {
+        stopEditedPlayback();
+      }
+
+      // 根据当前模式删除
+      if (isCharEditMode) {
+        if (pos >= 0 && pos < charComposition.length) {
+          charComposition.splice(pos, 1);
+          hasEdited = true;
+          renderResult(lastFullText, lastSegments);
+        }
+      } else {
+        if (pos >= 0 && pos < composition.length) {
+          composition.splice(pos, 1);
+          hasEdited = true;
+          renderResult(lastFullText, lastSegments);
+        }
       }
       ctxMenu.targetPos = null;
     });
@@ -419,6 +526,11 @@
         lastFullText = fullText || '';
         lastSegments = Array.isArray(segments) ? segments : [];
         composition = Array.from({ length: lastSegments.length }, (_, i) => i);
+
+        // 构建字级别数据
+        charLevelData = buildCharLevelData(lastSegments);
+        charComposition = Array.from({ length: charLevelData.length }, (_, i) => i);
+
         hasEdited = false;
         usedHotwords = data.hotwords_used || null;
         renderResult(lastFullText, lastSegments);
@@ -460,12 +572,20 @@
 
       if (!fullText && !segments.length) return;
 
+      // 根据编辑模式选择渲染方式
+      if (isCharEditMode) {
+        renderCharLevel();
+      } else {
+        renderSegmentLevel(segments);
+      }
+    }
+
+    // 逐段编辑渲染
+    function renderSegmentLevel(segments) {
       // 根据 composition 构建显示列表
       const list = composition.map(i => segments[i]).filter(Boolean);
-      
+
       // 1. 渲染文本区域
-      // 为了支持头部插入，我们在第一个元素前加监听，或利用 flex gap
-      
       list.forEach((s, renderIndex) => {
         const span = document.createElement('span');
         span.className = 'sentence';
@@ -529,6 +649,12 @@
           const fromPos = dragSrcIdx;
           const toPos = renderIndex;
           if (fromPos === toPos) { dragSrcIdx = null; return; }
+
+          // 停止当前播放，避免索引错位
+          if (editedPlaying) {
+            stopEditedPlayback();
+          }
+
           const arr = composition.slice();
           const [moved] = arr.splice(fromPos, 1);
           const dstAfter = fromPos < toPos ? (toPos - 1) : toPos;
@@ -594,6 +720,213 @@
         row.appendChild(g);
         segmentsEl.appendChild(row);
       });
+    }
+
+    // 逐字编辑渲染
+    function renderCharLevel() {
+      // 根据 charComposition 构建显示列表
+      const list = charComposition.map(i => charLevelData[i]).filter(Boolean);
+
+      // 1. 渲染文本区域 - 每个字一个span
+      list.forEach((c, renderIndex) => {
+        const span = document.createElement('span');
+        span.className = 'sentence';  // 复用相同的样式
+        span.textContent = c.char;
+        const start = c.start || 0;
+        const end = c.end || start;
+        span.dataset.start = start;
+        span.dataset.end = end;
+        span.dataset.idx = String(renderIndex);  // 在charComposition中的索引
+        span.dataset.compIndex = String(renderIndex);
+
+        if (typeof c.spk === 'number') {
+          span.dataset.spk = String(c.spk);
+          const color = SPEAKER_COLORS[Math.abs(c.spk) % SPEAKER_COLORS.length];
+          span.style.setProperty('--hl', color);
+        }
+        span.title = `点击跳转 ${msToTime(start)}-${msToTime(end)}`;
+        span.draggable = true;
+
+        // 点击跳转逻辑
+        span.addEventListener('click', () => {
+          const posInComp = Number(span.dataset.compIndex);
+          if (hasEdited && posInComp >= 0) {
+            startCharEditedPlayback(posInComp);
+            return;
+          }
+          if (!isNaN(player.duration)) {
+            player.currentTime = start / 1000;
+            player.play().catch(() => {});
+          }
+          highlightNow();
+        });
+
+        // 双击从此处开始编辑播放
+        span.addEventListener('dblclick', () => {
+           startCharEditedPlayback(renderIndex);
+        });
+
+        // 右键
+        span.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          ctxMenu.targetPos = renderIndex;
+          ctxMenu.el.style.left = `${e.clientX}px`;
+          ctxMenu.el.style.top = `${e.clientY}px`;
+          ctxMenu.el.style.display = 'block';
+        });
+
+        // 拖拽逻辑
+        span.addEventListener('dragstart', () => { dragSrcIdx = renderIndex; });
+
+        span.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            span.classList.add('insert-after');
+        });
+        span.addEventListener('dragleave', () => { span.classList.remove('insert-after'); });
+        span.addEventListener('drop', () => {
+          span.classList.remove('insert-after');
+          if (dragSrcIdx === null) return;
+          const fromPos = dragSrcIdx;
+          const toPos = renderIndex;
+          if (fromPos === toPos) { dragSrcIdx = null; return; }
+
+          // 停止当前播放，避免索引错位
+          if (editedPlaying) {
+            stopEditedPlayback();
+          }
+
+          const arr = charComposition.slice();
+          const [moved] = arr.splice(fromPos, 1);
+          const dstAfter = fromPos < toPos ? (toPos - 1) : toPos;
+          arr.splice(Math.min(dstAfter + 1, arr.length), 0, moved);
+          charComposition = arr;
+          hasEdited = true;
+          dragSrcIdx = null;
+          renderResult(lastFullText, lastSegments);
+        });
+
+        resultTextEl.appendChild(span);
+        sentenceSpans.push(span);
+      });
+
+      // 2. 渲染表格 - 按字符显示
+      list.forEach((c, i) => {
+        const row = document.createElement('div');
+        row.className = 'segment';
+        const g = document.createElement('div');
+        g.className = 'grid';
+        const textCell = document.createElement('div');
+        textCell.textContent = c.char;
+        const startCell = document.createElement('div');
+        startCell.textContent = msToTime(c.start || 0);
+        const endCell = document.createElement('div');
+        endCell.textContent = msToTime(c.end || 0);
+        const spkCell = document.createElement('div');
+        spkCell.innerHTML = `<span class="chip">${typeof c.spk === 'number' ? c.spk : '-'}</span>`;
+        const actionCell = document.createElement('div');
+        const playBtn = document.createElement('button');
+        playBtn.textContent = '播放字符';
+        playBtn.addEventListener('click', () => {
+          const posInComp = i;
+          if (hasEdited && posInComp >= 0) {
+            startCharEditedPlayback(posInComp);
+            return;
+          }
+          const startMs = c.start || 0;
+          const endMs = c.end || null;
+          if (!isNaN(player.duration)) {
+            player.currentTime = startMs / 1000;
+            player.play();
+            if (endMs) {
+                const stopAt = endMs / 1000;
+                const check = () => {
+                    if (player.paused) return;
+                    if (player.currentTime >= stopAt) {
+                        player.pause();
+                    } else {
+                        requestAnimationFrame(check);
+                    }
+                };
+                requestAnimationFrame(check);
+            }
+          }
+        });
+        actionCell.appendChild(playBtn);
+        g.appendChild(textCell);
+        g.appendChild(startCell);
+        g.appendChild(endCell);
+        g.appendChild(spkCell);
+        g.appendChild(actionCell);
+        row.appendChild(g);
+        segmentsEl.appendChild(row);
+      });
+    }
+
+    // 逐字编辑播放逻辑
+    function startCharEditedPlayback(fromPos = 0) {
+      if (editedPlaying) stopEditedPlayback();
+      if (!charComposition.length || isNaN(player.duration)) return;
+
+      editedPlaying = true;
+      editedPlayPos = fromPos;
+
+      // 立即跳转到第一个字开始
+      const firstIdx = charComposition[editedPlayPos];
+      const firstChar = charLevelData[firstIdx];
+      if (firstChar) {
+          player.currentTime = (firstChar.start || 0) / 1000;
+          highlightNow();
+          player.play().catch(e => {
+              console.error("Play error:", e);
+              stopEditedPlayback();
+          });
+      }
+
+      // 启动监控循环
+      const monitor = () => {
+        if (!editedPlaying) return;
+        if (player.paused) {
+            return;
+        }
+
+        const currentIdx = charComposition[editedPlayPos];
+        const charData = charLevelData[currentIdx];
+
+        if (!charData) {
+            stopEditedPlayback();
+            return;
+        }
+
+        const endTime = (charData.end || charData.start) / 1000;
+
+        // 检查是否到达当前字符末尾
+        if (player.currentTime >= endTime) {
+            editedPlayPos++;
+
+            if (editedPlayPos >= charComposition.length) {
+                // 播放结束
+                player.pause();
+                stopEditedPlayback();
+                return;
+            }
+
+            // 获取下一个字信息
+            const nextIdx = charComposition[editedPlayPos];
+            const nextChar = charLevelData[nextIdx];
+            const nextStart = (nextChar.start || 0) / 1000;
+
+            // 判断是否连续
+            if (Math.abs(player.currentTime - nextStart) > 0.15) {
+                player.currentTime = nextStart;
+            }
+
+            highlightNow();
+        }
+
+        editedRAF = requestAnimationFrame(monitor);
+      };
+
+      editedRAF = requestAnimationFrame(monitor);
     }
   </script>
 </body>
