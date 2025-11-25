@@ -61,6 +61,10 @@
           </label>
         </div>
         <div>
+          <div class="label">热词配置（多个热词用空格分隔，如：阿里巴巴 魔搭 达摩院）</div>
+          <input id="hotwords" type="text" placeholder="输入热词，用空格分隔">
+        </div>
+        <div>
       <audio id="player" class="audio" controls></audio>
     </div>
     <div class="actions">
@@ -76,6 +80,7 @@
 
     <div class="card">
       <div class="label">识别全文（点击句子可直接跳转）</div>
+      <div id="hotwordsDisplay" style="margin-bottom: 8px; font-size: 13px; color: #96a2b2;"></div>
       <div id="resultText" class="text-area"></div>
     </div>
 
@@ -112,6 +117,7 @@
     const resultTextEl = document.getElementById('resultText');
     const segmentsEl = document.getElementById('segments');
     const debugEl = document.getElementById('debugInfo');
+    const hotwordsDisplayEl = document.getElementById('hotwordsDisplay');
 
     const SPEAKER_COLORS = ['#2a5a9c','#9c2a5a','#2a9c5a','#a15f3f','#c0392b','#16a085','#f39c12','#8e44ad','#27ae60','#2980b9'];
     let currentFileUrl = null;
@@ -121,12 +127,13 @@
     let highlightRAF = null;
     let composition = [];
     let dragSrcIdx = null;
-    
+
     // 编辑播放相关状态
     let editedPlaying = false;
     let editedRAF = null;
     let editedPlayPos = 0;
     let hasEdited = false;
+    let usedHotwords = null;
 
     const ctxMenu = (() => {
       const el = document.createElement('div');
@@ -394,6 +401,10 @@
         fd.append('audio', file);
         const adv = document.getElementById('advToggle').checked;
         fd.append('enable_advanced', adv ? 'true' : 'false');
+        const hotwords = document.getElementById('hotwords').value.trim();
+        if (hotwords) {
+          fd.append('hotwords', hotwords);
+        }
         const resp = await fetch(endpoint, { method: 'POST', body: fd });
         const text = await resp.text();
         const headers = [];
@@ -409,6 +420,7 @@
         lastSegments = Array.isArray(segments) ? segments : [];
         composition = Array.from({ length: lastSegments.length }, (_, i) => i);
         hasEdited = false;
+        usedHotwords = data.hotwords_used || null;
         renderResult(lastFullText, lastSegments);
         statusEl.textContent = '完成';
         setTimeout(() => statusEl.textContent = '', 1200);
@@ -438,6 +450,14 @@
       resultTextEl.innerHTML = '';
       segmentsEl.innerHTML = '';
       sentenceSpans = [];
+
+      // 显示热词信息
+      if (usedHotwords) {
+        hotwordsDisplayEl.innerHTML = `<span class="badge">使用的热词: ${usedHotwords}</span>`;
+      } else {
+        hotwordsDisplayEl.innerHTML = '';
+      }
+
       if (!fullText && !segments.length) return;
 
       // 根据 composition 构建显示列表

@@ -12,16 +12,16 @@ CORS(app)  # 启用 CORS，支持跨域请求
 # 设置最大上传文件大小为 50MB
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
 
-# 初始化基础模型
+# 初始化基础模型（支持热词）
 basic_model = AutoModel(
-    model="paraformer-zh",
+    model="iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
     trust_remote_code=True,
     disable_update=True
 )
 
-# 初始化带 VAD、标点、说话人识别的完整模型
+# 初始化带 VAD、标点、说话人识别的完整模型（支持热词+时间戳+说话人）
 advanced_model = AutoModel(
-    model="paraformer-zh",
+    model="iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
     vad_model="fsmn-vad",
     punc_model="ct-punc",
     spk_model="cam++",
@@ -64,12 +64,20 @@ def asr():
         enable_advanced = request.form.get('enable_advanced', 'false').lower() in ['true', '1', 'yes', 'on']
         selected_model = advanced_model if enable_advanced else basic_model
 
+        # 获取热词参数
+        hotwords = request.form.get('hotwords', '').strip()
+
         safe_name = secure_filename(file.filename) or "audio.wav"
         temp_name = f"{int(datetime.now().timestamp()*1000)}_{safe_name}"
         audio_path = os.path.join("/tmp", temp_name)
         file.save(audio_path)
 
-        res = selected_model.generate(input=audio_path)
+        # 根据是否有热词调用不同的 generate 方法
+        if hotwords:
+            print(f"Using hotwords: {hotwords}")
+            res = selected_model.generate(input=audio_path, hotword=hotwords)
+        else:
+            res = selected_model.generate(input=audio_path)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
         original_filename = os.path.splitext(file.filename)[0]
@@ -132,6 +140,7 @@ def asr():
         if isinstance(payload, dict):
             payload["model_used"] = model_type
             payload["result_saved_to"] = result_path
+            payload["hotwords_used"] = hotwords if hotwords else None
             return jsonify(payload)
         elif isinstance(payload, list):
             first = payload[0] if payload else None
@@ -159,7 +168,8 @@ def asr():
                 "text": full_text,
                 "segments": segments,
                 "model_used": model_type,
-                "result_saved_to": result_path
+                "result_saved_to": result_path,
+                "hotwords_used": hotwords if hotwords else None
             })
 
     except Exception as e:
