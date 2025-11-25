@@ -77,7 +77,9 @@
       <button id="recognizeBtn">开始识别</button>
       <button id="copyBtn">复制全文</button>
       <button id="resetEditBtn">重置编辑</button>
+      <button id="clearCacheBtn">清除缓存</button>
       <span id="status" class="status"></span>
+      <span id="cacheInfo" class="status"></span>
     </div>
       </div>
     </div>
@@ -119,7 +121,9 @@
     const recognizeBtn = document.getElementById('recognizeBtn');
     const copyBtn = document.getElementById('copyBtn');
     const clearBtn = document.getElementById('clearBtn');
+    const clearCacheBtn = document.getElementById('clearCacheBtn');
     const statusEl = document.getElementById('status');
+    const cacheInfoEl = document.getElementById('cacheInfo');
     const resultTextEl = document.getElementById('resultText');
     const segmentsEl = document.getElementById('segments');
     const debugEl = document.getElementById('debugInfo');
@@ -161,6 +165,176 @@
       const mm = String(Math.floor(s / 60)).padStart(2, '0');
       const ss = String(s % 60).padStart(2, '0');
       return `${mm}:${ss}`;
+    }
+
+    // ====== 缓存管理功能 ======
+    const CACHE_PREFIX = 'asr_cache_';
+    const CACHE_INDEX_KEY = 'asr_cache_index';
+
+    // 生成文件唯一标识符
+    function getFileIdentifier(file) {
+      if (!file) return null;
+      // 使用文件名、大小、最后修改时间作为标识
+      return `${file.name}_${file.size}_${file.lastModified}`;
+    }
+
+    // 获取缓存索引
+    function getCacheIndex() {
+      try {
+        const index = localStorage.getItem(CACHE_INDEX_KEY);
+        return index ? JSON.parse(index) : {};
+      } catch (e) {
+        console.error('读取缓存索引失败:', e);
+        return {};
+      }
+    }
+
+    // 保存缓存索引
+    function saveCacheIndex(index) {
+      try {
+        localStorage.setItem(CACHE_INDEX_KEY, JSON.stringify(index));
+      } catch (e) {
+        console.error('保存缓存索引失败:', e);
+      }
+    }
+
+    // 从缓存读取ASR结果
+    function getFromCache(fileId) {
+      if (!fileId) return null;
+      try {
+        const cacheKey = CACHE_PREFIX + fileId;
+        const cached = localStorage.getItem(cacheKey);
+        if (!cached) return null;
+
+        const data = JSON.parse(cached);
+        // 检查缓存是否过期（可选，这里设置7天过期）
+        const cacheTime = data.timestamp || 0;
+        const now = Date.now();
+        const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+        if (now - cacheTime > SEVEN_DAYS) {
+          // 缓存过期，删除
+          removeFromCache(fileId);
+          return null;
+        }
+
+        return data;
+      } catch (e) {
+        console.error('读取缓存失败:', e);
+        return null;
+      }
+    }
+
+    // 保存ASR结果到缓存
+    function saveToCache(fileId, fileName, asrResult) {
+      if (!fileId) return;
+      try {
+        const cacheKey = CACHE_PREFIX + fileId;
+        const cacheData = {
+          timestamp: Date.now(),
+          fileName: fileName,
+          result: asrResult
+        };
+
+        localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+
+        // 更新索引
+        const index = getCacheIndex();
+        index[fileId] = {
+          fileName: fileName,
+          timestamp: Date.now()
+        };
+        saveCacheIndex(index);
+
+        console.log('ASR结果已缓存:', fileName);
+      } catch (e) {
+        console.error('保存缓存失败:', e);
+        // 如果是空间不足，尝试清理旧缓存
+        if (e.name === 'QuotaExceededError') {
+          clearOldestCache();
+          // 重试一次
+          try {
+            localStorage.setItem(CACHE_PREFIX + fileId, JSON.stringify({
+              timestamp: Date.now(),
+              fileName: fileName,
+              result: asrResult
+            }));
+          } catch (e2) {
+            console.error('重试保存缓存仍然失败:', e2);
+          }
+        }
+      }
+    }
+
+    // 删除单个缓存
+    function removeFromCache(fileId) {
+      if (!fileId) return;
+      try {
+        localStorage.removeItem(CACHE_PREFIX + fileId);
+        const index = getCacheIndex();
+        delete index[fileId];
+        saveCacheIndex(index);
+      } catch (e) {
+        console.error('删除缓存失败:', e);
+      }
+    }
+
+    // 清除最旧的缓存项
+    function clearOldestCache() {
+      try {
+        const index = getCacheIndex();
+        const entries = Object.entries(index);
+        if (entries.length === 0) return;
+
+        // 按时间戳排序，删除最旧的
+        entries.sort((a, b) => (a[1].timestamp || 0) - (b[1].timestamp || 0));
+        const oldestId = entries[0][0];
+        removeFromCache(oldestId);
+        console.log('已清理最旧的缓存');
+      } catch (e) {
+        console.error('清理缓存失败:', e);
+      }
+    }
+
+    // 清除所有缓存
+    function clearAllCache() {
+      try {
+        const index = getCacheIndex();
+        Object.keys(index).forEach(fileId => {
+          localStorage.removeItem(CACHE_PREFIX + fileId);
+        });
+        localStorage.removeItem(CACHE_INDEX_KEY);
+        console.log('已清除所有ASR缓存');
+        return true;
+      } catch (e) {
+        console.error('清除所有缓存失败:', e);
+        return false;
+      }
+    }
+
+    // 获取缓存统计信息
+    function getCacheStats() {
+      try {
+        const index = getCacheIndex();
+        const count = Object.keys(index).length;
+        let totalSize = 0;
+
+        Object.keys(index).forEach(fileId => {
+          const cacheKey = CACHE_PREFIX + fileId;
+          const data = localStorage.getItem(cacheKey);
+          if (data) {
+            totalSize += data.length * 2; // 粗略估算（UTF-16编码）
+          }
+        });
+
+        return {
+          count: count,
+          totalSize: totalSize,
+          totalSizeKB: (totalSize / 1024).toFixed(2)
+        };
+      } catch (e) {
+        console.error('获取缓存统计失败:', e);
+        return { count: 0, totalSize: 0, totalSizeKB: '0' };
+      }
     }
 
     // 从segments构建字级别数据
@@ -356,6 +530,33 @@
       }
     });
 
+    // 更新缓存信息显示
+    function updateCacheInfo() {
+      const stats = getCacheStats();
+      if (stats.count > 0) {
+        cacheInfoEl.textContent = `缓存: ${stats.count}个文件, ${stats.totalSizeKB}KB`;
+      } else {
+        cacheInfoEl.textContent = '';
+      }
+    }
+
+    // 清除缓存按钮
+    clearCacheBtn.addEventListener('click', () => {
+      if (confirm('确定要清除所有ASR缓存吗？')) {
+        const success = clearAllCache();
+        if (success) {
+          statusEl.textContent = '缓存已清除';
+          updateCacheInfo();
+          setTimeout(() => statusEl.textContent = '', 1200);
+        } else {
+          statusEl.textContent = '清除缓存失败';
+        }
+      }
+    });
+
+    // 页面加载时显示缓存信息
+    updateCacheInfo();
+
     // --- 核心：编辑后播放逻辑 (修复版) ---
     // 统一高亮：依赖时间与句子范围，无编辑专用高亮
 
@@ -500,15 +701,52 @@
     recognizeBtn.addEventListener('click', async () => {
       const file = fileInput.files && fileInput.files[0];
       if (!file) { statusEl.textContent = '请先选择音频文件'; return; }
+
+      // 生成文件标识符
+      const fileId = getFileIdentifier(file);
+      const adv = document.getElementById('advToggle').checked;
+      const hotwords = document.getElementById('hotwords').value.trim();
+
+      // 构建缓存key（包含配置信息）
+      const cacheKey = `${fileId}_${adv ? 'adv' : 'basic'}_${hotwords || 'nohotwords'}`;
+
+      // 先检查缓存
+      const cached = getFromCache(cacheKey);
+      if (cached && cached.result) {
+        statusEl.textContent = '从缓存加载…';
+        try {
+          const data = cached.result;
+          const { fullText, segments } = normalizeResult(data);
+          lastFullText = fullText || '';
+          lastSegments = Array.isArray(segments) ? segments : [];
+          composition = Array.from({ length: lastSegments.length }, (_, i) => i);
+
+          // 构建字级别数据
+          charLevelData = buildCharLevelData(lastSegments);
+          charComposition = Array.from({ length: charLevelData.length }, (_, i) => i);
+
+          hasEdited = false;
+          usedHotwords = data.hotwords_used || null;
+          renderResult(lastFullText, lastSegments);
+          statusEl.textContent = '完成（使用缓存）';
+          updateCacheInfo();
+          setTimeout(() => statusEl.textContent = '', 1200);
+          return;
+        } catch (err) {
+          console.error('使用缓存失败，将重新识别:', err);
+          // 缓存损坏，删除并继续识别
+          removeFromCache(cacheKey);
+        }
+      }
+
+      // 缓存不存在或失败，进行识别
       const endpoint = endpointInput.value.trim() || '/asr';
       statusEl.textContent = '正在识别…';
       recognizeBtn.disabled = true;
       try {
         const fd = new FormData();
         fd.append('audio', file);
-        const adv = document.getElementById('advToggle').checked;
         fd.append('enable_advanced', adv ? 'true' : 'false');
-        const hotwords = document.getElementById('hotwords').value.trim();
         if (hotwords) {
           fd.append('hotwords', hotwords);
         }
@@ -522,6 +760,10 @@
         }
         let data;
         try { data = JSON.parse(text); } catch { throw new Error('响应不可解析为JSON'); }
+
+        // 保存到缓存
+        saveToCache(cacheKey, file.name, data);
+
         const { fullText, segments } = normalizeResult(data);
         lastFullText = fullText || '';
         lastSegments = Array.isArray(segments) ? segments : [];
@@ -535,6 +777,7 @@
         usedHotwords = data.hotwords_used || null;
         renderResult(lastFullText, lastSegments);
         statusEl.textContent = '完成';
+        updateCacheInfo();
         setTimeout(() => statusEl.textContent = '', 1200);
       } catch (err) {
         statusEl.textContent = `错误：${err.message}`;
