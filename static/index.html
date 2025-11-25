@@ -337,9 +337,81 @@
       }
     }
 
-    // 从segments构建字级别数据
+    // 将文本分割成单元（中文字、英文单词、数字等）
+    // 注意：空格会被标记但保留，用于后续时间计算
+    function tokenizeText(text) {
+      const tokens = [];
+      let i = 0;
+
+      while (i < text.length) {
+        const char = text[i];
+
+        // 空格标记为特殊类型，后续处理时会跳过渲染
+        if (char === ' ' || char === '\t' || char === '\n') {
+          tokens.push({
+            text: char,
+            startIdx: i,
+            endIdx: i,
+            length: 1,
+            type: 'space'  // 标记为空格
+          });
+          i++;
+          continue;
+        }
+
+        // 检查是否是英文字母
+        if (/[a-zA-Z]/.test(char)) {
+          // 收集整个英文单词
+          let word = '';
+          let startIdx = i;
+          while (i < text.length && /[a-zA-Z]/.test(text[i])) {
+            word += text[i];
+            i++;
+          }
+          tokens.push({
+            text: word,
+            startIdx: startIdx,
+            endIdx: i - 1,
+            length: word.length,
+            type: 'word'
+          });
+        }
+        // 检查是否是数字
+        else if (/[0-9]/.test(char)) {
+          // 收集连续的数字
+          let num = '';
+          let startIdx = i;
+          while (i < text.length && /[0-9.]/.test(text[i])) {
+            num += text[i];
+            i++;
+          }
+          tokens.push({
+            text: num,
+            startIdx: startIdx,
+            endIdx: i - 1,
+            length: num.length,
+            type: 'number'
+          });
+        }
+        // 其他字符（中文、标点等），单个处理
+        else {
+          tokens.push({
+            text: char,
+            startIdx: i,
+            endIdx: i,
+            length: 1,
+            type: 'char'
+          });
+          i++;
+        }
+      }
+
+      return tokens;
+    }
+
+    // 从segments构建字级别数据（实际是单元级别）
     function buildCharLevelData(segments) {
-      const chars = [];
+      const units = [];
       segments.forEach((seg, segIndex) => {
         const text = seg.text || '';
         const timestamps = seg.timestamp || [];
@@ -347,58 +419,81 @@
         const segEnd = seg.end || segStart;
         const spk = seg.spk;
 
+        // 先对文本进行分词
+        const tokens = tokenizeText(text);
+
+        // 过滤掉空格token（空格不对应timestamp）
+        const nonSpaceTokens = tokens.filter(t => t.type !== 'space');
+
         // 如果有timestamp数组，使用它
         if (Array.isArray(timestamps) && timestamps.length > 0) {
-          // timestamp是二维数组，每个元素是[start, end]
-          for (let i = 0; i < text.length; i++) {
+          // timestamp数组与非空格tokens一一对应
+          nonSpaceTokens.forEach((token, tokenIndex) => {
             let start, end;
-            if (i < timestamps.length) {
-              // 有对应的timestamp
-              const ts = timestamps[i];
+
+            if (tokenIndex < timestamps.length) {
+              // 使用对应的timestamp
+              const ts = timestamps[tokenIndex];
               start = Array.isArray(ts) && ts.length >= 1 ? ts[0] : segStart;
               end = Array.isArray(ts) && ts.length >= 2 ? ts[1] : start;
             } else {
-              // 超出timestamp数组的字符（通常是标点），使用段落结束时间
-              // 或者基于最后一个有timestamp的字符进行推算
+              // 超出timestamp数组，使用默认计算
               const lastTs = timestamps[timestamps.length - 1];
               const lastEnd = Array.isArray(lastTs) && lastTs.length >= 2 ? lastTs[1] : segStart;
-              const remainingChars = text.length - timestamps.length;
-              const remainingTime = segEnd - lastEnd;
-              const charDuration = remainingChars > 0 ? remainingTime / remainingChars : 0;
-              const offset = i - timestamps.length;
-              start = lastEnd + offset * charDuration;
-              end = start + charDuration;
+              const remainingTokens = nonSpaceTokens.length - timestamps.length;
+              const remainingTime = Math.max(segEnd - lastEnd, 0);
+
+              const MIN_TOKEN_DURATION = 100; // 最小100ms每token
+              let tokenDuration;
+              if (remainingTime > 0 && remainingTokens > 0) {
+                tokenDuration = remainingTime / remainingTokens;
+              } else {
+                tokenDuration = MIN_TOKEN_DURATION;
+              }
+
+              const offset = tokenIndex - timestamps.length;
+              start = lastEnd + offset * tokenDuration;
+              end = start + tokenDuration;
             }
-            chars.push({
-              char: text[i],
+
+            units.push({
+              char: token.text,
               start: start,
               end: end,
               segmentIndex: segIndex,
-              charIndex: i,
+              charIndex: token.startIdx,
               spk: spk,
-              previewable: true
+              previewable: true,
+              type: token.type
             });
-          }
+          });
         } else {
           // 没有timestamp，平均分配时间
           const duration = segEnd - segStart;
-          const charDuration = text.length > 0 ? duration / text.length : 0;
-          for (let i = 0; i < text.length; i++) {
-            const start = segStart + i * charDuration;
-            const end = start + charDuration;
-            chars.push({
-              char: text[i],
+          const tokenDuration = nonSpaceTokens.length > 0 ? duration / nonSpaceTokens.length : 0;
+          let currentTime = segStart;
+
+          nonSpaceTokens.forEach((token) => {
+            const start = currentTime;
+            const end = currentTime + tokenDuration;
+
+            units.push({
+              char: token.text,
               start: start,
               end: end,
               segmentIndex: segIndex,
-              charIndex: i,
+              charIndex: token.startIdx,
               spk: spk,
-              previewable: true
+              previewable: true,
+              type: token.type
             });
-          }
+
+            currentTime = end;
+          });
         }
       });
-      return chars;
+
+      return units;
     }
 
     // 普通模式下的高亮逻辑
@@ -407,12 +502,38 @@
       const ct = player.currentTime * 1000;
       const EPS = 30;
       let active = null;
+      let bestMatch = null;
+      let bestScore = -1;
+
       for (const sp of sentenceSpans) {
         const s = Number(sp.dataset.start);
         let e = Number(sp.dataset.end);
         if (!Number.isFinite(e) || e <= s) e = s + EPS;
-        if (ct >= s - EPS && ct < e + EPS) { active = sp; break; }
+
+        // 精确匹配：在时间范围内（开始有容差，结束无容差）
+        if (ct >= s - EPS && ct < e) {
+          active = sp;
+          break;
+        }
+
+        // 记录最接近的匹配（用于后备）
+        if (ct >= s - EPS && ct < e + EPS) {
+          // 计算匹配分数：优先选择当前时间更接近中点的
+          const mid = (s + e) / 2;
+          const score = 1000 - Math.abs(ct - mid); // 越接近中点分数越高
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = sp;
+          }
+        }
       }
+
+      // 如果没有精确匹配，使用最佳匹配
+      if (!active) {
+        active = bestMatch;
+      }
+
+      // 如果还是没有，尝试找最近的
       if (!active) {
         let best = null, bestDiff = Infinity;
         for (const sp of sentenceSpans) {
@@ -422,6 +543,7 @@
         }
         active = best || active;
       }
+
       sentenceSpans.forEach(sp => sp.classList.toggle('active', sp === active));
     }
 
