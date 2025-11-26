@@ -95,8 +95,48 @@ MATERIALS_DIR = "materials"
 if not os.path.exists(MATERIALS_DIR):
     os.makedirs(MATERIALS_DIR)
 
+# 服务器端缓存目录（用于素材库文件）
+CACHE_DIR = "cache"
+if not os.path.exists(CACHE_DIR):
+    os.makedirs(CACHE_DIR)
+
 # 管理员密码
 ADMIN_PASSWORD = "***REMOVED***"
+
+# 服务器端缓存辅助函数
+def get_cache_key(material_name, model_type):
+    """生成缓存键，格式: 素材名_模型类型.json"""
+    # 注意：热词不影响缓存键
+    filename_without_ext = os.path.splitext(material_name)[0]
+    return f"{filename_without_ext}_{model_type}.json"
+
+def get_cached_result(material_name, model_type):
+    """从服务器缓存中获取结果"""
+    cache_key = get_cache_key(material_name, model_type)
+    cache_path = os.path.join(CACHE_DIR, cache_key)
+
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, 'r', encoding='utf-8') as f:
+                result = json.load(f)
+            print(f"从缓存加载结果: {cache_key}")
+            return result
+        except Exception as e:
+            print(f"读取缓存失败: {str(e)}")
+            return None
+    return None
+
+def save_to_cache(material_name, model_type, result):
+    """将结果保存到服务器缓存"""
+    cache_key = get_cache_key(material_name, model_type)
+    cache_path = os.path.join(CACHE_DIR, cache_key)
+
+    try:
+        with open(cache_path, 'w', encoding='utf-8') as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+        print(f"结果已保存到缓存: {cache_key}")
+    except Exception as e:
+        print(f"保存缓存失败: {str(e)}")
 
 @app.route('/')
 def index():
@@ -143,11 +183,23 @@ def asr():
             should_delete_temp = True
 
         enable_advanced = request.form.get('enable_advanced', 'false').lower() in ['true', '1', 'yes', 'on']
+        model_type = "advanced" if enable_advanced else "basic"
+
+        # 获取热词参数（提前获取，用于判断是否使用缓存）
+        hotwords = request.form.get('hotwords', '').strip()
+
+        # 如果是素材库文件且没有热词，先检查服务器缓存
+        # 注意：有热词时不使用缓存，因为热词会影响识别结果
+        if material_name and not hotwords:
+            cached_result = get_cached_result(material_name, model_type)
+            if cached_result is not None:
+                # 从缓存返回结果
+                print(f"使用缓存结果: {material_name} ({model_type})")
+                cached_result["from_cache"] = True
+                return jsonify(cached_result)
+
         selected_model = advanced_model if enable_advanced else basic_model
         selected_lock = advanced_model_lock if enable_advanced else basic_model_lock
-
-        # 获取热词参数
-        hotwords = request.form.get('hotwords', '').strip()
 
         # 增加等待计数
         request_counter.increment_waiting(enable_advanced)
@@ -173,7 +225,6 @@ def asr():
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
         filename_without_ext = os.path.splitext(original_filename)[0]
-        model_type = "advanced" if enable_advanced else "basic"
         result_filename = f"{filename_without_ext}_{model_type}_{timestamp}.json"
         result_path = os.path.join(result_dir, result_filename)
 
@@ -229,17 +280,18 @@ def asr():
                 json.dump(payload, f, ensure_ascii=False, indent=2)
 
         # 构造返回体，保持前端兼容
+        response_data = None
         if isinstance(payload, dict):
-            payload["model_used"] = model_type
-            payload["result_saved_to"] = result_path
-            payload["hotwords_used"] = hotwords if hotwords else None
-            return jsonify(payload)
+            response_data = payload.copy()
+            response_data["model_used"] = model_type
+            response_data["result_saved_to"] = result_path
+            response_data["hotwords_used"] = hotwords if hotwords else None
         elif isinstance(payload, list):
             first = payload[0] if payload else None
-            
+
             # 获取全文
             full_text = first.get('text', '') if isinstance(first, dict) else (str(first) if first is not None else '')
-            
+
             # --- 修复核心逻辑开始 ---
             segments = []
             if len(payload) > 1:
@@ -256,13 +308,20 @@ def asr():
                     pass
             # --- 修复核心逻辑结束 ---
 
-            return jsonify({
+            response_data = {
                 "text": full_text,
                 "segments": segments,
                 "model_used": model_type,
                 "result_saved_to": result_path,
                 "hotwords_used": hotwords if hotwords else None
-            })
+            }
+
+        # 如果是素材库文件且没有使用热词，保存到服务器缓存
+        # 注意：有热词时不保存缓存，因为热词会影响识别结果
+        if material_name and not hotwords and response_data:
+            save_to_cache(material_name, model_type, response_data)
+
+        return jsonify(response_data)
 
     except Exception as e:
         print(f"Error processing request: {str(e)}")

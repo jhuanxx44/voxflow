@@ -750,6 +750,7 @@
       player.load();
       resetUI();
       recognizeBtn.classList.remove('highlight'); // 清空时移除高亮
+      document.getElementById('hotwords').value = ''; // 清空热词输入框
     });
 
     // --- 播放事件监听 ---
