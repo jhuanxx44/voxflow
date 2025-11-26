@@ -20,6 +20,57 @@
     button:disabled { opacity: .5; cursor: not-allowed; }
     .status { font-size: 13px; color: #96a2b2; }
     #serverStatus { font-weight: 500; padding: 4px 8px; border-radius: 6px; background: rgba(42,90,156,0.1); }
+
+    /* 加载动画 - 炫彩版 */
+    .loading-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: conic-gradient(
+        from 0deg,
+        #ff0080,
+        #ff8c00,
+        #ffd700,
+        #00ff00,
+        #00bfff,
+        #8a2be2,
+        #ff0080
+      );
+      animation: spin 1s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+      position: relative;
+    }
+    .loading-spinner::before {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      right: 2px;
+      bottom: 2px;
+      background: #171a21;
+      border-radius: 50%;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* 跳动的省略号 */
+    .loading-dots {
+      display: inline-block;
+    }
+    .loading-dots span {
+      animation: bounce 1.4s infinite;
+      display: inline-block;
+    }
+    .loading-dots span:nth-child(1) { animation-delay: 0s; }
+    .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-4px); }
+    }
     .split { height: 1px; background: #252a33; margin: 18px 0; }
     .text-area { width: 100%; min-height: 120px; border-radius: 10px; border: 1px solid #2a313d; background: #0f1319; color: #e6e6e6; padding: 12px; box-sizing: border-box; white-space: pre-wrap; }
     .grid { display: grid; grid-template-columns: 1fr 120px 120px 70px 100px; gap: 8px; align-items: center; }
@@ -103,7 +154,7 @@
     <div class="split"></div>
 
     <div class="card">
-      <div class="label">识别全文（点击句子可直接跳转）</div>
+      <div class="label">识别全文（点击句子可跳转，支持右键删除，拖动编辑顺序）</div>
       <div id="hotwordsDisplay" style="margin-bottom: 8px; font-size: 13px; color: #96a2b2;"></div>
       <div id="resultText" class="text-area"></div>
     </div>
@@ -210,6 +261,27 @@
     let highlightRAF = null;
     let composition = [];
     let dragSrcIdx = null;
+    let statusClearTimer = null; // 用于管理状态清除定时器
+
+    // 设置状态的辅助函数，自动管理定时器
+    function setStatus(html, autoClearMs = 0) {
+      // 清除之前的定时器
+      if (statusClearTimer) {
+        clearTimeout(statusClearTimer);
+        statusClearTimer = null;
+      }
+
+      // 设置新状态
+      statusEl.innerHTML = html;
+
+      // 如果需要自动清除
+      if (autoClearMs > 0) {
+        statusClearTimer = setTimeout(() => {
+          statusEl.textContent = '';
+          statusClearTimer = null;
+        }, autoClearMs);
+      }
+    }
 
     // 编辑播放相关状态
     let editedPlaying = false;
@@ -624,7 +696,7 @@
       stopEditedPlayback();
       resultTextEl.innerHTML = '';
       segmentsEl.innerHTML = '';
-      statusEl.textContent = '';
+      setStatus(''); // 使用 setStatus 清除状态和定时器
       debugEl.textContent = '';
       lastFullText = '';
       lastSegments = [];
@@ -725,8 +797,7 @@
 
     copyBtn.addEventListener('click', async () => {
       if (!lastFullText) {
-        statusEl.textContent = '没有可复制的文本';
-        setTimeout(() => statusEl.textContent = '', 1200);
+        setStatus('没有可复制的文本', 1200);
         return;
       }
 
@@ -755,8 +826,7 @@
         // 优先使用现代 Clipboard API
         if (navigator.clipboard && navigator.clipboard.writeText) {
           await navigator.clipboard.writeText(textToCopy);
-          statusEl.textContent = '已复制';
-          setTimeout(() => statusEl.textContent = '', 1200);
+          setStatus('已复制', 1200);
         } else {
           // 降级方案：使用传统的 execCommand
           const textarea = document.createElement('textarea');
@@ -770,16 +840,14 @@
           document.body.removeChild(textarea);
 
           if (success) {
-            statusEl.textContent = '已复制';
-            setTimeout(() => statusEl.textContent = '', 1200);
+            setStatus('已复制', 1200);
           } else {
             throw new Error('execCommand failed');
           }
         }
       } catch (e) {
         console.error('复制失败:', e);
-        statusEl.textContent = `复制失败: ${e.message || '请检查浏览器权限'}`;
-        setTimeout(() => statusEl.textContent = '', 3000);
+        setStatus(`复制失败: ${e.message || '请检查浏览器权限'}`, 3000);
       }
     });
 
@@ -815,11 +883,10 @@
       if (confirm('确定要清除所有ASR缓存吗？')) {
         const success = clearAllCache();
         if (success) {
-          statusEl.textContent = '缓存已清除';
+          setStatus('缓存已清除', 1200);
           updateCacheInfo();
-          setTimeout(() => statusEl.textContent = '', 1200);
         } else {
-          statusEl.textContent = '清除缓存失败';
+          setStatus('清除缓存失败');
         }
       }
     });
@@ -1015,7 +1082,7 @@
 
       // 检查是否选择了文件或素材
       if (!file && !currentMaterialName) {
-        statusEl.textContent = '请先选择音频文件或素材';
+        setStatus('请先选择音频文件或素材');
         return;
       }
 
@@ -1030,7 +1097,7 @@
       // 先检查缓存
       const cached = getFromCache(cacheKey);
       if (cached && cached.result) {
-        statusEl.textContent = '从缓存加载…';
+        setStatus('<span class="loading-spinner"></span>从缓存加载<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>');
         try {
           const data = cached.result;
           try { lastDebugText = JSON.stringify(data, null, 2); } catch (e) { lastDebugText = String(data); }
@@ -1047,9 +1114,8 @@
           hasEdited = false;
           usedHotwords = data.hotwords_used || null;
           renderResult(lastFullText, lastSegments);
-          statusEl.textContent = '完成（使用缓存）';
+          setStatus('完成（使用缓存）', 1200);
           updateCacheInfo();
-          setTimeout(() => statusEl.textContent = '', 1200);
           return;
         } catch (err) {
           console.error('使用缓存失败，将重新识别:', err);
@@ -1060,7 +1126,7 @@
 
       // 缓存不存在或失败，进行识别
       const endpoint = endpointInput.value.trim() || '/asr';
-      statusEl.textContent = '正在识别…';
+      setStatus('<span class="loading-spinner"></span>正在识别<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>');
       recognizeBtn.disabled = true;
 
       // 立即更新服务器状态
@@ -1108,11 +1174,10 @@
         hasEdited = false;
         usedHotwords = data.hotwords_used || null;
         renderResult(lastFullText, lastSegments);
-        statusEl.textContent = '完成';
+        setStatus('完成', 1200);
         updateCacheInfo();
-        setTimeout(() => statusEl.textContent = '', 1200);
       } catch (err) {
-        statusEl.textContent = `错误：${err.message}`;
+        setStatus(`错误：${err.message}`);
       } finally {
         recognizeBtn.disabled = false;
         // 识别完成后更新服务器状态
@@ -1597,11 +1662,10 @@
 
         // 关闭模态框
         materialsModal.style.display = 'none';
-        statusEl.textContent = `已选择素材: ${filename}`;
-        setTimeout(() => statusEl.textContent = '', 3000);
+        setStatus(`已选择素材: ${filename}`, 3000);
       } catch (e) {
         console.error('选择素材失败:', e);
-        statusEl.textContent = `错误: ${e.message}`;
+        setStatus(`错误: ${e.message}`);
         alert(`选择素材失败: ${e.message}`);
       }
     }
