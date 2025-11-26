@@ -234,24 +234,50 @@ def get_materials():
 def download_material(filename):
     """下载素材文件"""
     try:
-        # 直接使用传入的文件名，不再使用 secure_filename
-        # 因为列表中显示的就是原始文件名
-        filepath = os.path.join(MATERIALS_DIR, filename)
+        print(f"=== 下载素材请求 ===")
+        print(f"请求的文件名: {filename}")
+        print(f"文件名类型: {type(filename)}")
+        print(f"MATERIALS_DIR: {MATERIALS_DIR}")
+        print(f"当前工作目录: {os.getcwd()}")
 
-        print(f"尝试读取文件: {filepath}")
+        # 确保 materials 目录存在
+        if not os.path.exists(MATERIALS_DIR):
+            print(f"材料目录不存在，创建目录: {MATERIALS_DIR}")
+            os.makedirs(MATERIALS_DIR)
+            return jsonify({"error": "Materials directory was empty"}), 404
+
+        # 列出目录内容
+        files_in_dir = os.listdir(MATERIALS_DIR) if os.path.exists(MATERIALS_DIR) else []
+        print(f"目录内容: {files_in_dir}")
+
+        # 构建完整路径（使用绝对路径）
+        filepath = os.path.abspath(os.path.join(MATERIALS_DIR, filename))
+        print(f"完整文件路径: {filepath}")
         print(f"文件是否存在: {os.path.exists(filepath)}")
 
-        # 如果文件不存在，列出目录内容帮助调试
+        # 如果文件不存在，尝试不区分大小写匹配
         if not os.path.exists(filepath):
-            print(f"目录内容: {os.listdir(MATERIALS_DIR)}")
+            print(f"文件不存在，尝试不区分大小写匹配...")
+            for f in files_in_dir:
+                if f.lower() == filename.lower():
+                    print(f"找到匹配文件（忽略大小写）: {f}")
+                    filepath = os.path.abspath(os.path.join(MATERIALS_DIR, f))
+                    break
+
+        if not os.path.exists(filepath):
             return jsonify({
                 "error": "Material not found",
                 "requested": filename,
-                "available": os.listdir(MATERIALS_DIR)
+                "available": files_in_dir
             }), 404
 
-        # 不使用 as_attachment，让浏览器可以读取文件内容
-        return send_file(filepath, mimetype='audio/mpeg')
+        print(f"发送文件: {filepath}")
+        # 根据文件扩展名确定 mimetype
+        import mimetypes
+        mimetype = mimetypes.guess_type(filepath)[0] or 'application/octet-stream'
+        print(f"MIME类型: {mimetype}")
+
+        return send_file(filepath, mimetype=mimetype)
     except Exception as e:
         print(f"Error downloading material: {str(e)}")
         import traceback
