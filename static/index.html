@@ -1478,6 +1478,12 @@
     // 选择素材
     async function selectMaterial(filename) {
       try {
+        // 清理所有状态
+        resetUI();
+
+        // 清空文件上传输入框
+        fileInput.value = '';
+
         // 记录素材名称，不下载文件
         currentMaterialName = filename;
 
