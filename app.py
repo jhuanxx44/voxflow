@@ -374,8 +374,11 @@ def admin_upload():
         if file.filename == '':
             return jsonify({"error": "No file selected"}), 400
 
-        # 保存文件（保留原始文件名）
-        safe_name = secure_filename(file.filename)
+        # 保存文件，保留中文文件名
+        # 只移除路径分隔符等危险字符，保留中文
+        original_name = file.filename
+        # 移除路径分隔符和其他危险字符
+        safe_name = original_name.replace('/', '_').replace('\\', '_').replace('..', '_')
         filepath = os.path.join(MATERIALS_DIR, safe_name)
 
         # 如果文件已存在，添加时间戳避免覆盖
