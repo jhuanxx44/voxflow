@@ -5,6 +5,7 @@ from werkzeug.utils import secure_filename
 import os
 import json
 from datetime import datetime
+import threading
 
 app = Flask(__name__)
 CORS(app)  # 启用 CORS，支持跨域请求
@@ -28,6 +29,10 @@ advanced_model = AutoModel(
     trust_remote_code=True,
     disable_update=True
 )
+
+# 创建线程锁，保护模型调用
+basic_model_lock = threading.Lock()
+advanced_model_lock = threading.Lock()
 
 result_dir = "result"
 if not os.path.exists(result_dir):
@@ -91,16 +96,22 @@ def asr():
 
         enable_advanced = request.form.get('enable_advanced', 'false').lower() in ['true', '1', 'yes', 'on']
         selected_model = advanced_model if enable_advanced else basic_model
+        selected_lock = advanced_model_lock if enable_advanced else basic_model_lock
 
         # 获取热词参数
         hotwords = request.form.get('hotwords', '').strip()
 
-        # 根据是否有热词调用不同的 generate 方法
-        if hotwords:
-            print(f"Using hotwords: {hotwords}")
-            res = selected_model.generate(input=audio_path, hotword=hotwords)
-        else:
-            res = selected_model.generate(input=audio_path)
+        # 使用锁保护模型调用，确保线程安全
+        print(f"等待模型锁... (模型: {'advanced' if enable_advanced else 'basic'})")
+        with selected_lock:
+            print(f"获得模型锁，开始识别...")
+            # 根据是否有热词调用不同的 generate 方法
+            if hotwords:
+                print(f"Using hotwords: {hotwords}")
+                res = selected_model.generate(input=audio_path, hotword=hotwords)
+            else:
+                res = selected_model.generate(input=audio_path)
+            print(f"识别完成，释放模型锁")
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
         filename_without_ext = os.path.splitext(original_filename)[0]
@@ -363,5 +374,8 @@ if __name__ == '__main__':
     print("  - GET  / : Serve frontend page")
     print("  - POST /asr : Speech recognition API")
     print("  - GET  /health : Health check")
+    print("  - GET  /materials : List materials")
+    print("  - POST /admin/upload : Upload material (admin)")
+    print("\n并发模式: 多线程 (使用锁保护模型调用)")
     print("Access the service at: http://localhost:8080")
-    app.run(host='0.0.0.0', port=8080, debug=False)
+    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
