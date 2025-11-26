@@ -724,12 +724,63 @@
     }
 
     copyBtn.addEventListener('click', async () => {
-      if (!lastFullText) return;
-      try {
-        await navigator.clipboard.writeText(lastFullText);
-        statusEl.textContent = '已复制';
+      if (!lastFullText) {
+        statusEl.textContent = '没有可复制的文本';
         setTimeout(() => statusEl.textContent = '', 1200);
-      } catch (e) {}
+        return;
+      }
+
+      try {
+        // 如果有编辑，复制编辑后的文本；否则复制原始文本
+        let textToCopy = lastFullText;
+
+        if (hasEdited) {
+          if (isCharEditMode && charLevelData && charLevelData.length > 0) {
+            // 逐字编辑模式：从 charComposition 重建文本
+            textToCopy = charComposition
+              .map(idx => charLevelData[idx])
+              .filter(unit => unit && !unit.deleted)
+              .map(unit => unit.char)
+              .join('');
+          } else if (!isCharEditMode && lastSegments && lastSegments.length > 0) {
+            // 逐段编辑模式：从 composition 重建文本
+            textToCopy = composition
+              .map(idx => lastSegments[idx])
+              .filter(seg => seg && !seg.deleted)
+              .map(seg => seg.text || '')
+              .join('');
+          }
+        }
+
+        // 优先使用现代 Clipboard API
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(textToCopy);
+          statusEl.textContent = '已复制';
+          setTimeout(() => statusEl.textContent = '', 1200);
+        } else {
+          // 降级方案：使用传统的 execCommand
+          const textarea = document.createElement('textarea');
+          textarea.value = textToCopy;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+
+          const success = document.execCommand('copy');
+          document.body.removeChild(textarea);
+
+          if (success) {
+            statusEl.textContent = '已复制';
+            setTimeout(() => statusEl.textContent = '', 1200);
+          } else {
+            throw new Error('execCommand failed');
+          }
+        }
+      } catch (e) {
+        console.error('复制失败:', e);
+        statusEl.textContent = `复制失败: ${e.message || '请检查浏览器权限'}`;
+        setTimeout(() => statusEl.textContent = '', 3000);
+      }
     });
 
     // 编辑模式切换
