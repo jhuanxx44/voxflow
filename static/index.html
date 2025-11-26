@@ -19,6 +19,7 @@
     button { padding: 10px 14px; border-radius: 10px; border: 1px solid #2a313d; background: #1e2430; color: #e6e6e6; cursor: pointer; }
     button:disabled { opacity: .5; cursor: not-allowed; }
     .status { font-size: 13px; color: #96a2b2; }
+    #serverStatus { font-weight: 500; padding: 4px 8px; border-radius: 6px; background: rgba(42,90,156,0.1); }
     .split { height: 1px; background: #252a33; margin: 18px 0; }
     .text-area { width: 100%; min-height: 120px; border-radius: 10px; border: 1px solid #2a313d; background: #0f1319; color: #e6e6e6; padding: 12px; box-sizing: border-box; white-space: pre-wrap; }
     .grid { display: grid; grid-template-columns: 1fr 120px 120px 70px 100px; gap: 8px; align-items: center; }
@@ -94,6 +95,7 @@
       <button id="clearCacheBtn">清除缓存</button>
       <span id="status" class="status"></span>
       <span id="cacheInfo" class="status"></span>
+      <span id="serverStatus" class="status" style="margin-left: auto;"></span>
     </div>
       </div>
     </div>
@@ -181,6 +183,7 @@
     const clearCacheBtn = document.getElementById('clearCacheBtn');
     const statusEl = document.getElementById('status');
     const cacheInfoEl = document.getElementById('cacheInfo');
+    const serverStatusEl = document.getElementById('serverStatus');
     const resultTextEl = document.getElementById('resultText');
     const segmentsEl = document.getElementById('segments');
     const debugEl = document.getElementById('debugInfo');
@@ -773,6 +776,44 @@
     // 页面加载时显示缓存信息
     updateCacheInfo();
 
+    // 服务器状态监控
+    async function updateServerStatus() {
+      try {
+        const resp = await fetch('/server-status');
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        // 构建状态文本
+        let statusText = '';
+        if (data.total_active === 0) {
+          statusText = '🟢 服务器空闲';
+        } else {
+          const parts = [];
+          if (data.basic.processing > 0) {
+            parts.push(`基础模型处理中(${data.basic.processing})`);
+          }
+          if (data.basic.waiting > 0) {
+            parts.push(`基础模型排队(${data.basic.waiting})`);
+          }
+          if (data.advanced.processing > 0) {
+            parts.push(`高级模型处理中(${data.advanced.processing})`);
+          }
+          if (data.advanced.waiting > 0) {
+            parts.push(`高级模型排队(${data.advanced.waiting})`);
+          }
+          statusText = '🟡 ' + parts.join(' | ');
+        }
+
+        serverStatusEl.textContent = statusText;
+      } catch (e) {
+        // 静默失败，不影响主功能
+      }
+    }
+
+    // 初始更新并设置定时器（每2秒更新一次）
+    updateServerStatus();
+    setInterval(updateServerStatus, 2000);
+
     // --- 核心：编辑后播放逻辑 (修复版) ---
     // 统一高亮：依赖时间与句子范围，无编辑专用高亮
 
@@ -966,6 +1007,10 @@
       const endpoint = endpointInput.value.trim() || '/asr';
       statusEl.textContent = '正在识别…';
       recognizeBtn.disabled = true;
+
+      // 立即更新服务器状态
+      updateServerStatus();
+
       try {
         const fd = new FormData();
 
@@ -1015,6 +1060,8 @@
         statusEl.textContent = `错误：${err.message}`;
       } finally {
         recognizeBtn.disabled = false;
+        // 识别完成后更新服务器状态
+        updateServerStatus();
       }
     });
 

@@ -34,6 +34,54 @@ advanced_model = AutoModel(
 basic_model_lock = threading.Lock()
 advanced_model_lock = threading.Lock()
 
+# 请求计数器（用于显示服务器状态）
+class RequestCounter:
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.basic_processing = 0
+        self.basic_waiting = 0
+        self.advanced_processing = 0
+        self.advanced_waiting = 0
+
+    def get_status(self):
+        with self.lock:
+            return {
+                "basic": {
+                    "processing": self.basic_processing,
+                    "waiting": self.basic_waiting
+                },
+                "advanced": {
+                    "processing": self.advanced_processing,
+                    "waiting": self.advanced_waiting
+                },
+                "total_active": self.basic_processing + self.advanced_processing + self.basic_waiting + self.advanced_waiting
+            }
+
+    def increment_waiting(self, is_advanced):
+        with self.lock:
+            if is_advanced:
+                self.advanced_waiting += 1
+            else:
+                self.basic_waiting += 1
+
+    def start_processing(self, is_advanced):
+        with self.lock:
+            if is_advanced:
+                self.advanced_waiting -= 1
+                self.advanced_processing += 1
+            else:
+                self.basic_waiting -= 1
+                self.basic_processing += 1
+
+    def finish_processing(self, is_advanced):
+        with self.lock:
+            if is_advanced:
+                self.advanced_processing -= 1
+            else:
+                self.basic_processing -= 1
+
+request_counter = RequestCounter()
+
 result_dir = "result"
 if not os.path.exists(result_dir):
     os.makedirs(result_dir)
@@ -101,17 +149,27 @@ def asr():
         # 获取热词参数
         hotwords = request.form.get('hotwords', '').strip()
 
+        # 增加等待计数
+        request_counter.increment_waiting(enable_advanced)
+
         # 使用锁保护模型调用，确保线程安全
         print(f"等待模型锁... (模型: {'advanced' if enable_advanced else 'basic'})")
-        with selected_lock:
-            print(f"获得模型锁，开始识别...")
-            # 根据是否有热词调用不同的 generate 方法
-            if hotwords:
-                print(f"Using hotwords: {hotwords}")
-                res = selected_model.generate(input=audio_path, hotword=hotwords)
-            else:
-                res = selected_model.generate(input=audio_path)
-            print(f"识别完成，释放模型锁")
+        try:
+            with selected_lock:
+                # 开始处理，更新计数器
+                request_counter.start_processing(enable_advanced)
+                print(f"获得模型锁，开始识别...")
+
+                # 根据是否有热词调用不同的 generate 方法
+                if hotwords:
+                    print(f"Using hotwords: {hotwords}")
+                    res = selected_model.generate(input=audio_path, hotword=hotwords)
+                else:
+                    res = selected_model.generate(input=audio_path)
+                print(f"识别完成，释放模型锁")
+        finally:
+            # 完成处理，更新计数器
+            request_counter.finish_processing(enable_advanced)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
         filename_without_ext = os.path.splitext(original_filename)[0]
@@ -218,6 +276,11 @@ def asr():
 @app.route('/health')
 def health():
     return jsonify({"status": "healthy", "message": "FunASR service is running"})
+
+@app.route('/server-status')
+def server_status():
+    """获取服务器当前状态"""
+    return jsonify(request_counter.get_status())
 
 # ====== 素材库相关接口 ======
 
