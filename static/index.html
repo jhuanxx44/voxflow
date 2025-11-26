@@ -37,6 +37,17 @@
     .ctx-menu { position: fixed; z-index: 9999; background: #171a21; border: 1px solid #2a313d; border-radius: 8px; padding: 6px; display: none; }
     .ctx-menu button { width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid #2a313d; background: #1e2430; color: #e6e6e6; cursor: pointer; }
     .hidden { display: none; }
+    .modal { display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); }
+    .modal-content { background-color: #171a21; margin: 5% auto; padding: 20px; border: 1px solid #2a313d; border-radius: 12px; width: 80%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .modal-title { font-size: 18px; font-weight: bold; }
+    .close { color: #96a2b2; font-size: 28px; font-weight: bold; cursor: pointer; }
+    .close:hover { color: #e6e6e6; }
+    .material-item { padding: 12px; border: 1px solid #2a313d; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+    .material-item:hover { background: #1e2430; }
+    .material-info { flex: 1; }
+    .material-name { font-weight: bold; color: #e6e6e6; }
+    .material-meta { font-size: 12px; color: #96a2b2; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -49,6 +60,8 @@
           <div class="input">
             <input id="file" type="file" accept="audio/*">
             <button id="clearBtn">清空</button>
+            <button id="materialsBtn">素材库</button>
+            <button id="adminBtn">管理</button>
           </div>
         </div>
         <div>
@@ -118,6 +131,46 @@
     </div>
   </div>
 
+  <!-- 素材库模态框 -->
+  <div id="materialsModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">素材库</span>
+        <span class="close" onclick="document.getElementById('materialsModal').style.display='none'">&times;</span>
+      </div>
+      <div id="materialsList"></div>
+    </div>
+  </div>
+
+  <!-- 管理员上传模态框 -->
+  <div id="adminModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">管理员上传</span>
+        <span class="close" onclick="document.getElementById('adminModal').style.display='none'">&times;</span>
+      </div>
+      <div class="row">
+        <div>
+          <div class="label">管理员密码</div>
+          <input id="adminPassword" type="password" placeholder="请输入管理员密码">
+        </div>
+        <div>
+          <div class="label">选择文件</div>
+          <input id="adminFile" type="file" accept="audio/*">
+        </div>
+        <div class="actions">
+          <button id="uploadBtn">上传素材</button>
+          <span id="uploadStatus" class="status"></span>
+        </div>
+      </div>
+      <div class="split"></div>
+      <div>
+        <div class="label">已上传的素材</div>
+        <div id="adminMaterialsList"></div>
+      </div>
+    </div>
+  </div>
+
   <script>
     const fileInput = document.getElementById('file');
     const player = document.getElementById('player');
@@ -133,10 +186,21 @@
     const debugEl = document.getElementById('debugInfo');
     const hotwordsDisplayEl = document.getElementById('hotwordsDisplay');
     const debugToggleBtn = document.getElementById('debugToggleBtn');
+    const materialsBtn = document.getElementById('materialsBtn');
+    const adminBtn = document.getElementById('adminBtn');
+    const materialsModal = document.getElementById('materialsModal');
+    const adminModal = document.getElementById('adminModal');
+    const materialsList = document.getElementById('materialsList');
+    const adminMaterialsList = document.getElementById('adminMaterialsList');
+    const adminPassword = document.getElementById('adminPassword');
+    const adminFile = document.getElementById('adminFile');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const uploadStatus = document.getElementById('uploadStatus');
     let lastDebugText = '';
 
     const SPEAKER_COLORS = ['#2a5a9c','#9c2a5a','#2a9c5a','#a15f3f','#c0392b','#16a085','#f39c12','#8e44ad','#27ae60','#2980b9'];
     let currentFileUrl = null;
+    let currentMaterialName = null; // 记录当前选择的素材名称
     let lastFullText = '';
     let lastSegments = [];
     let sentenceSpans = [];
@@ -571,6 +635,7 @@
 
     fileInput.addEventListener('change', () => {
       resetUI();
+      currentMaterialName = null; // 选择本地文件时清除素材标记
       const file = fileInput.files && fileInput.files[0];
       if (!file) {
         if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
@@ -588,6 +653,7 @@
       fileInput.value = '';
       if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
       currentFileUrl = null;
+      currentMaterialName = null; // 清空时也清除素材标记
       player.removeAttribute('src');
       player.load();
       resetUI();
@@ -850,10 +916,15 @@
 
     recognizeBtn.addEventListener('click', async () => {
       const file = fileInput.files && fileInput.files[0];
-      if (!file) { statusEl.textContent = '请先选择音频文件'; return; }
 
-      // 生成文件标识符
-      const fileId = getFileIdentifier(file);
+      // 检查是否选择了文件或素材
+      if (!file && !currentMaterialName) {
+        statusEl.textContent = '请先选择音频文件或素材';
+        return;
+      }
+
+      // 生成文件标识符（素材使用素材名，上传文件使用哈希）
+      const fileId = currentMaterialName || getFileIdentifier(file);
       const adv = document.getElementById('advToggle').checked;
       const hotwords = document.getElementById('hotwords').value.trim();
 
@@ -897,7 +968,14 @@
       recognizeBtn.disabled = true;
       try {
         const fd = new FormData();
-        fd.append('audio', file);
+
+        // 如果是素材库文件，传递素材名称；否则上传文件
+        if (currentMaterialName) {
+          fd.append('material_name', currentMaterialName);
+        } else {
+          fd.append('audio', file);
+        }
+
         fd.append('enable_advanced', adv ? 'true' : 'false');
         if (hotwords) {
           fd.append('hotwords', hotwords);
@@ -915,7 +993,8 @@
         try { data = JSON.parse(text); } catch { throw new Error('响应不可解析为JSON'); }
 
         // 保存到缓存
-        saveToCache(cacheKey, file.name, data);
+        const fileName = currentMaterialName || file.name;
+        saveToCache(cacheKey, fileName, data);
 
         const { fullText, segments } = normalizeResult(data);
         lastFullText = fullText || '';
@@ -1324,6 +1403,196 @@
 
       editedRAF = requestAnimationFrame(monitor);
     }
+
+    // ====== 素材库功能 ======
+
+    // 格式化文件大小
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+      else return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    // 加载素材列表
+    async function loadMaterials() {
+      try {
+        const resp = await fetch('/materials');
+        const data = await resp.json();
+        return data.materials || [];
+      } catch (e) {
+        console.error('加载素材列表失败:', e);
+        return [];
+      }
+    }
+
+    // 渲染素材列表（用户选择）
+    async function renderMaterialsList() {
+      materialsList.innerHTML = '加载中...';
+      const materials = await loadMaterials();
+
+      if (materials.length === 0) {
+        materialsList.innerHTML = '<div style="text-align:center;color:#96a2b2;padding:20px;">素材库为空</div>';
+        return;
+      }
+
+      materialsList.innerHTML = '';
+      materials.forEach(mat => {
+        const item = document.createElement('div');
+        item.className = 'material-item';
+        item.innerHTML = `
+          <div class="material-info">
+            <div class="material-name">${mat.name}</div>
+            <div class="material-meta">${formatFileSize(mat.size)} • 上传于 ${mat.uploaded_at}</div>
+          </div>
+        `;
+        item.addEventListener('click', () => selectMaterial(mat.name));
+        materialsList.appendChild(item);
+      });
+    }
+
+    // 渲染素材列表（管理员管理）
+    async function renderAdminMaterialsList() {
+      adminMaterialsList.innerHTML = '加载中...';
+      const materials = await loadMaterials();
+
+      if (materials.length === 0) {
+        adminMaterialsList.innerHTML = '<div style="text-align:center;color:#96a2b2;padding:20px;">暂无素材</div>';
+        return;
+      }
+
+      adminMaterialsList.innerHTML = '';
+      materials.forEach(mat => {
+        const item = document.createElement('div');
+        item.className = 'material-item';
+        item.innerHTML = `
+          <div class="material-info">
+            <div class="material-name">${mat.name}</div>
+            <div class="material-meta">${formatFileSize(mat.size)} • ${mat.uploaded_at}</div>
+          </div>
+          <button onclick="deleteMaterial('${mat.name}')" style="margin-left:10px;">删除</button>
+        `;
+        adminMaterialsList.appendChild(item);
+      });
+    }
+
+    // 选择素材
+    async function selectMaterial(filename) {
+      try {
+        // 记录素材名称，不下载文件
+        currentMaterialName = filename;
+
+        // 加载音频到播放器（用于预览）
+        if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
+        currentFileUrl = `/materials/${encodeURIComponent(filename)}`;
+        player.src = currentFileUrl;
+        player.load();
+
+        // 关闭模态框
+        materialsModal.style.display = 'none';
+        statusEl.textContent = `已选择素材: ${filename}`;
+        setTimeout(() => statusEl.textContent = '', 3000);
+      } catch (e) {
+        console.error('选择素材失败:', e);
+        statusEl.textContent = `错误: ${e.message}`;
+        alert(`选择素材失败: ${e.message}`);
+      }
+    }
+
+    // 删除素材
+    window.deleteMaterial = async function(filename) {
+      const password = adminPassword.value.trim();
+      if (!password) {
+        alert('请先输入管理员密码');
+        return;
+      }
+
+      if (!confirm(`确定要删除素材"${filename}"吗？`)) return;
+
+      try {
+        const resp = await fetch(`/admin/delete/${encodeURIComponent(filename)}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.error || '删除失败');
+        }
+
+        uploadStatus.textContent = '删除成功';
+        setTimeout(() => uploadStatus.textContent = '', 2000);
+        renderAdminMaterialsList();
+      } catch (e) {
+        uploadStatus.textContent = `错误: ${e.message}`;
+      }
+    };
+
+    // 打开素材库
+    materialsBtn.addEventListener('click', () => {
+      materialsModal.style.display = 'block';
+      renderMaterialsList();
+    });
+
+    // 打开管理界面
+    adminBtn.addEventListener('click', () => {
+      adminModal.style.display = 'block';
+      renderAdminMaterialsList();
+    });
+
+    // 上传素材
+    uploadBtn.addEventListener('click', async () => {
+      const password = adminPassword.value.trim();
+      const file = adminFile.files && adminFile.files[0];
+
+      if (!password) {
+        uploadStatus.textContent = '请输入管理员密码';
+        return;
+      }
+
+      if (!file) {
+        uploadStatus.textContent = '请选择文件';
+        return;
+      }
+
+      try {
+        uploadStatus.textContent = '上传中...';
+        uploadBtn.disabled = true;
+
+        const fd = new FormData();
+        fd.append('password', password);
+        fd.append('file', file);
+
+        const resp = await fetch('/admin/upload', {
+          method: 'POST',
+          body: fd
+        });
+
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.error || '上传失败');
+        }
+
+        uploadStatus.textContent = '上传成功！';
+        adminFile.value = '';
+        setTimeout(() => uploadStatus.textContent = '', 2000);
+        renderAdminMaterialsList();
+      } catch (e) {
+        uploadStatus.textContent = `错误: ${e.message}`;
+      } finally {
+        uploadBtn.disabled = false;
+      }
+    });
+
+    // 点击模态框外部关闭
+    window.onclick = function(event) {
+      if (event.target === materialsModal) {
+        materialsModal.style.display = 'none';
+      }
+      if (event.target === adminModal) {
+        adminModal.style.display = 'none';
+      }
+    };
   </script>
 </body>
 </html>

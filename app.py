@@ -37,6 +37,14 @@ STATIC_DIR = "static"
 if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR)
 
+# 素材库目录
+MATERIALS_DIR = "materials"
+if not os.path.exists(MATERIALS_DIR):
+    os.makedirs(MATERIALS_DIR)
+
+# 管理员密码
+ADMIN_PASSWORD = "***REMOVED***"
+
 @app.route('/')
 def index():
     try:
@@ -54,23 +62,38 @@ def index():
 @app.route('/asr', methods=['POST'])
 def asr():
     try:
-        if 'audio' not in request.files:
-            return jsonify({"error": "No audio file provided"}), 400
+        # 检查是否使用素材库文件
+        material_name = request.form.get('material_name', '').strip()
 
-        file = request.files['audio']
-        if file.filename == '':
-            return jsonify({"error": "No audio file selected"}), 400
+        if material_name:
+            # 使用素材库中的文件
+            audio_path = os.path.join(MATERIALS_DIR, material_name)
+            if not os.path.exists(audio_path):
+                return jsonify({"error": f"Material not found: {material_name}"}), 404
+            original_filename = material_name
+            # 素材文件不需要删除
+            should_delete_temp = False
+        else:
+            # 使用上传的文件
+            if 'audio' not in request.files:
+                return jsonify({"error": "No audio file provided"}), 400
+
+            file = request.files['audio']
+            if file.filename == '':
+                return jsonify({"error": "No audio file selected"}), 400
+
+            safe_name = secure_filename(file.filename) or "audio.wav"
+            temp_name = f"{int(datetime.now().timestamp()*1000)}_{safe_name}"
+            audio_path = os.path.join("/tmp", temp_name)
+            file.save(audio_path)
+            original_filename = file.filename
+            should_delete_temp = True
 
         enable_advanced = request.form.get('enable_advanced', 'false').lower() in ['true', '1', 'yes', 'on']
         selected_model = advanced_model if enable_advanced else basic_model
 
         # 获取热词参数
         hotwords = request.form.get('hotwords', '').strip()
-
-        safe_name = secure_filename(file.filename) or "audio.wav"
-        temp_name = f"{int(datetime.now().timestamp()*1000)}_{safe_name}"
-        audio_path = os.path.join("/tmp", temp_name)
-        file.save(audio_path)
 
         # 根据是否有热词调用不同的 generate 方法
         if hotwords:
@@ -80,9 +103,9 @@ def asr():
             res = selected_model.generate(input=audio_path)
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-        original_filename = os.path.splitext(file.filename)[0]
+        filename_without_ext = os.path.splitext(original_filename)[0]
         model_type = "advanced" if enable_advanced else "basic"
-        result_filename = f"{original_filename}_{model_type}_{timestamp}.json"
+        result_filename = f"{filename_without_ext}_{model_type}_{timestamp}.json"
         result_path = os.path.join(result_dir, result_filename)
 
         
@@ -176,12 +199,130 @@ def asr():
         print(f"Error processing request: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
-        if 'audio_path' in locals() and os.path.exists(audio_path):
-            os.remove(audio_path)
+        # 只删除临时上传的文件，不删除素材库中的文件
+        if 'should_delete_temp' in locals() and should_delete_temp:
+            if 'audio_path' in locals() and os.path.exists(audio_path):
+                os.remove(audio_path)
 
 @app.route('/health')
 def health():
     return jsonify({"status": "healthy", "message": "FunASR service is running"})
+
+# ====== 素材库相关接口 ======
+
+@app.route('/materials', methods=['GET'])
+def get_materials():
+    """获取素材库列表"""
+    try:
+        materials = []
+        for filename in os.listdir(MATERIALS_DIR):
+            filepath = os.path.join(MATERIALS_DIR, filename)
+            if os.path.isfile(filepath):
+                stat = os.stat(filepath)
+                materials.append({
+                    "name": filename,
+                    "size": stat.st_size,
+                    "uploaded_at": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+                })
+        # 按上传时间降序排列
+        materials.sort(key=lambda x: x['uploaded_at'], reverse=True)
+        return jsonify({"materials": materials})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/materials/<path:filename>', methods=['GET'])
+def download_material(filename):
+    """下载素材文件"""
+    try:
+        # 直接使用传入的文件名，不再使用 secure_filename
+        # 因为列表中显示的就是原始文件名
+        filepath = os.path.join(MATERIALS_DIR, filename)
+
+        print(f"尝试读取文件: {filepath}")
+        print(f"文件是否存在: {os.path.exists(filepath)}")
+
+        # 如果文件不存在，列出目录内容帮助调试
+        if not os.path.exists(filepath):
+            print(f"目录内容: {os.listdir(MATERIALS_DIR)}")
+            return jsonify({
+                "error": "Material not found",
+                "requested": filename,
+                "available": os.listdir(MATERIALS_DIR)
+            }), 404
+
+        # 不使用 as_attachment，让浏览器可以读取文件内容
+        return send_file(filepath, mimetype='audio/mpeg')
+    except Exception as e:
+        print(f"Error downloading material: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/admin/upload', methods=['POST'])
+def admin_upload():
+    """管理员上传素材"""
+    try:
+        # 验证密码
+        password = request.form.get('password', '')
+        if password != ADMIN_PASSWORD:
+            return jsonify({"error": "Invalid admin password"}), 403
+
+        if 'file' not in request.files:
+            return jsonify({"error": "No file provided"}), 400
+
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({"error": "No file selected"}), 400
+
+        # 保存文件（保留原始文件名）
+        safe_name = secure_filename(file.filename)
+        filepath = os.path.join(MATERIALS_DIR, safe_name)
+
+        # 如果文件已存在，添加时间戳避免覆盖
+        if os.path.exists(filepath):
+            name, ext = os.path.splitext(safe_name)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            safe_name = f"{name}_{timestamp}{ext}"
+            filepath = os.path.join(MATERIALS_DIR, safe_name)
+
+        file.save(filepath)
+
+        return jsonify({
+            "success": True,
+            "filename": safe_name,
+            "message": "Material uploaded successfully"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/admin/delete/<path:filename>', methods=['DELETE'])
+def admin_delete(filename):
+    """管理员删除素材"""
+    try:
+        # 验证密码
+        password = request.json.get('password', '') if request.json else ''
+        if password != ADMIN_PASSWORD:
+            return jsonify({"error": "Invalid admin password"}), 403
+
+        # Don't use secure_filename - use original name from list
+        filepath = os.path.join(MATERIALS_DIR, filename)
+
+        print(f"尝试删除文件: {filepath}")
+        print(f"文件是否存在: {os.path.exists(filepath)}")
+
+        if not os.path.exists(filepath):
+            print(f"目录内容: {os.listdir(MATERIALS_DIR)}")
+            return jsonify({"error": "Material not found"}), 404
+
+        os.remove(filepath)
+        print(f"文件已删除: {filepath}")
+
+        return jsonify({
+            "success": True,
+            "message": "Material deleted successfully"
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/<path:filename>')
 def serve_static_files(filename):
