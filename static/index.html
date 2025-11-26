@@ -831,7 +831,10 @@
     async function updateServerStatus() {
       try {
         const resp = await fetch('/server-status');
-        if (!resp.ok) return;
+        if (!resp.ok) {
+          serverStatusEl.textContent = '🔴 服务器错误';
+          return;
+        }
         const data = await resp.json();
 
         // 构建状态文本
@@ -857,7 +860,8 @@
 
         serverStatusEl.textContent = statusText;
       } catch (e) {
-        // 静默失败，不影响主功能
+        // 网络错误或服务器未启动
+        serverStatusEl.textContent = '🔴 找不到服务器';
       }
     }
 
