@@ -3,7 +3,7 @@
 <head>
  <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ASR识别演示</title>
+  <title>基于文本的音频编辑</title>
   <style>
     :root { color-scheme: light dark; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; margin: 0; background: #0f1216; color: #e6e6e6; }
@@ -40,7 +40,7 @@
 </head>
 <body>
   <div class="container">
-    <h2>ASR识别演示</h2>
+    <h2>基于文本的音频编辑</h2>
     <div class="card">
       <div class="row">
         <div>
@@ -646,10 +646,17 @@
     const editModeToggle = document.getElementById('editModeToggle');
     editModeToggle.addEventListener('change', () => {
       isCharEditMode = editModeToggle.checked;
-      // 切换模式时重新渲染
-      if (lastSegments.length > 0) {
-        renderResult(lastFullText, lastSegments);
+      // 切换模式时自动触发“重置编辑”
+      if (editedPlaying) {
+        stopEditedPlayback();
       }
+      if (isCharEditMode) {
+        charComposition = Array.from({ length: charLevelData.length }, (_, i) => i);
+      } else {
+        composition = Array.from({ length: lastSegments.length }, (_, i) => i);
+      }
+      hasEdited = true;
+      renderResult(lastFullText, lastSegments);
     });
 
     // 更新缓存信息显示
