@@ -16,8 +16,21 @@
     input[type="text"] { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #2a313d; background: #101318; color: #e6e6e6; }
     .audio { width: 100%; }
     .actions { display: flex; gap: 10px; align-items: center; }
-    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #2a313d; background: #1e2430; color: #e6e6e6; cursor: pointer; }
+    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #2a313d; background: #1e2430; color: #e6e6e6; cursor: pointer; transition: all 0.3s ease; }
     button:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* 高亮识别按钮 */
+    #recognizeBtn.highlight {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-color: #667eea;
+      box-shadow: 0 0 20px rgba(102, 126, 234, 0.6);
+      animation: pulse 2s ease-in-out infinite;
+      transform: scale(1.05);
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 20px rgba(102, 126, 234, 0.6); }
+      50% { box-shadow: 0 0 30px rgba(102, 126, 234, 0.9); }
+    }
     .status { font-size: 13px; color: #96a2b2; }
     #serverStatus { font-weight: 500; padding: 4px 8px; border-radius: 6px; background: rgba(42,90,156,0.1); }
 
@@ -716,12 +729,16 @@
         if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
         player.removeAttribute('src');
         player.load();
+        recognizeBtn.classList.remove('highlight'); // 移除高亮
         return;
       }
       if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
       currentFileUrl = URL.createObjectURL(file);
       player.src = currentFileUrl;
       player.load();
+
+      // 高亮识别按钮，引导用户点击
+      recognizeBtn.classList.add('highlight');
     });
 
     clearBtn.addEventListener('click', () => {
@@ -732,6 +749,7 @@
       player.removeAttribute('src');
       player.load();
       resetUI();
+      recognizeBtn.classList.remove('highlight'); // 清空时移除高亮
     });
 
     // --- 播放事件监听 ---
@@ -1116,6 +1134,7 @@
           renderResult(lastFullText, lastSegments);
           setStatus('完成（使用缓存）', 1200);
           updateCacheInfo();
+          recognizeBtn.classList.remove('highlight'); // 移除高亮
           return;
         } catch (err) {
           console.error('使用缓存失败，将重新识别:', err);
@@ -1128,6 +1147,7 @@
       const endpoint = endpointInput.value.trim() || '/asr';
       setStatus('<span class="loading-spinner"></span>正在识别<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>');
       recognizeBtn.disabled = true;
+      recognizeBtn.classList.remove('highlight'); // 开始识别时移除高亮
 
       // 立即更新服务器状态
       updateServerStatus();
@@ -1659,6 +1679,9 @@
         currentFileUrl = `/materials/${encodeURIComponent(filename)}`;
         player.src = currentFileUrl;
         player.load();
+
+        // 高亮识别按钮，引导用户点击
+        recognizeBtn.classList.add('highlight');
 
         // 关闭模态框
         materialsModal.style.display = 'none';
