@@ -36,6 +36,7 @@
     .badge { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid #2a313d; background: #2a5a9c; color: #fff; display: inline-block; }
     .ctx-menu { position: fixed; z-index: 9999; background: #171a21; border: 1px solid #2a313d; border-radius: 8px; padding: 6px; display: none; }
     .ctx-menu button { width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid #2a313d; background: #1e2430; color: #e6e6e6; cursor: pointer; }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
@@ -109,7 +110,10 @@
     <div class="split"></div>
     
     <div class="card">
-      <div class="label">调试信息</div>
+      <div class="label" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span>调试信息</span>
+        <button id="debugToggleBtn">展开调试信息</button>
+      </div>
       <div id="debugInfo" class="text-area" style="min-height:80px"></div>
     </div>
   </div>
@@ -128,6 +132,8 @@
     const segmentsEl = document.getElementById('segments');
     const debugEl = document.getElementById('debugInfo');
     const hotwordsDisplayEl = document.getElementById('hotwordsDisplay');
+    const debugToggleBtn = document.getElementById('debugToggleBtn');
+    let lastDebugText = '';
 
     const SPEAKER_COLORS = ['#2a5a9c','#9c2a5a','#2a9c5a','#a15f3f','#c0392b','#16a085','#f39c12','#8e44ad','#27ae60','#2980b9'];
     let currentFileUrl = null;
@@ -633,6 +639,21 @@
       }
     });
 
+    // 调试信息折叠控制（默认关闭）
+    let debugCollapsed = true;
+    if (debugEl) debugEl.classList.add('hidden');
+    if (debugToggleBtn) {
+      debugToggleBtn.textContent = '展开调试信息';
+      debugToggleBtn.addEventListener('click', () => {
+        debugCollapsed = !debugCollapsed;
+        debugEl.classList.toggle('hidden', debugCollapsed);
+        debugToggleBtn.textContent = debugCollapsed ? '展开调试信息' : '收起调试信息';
+        if (!debugCollapsed) {
+          debugEl.textContent = lastDebugText || '（暂无调试数据）';
+        }
+      });
+    }
+
     copyBtn.addEventListener('click', async () => {
       if (!lastFullText) return;
       try {
@@ -845,6 +866,8 @@
         statusEl.textContent = '从缓存加载…';
         try {
           const data = cached.result;
+          try { lastDebugText = JSON.stringify(data, null, 2); } catch (e) { lastDebugText = String(data); }
+          debugEl.textContent = lastDebugText;
           const { fullText, segments } = normalizeResult(data);
           lastFullText = fullText || '';
           lastSegments = Array.isArray(segments) ? segments : [];
@@ -882,8 +905,9 @@
         const resp = await fetch(endpoint, { method: 'POST', body: fd });
         const text = await resp.text();
         const headers = [];
-        resp.headers.forEach((v, k) => headers.push(`${k}: ${v}`));
-        debugEl.textContent = `HTTP ${resp.status} ${resp.statusText}\n${headers.join('\n')}\n\n${text.slice(0, 2000)}`;
+        resp.headers.forEach((v, k) => headers.push(`${v ? v : ''}`));
+        lastDebugText = `HTTP ${resp.status} ${resp.statusText}\n${headers.join('\n')}\n\n${text}`;
+        debugEl.textContent = lastDebugText;
         if (!resp.ok) {
           throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
         }
@@ -1096,10 +1120,7 @@
 
     // 逐字编辑渲染
     function renderCharLevel() {
-      // 根据 charComposition 构建显示列表
       const list = charComposition.map(i => charLevelData[i]).filter(Boolean);
-
-      // 1. 渲染文本区域 - 每个字一个span
       list.forEach((c, renderIndex) => {
         const span = document.createElement('span');
         span.className = 'sentence';  // 复用相同的样式
@@ -1180,46 +1201,49 @@
         resultTextEl.appendChild(span);
         sentenceSpans.push(span);
       });
+      renderSegmentsTable(lastSegments);
+    }
 
-      // 2. 渲染表格 - 按字符显示
-      list.forEach((c, i) => {
+    function renderSegmentsTable(segments) {
+      const list = composition.map(i => segments[i]).filter(Boolean);
+      list.forEach((s, i) => {
         const row = document.createElement('div');
         row.className = 'segment';
         const g = document.createElement('div');
         g.className = 'grid';
         const textCell = document.createElement('div');
-        textCell.textContent = c.char;
+        textCell.textContent = s.text;
         const startCell = document.createElement('div');
-        startCell.textContent = msToTime(c.start || 0);
+        startCell.textContent = msToTime(s.start || 0);
         const endCell = document.createElement('div');
-        endCell.textContent = msToTime(c.end || 0);
+        endCell.textContent = msToTime(s.end || 0);
         const spkCell = document.createElement('div');
-        spkCell.innerHTML = `<span class="chip">${typeof c.spk === 'number' ? c.spk : '-'}</span>`;
+        spkCell.innerHTML = `<span class="chip">${typeof s.spk === 'number' ? s.spk : '-'}</span>`;
         const actionCell = document.createElement('div');
         const playBtn = document.createElement('button');
-        playBtn.textContent = '播放字符';
+        playBtn.textContent = '播放片段';
         playBtn.addEventListener('click', () => {
           const posInComp = i;
           if (hasEdited && posInComp >= 0) {
-            startCharEditedPlayback(posInComp);
+            startEditedPlayback(posInComp);
             return;
           }
-          const startMs = c.start || 0;
-          const endMs = c.end || null;
+          const startMs = s.start || 0;
+          const endMs = s.end || null;
           if (!isNaN(player.duration)) {
             player.currentTime = startMs / 1000;
             player.play();
             if (endMs) {
-                const stopAt = endMs / 1000;
-                const check = () => {
-                    if (player.paused) return;
-                    if (player.currentTime >= stopAt) {
-                        player.pause();
-                    } else {
-                        requestAnimationFrame(check);
-                    }
-                };
-                requestAnimationFrame(check);
+              const stopAt = endMs / 1000;
+              const check = () => {
+                if (player.paused) return;
+                if (player.currentTime >= stopAt) {
+                  player.pause();
+                } else {
+                  requestAnimationFrame(check);
+                }
+              };
+              requestAnimationFrame(check);
             }
           }
         });
