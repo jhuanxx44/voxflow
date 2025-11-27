@@ -191,6 +191,13 @@
           <input id="hotwords" type="text" placeholder="输入热词，用空格分隔">
         </div>
         <div>
+          <div class="label">删除口癖（输入要删除的文本，如：嗯嗯、那个、就是）</div>
+          <div style="display: flex; gap: 10px;">
+            <input id="fillerText" type="text" placeholder="输入要删除的口癖" style="flex: 1;">
+            <button id="deleteFillerBtn">搜索并删除</button>
+          </div>
+        </div>
+        <div>
       <audio id="player" class="audio" controls></audio>
     </div>
     <div class="actions">
@@ -1006,6 +1013,126 @@
           setStatus('清除缓存失败');
         }
       }
+    });
+
+    // 删除口癖功能
+    const fillerTextInput = document.getElementById('fillerText');
+    const deleteFillerBtn = document.getElementById('deleteFillerBtn');
+
+    // 辅助函数：去除文本末尾的标点符号
+    function removePunctuation(text) {
+      if (!text) return '';
+      // 移除常见的中英文标点符号
+      return text.replace(/[。，、！？；：""''（）【】《》,.!?;:()\[\]<>]+$/g, '').trim();
+    }
+
+    deleteFillerBtn.addEventListener('click', () => {
+      const fillerText = fillerTextInput.value.trim();
+
+      if (!fillerText) {
+        setStatus('请输入要删除的口癖文本', 2000);
+        return;
+      }
+
+      if (!lastSegments || lastSegments.length === 0) {
+        setStatus('没有可删除的文本', 2000);
+        return;
+      }
+
+      // 停止播放
+      if (editedPlaying) {
+        stopEditedPlayback();
+      }
+
+      // 去除用户输入的标点符号，用于匹配
+      const normalizedFillerText = removePunctuation(fillerText);
+
+      // 根据当前模式查找匹配的segments
+      let matchedIndices = [];
+      if (isCharEditMode) {
+        // 逐字编辑模式
+        for (let i = 0; i < charComposition.length; i++) {
+          const idx = charComposition[i];
+          const char = charLevelData[idx];
+          if (char && removePunctuation(char.char) === normalizedFillerText) {
+            matchedIndices.push(i);
+          }
+        }
+      } else {
+        // 逐段编辑模式
+        for (let i = 0; i < composition.length; i++) {
+          const idx = composition[i];
+          const seg = lastSegments[idx];
+          if (seg && removePunctuation(seg.text) === normalizedFillerText) {
+            matchedIndices.push(i);
+          }
+        }
+      }
+
+      if (matchedIndices.length === 0) {
+        setStatus(`未找到匹配的文本"${fillerText}"`, 2000);
+        return;
+      }
+
+      // 确认删除
+      const confirmMsg = `找到 ${matchedIndices.length} 个匹配项，确定要删除吗？`;
+      if (!confirm(confirmMsg)) {
+        return;
+      }
+
+      // 批量删除（从后往前删除，避免索引变化）
+      if (isCharEditMode) {
+        for (let i = matchedIndices.length - 1; i >= 0; i--) {
+          charComposition.splice(matchedIndices[i], 1);
+        }
+      } else {
+        // 在智能分段模式下需要特殊处理
+        if (getDisplayMode() === 'smart-paragraph') {
+          isSmartParagraphManuallyEdited = true;
+
+          // 从后往前删除，避免索引变化问题
+          for (let i = matchedIndices.length - 1; i >= 0; i--) {
+            const pos = matchedIndices[i];
+
+            // 从composition中删除
+            composition.splice(pos, 1);
+
+            // 从段落分组中移除
+            let newGroups = smartParagraphGroups.map(group => group.slice());
+            for (let g = 0; g < newGroups.length; g++) {
+              const idx = newGroups[g].indexOf(pos);
+              if (idx !== -1) {
+                newGroups[g].splice(idx, 1);
+                break;
+              }
+            }
+
+            // 更新后面所有索引（因为composition删除了一个元素）
+            for (let g = 0; g < newGroups.length; g++) {
+              for (let j = 0; j < newGroups[g].length; j++) {
+                if (newGroups[g][j] > pos) {
+                  newGroups[g][j]--;
+                }
+              }
+            }
+
+            // 移除空段落
+            smartParagraphGroups = newGroups.filter(group => group.length > 0);
+          }
+        } else {
+          // 其他模式直接删除
+          for (let i = matchedIndices.length - 1; i >= 0; i--) {
+            composition.splice(matchedIndices[i], 1);
+          }
+        }
+      }
+
+      hasEdited = true;
+      renderResult(lastFullText, lastSegments);
+      setStatus(`已删除 ${matchedIndices.length} 个匹配项`, 3000);
+
+      // 清空输入框
+      fillerTextInput.value = '';
     });
 
     // 页面加载时显示缓存信息
