@@ -1,0 +1,1798 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+ <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>基于文本的音频编辑</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; margin: 0; background: #0f1216; color: #e6e6e6; }
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+    .card { background: #171a21; border: 1px solid #252a33; border-radius: 12px; padding: 16px; }
+    .row { display: grid; grid-template-columns: 1fr; gap: 12px; }
+    .label { font-size: 14px; color: #a9b2c0; }
+    .input { display: flex; align-items: center; gap: 10px; }
+    input[type="file"] { padding: 8px; }
+    input[type="text"] { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #2a313d; background: #101318; color: #e6e6e6; box-sizing: border-box; }
+    .audio { width: 100%; }
+    .actions { display: flex; gap: 10px; align-items: center; }
+    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #2a313d; background: #1e2430; color: #e6e6e6; cursor: pointer; transition: all 0.3s ease; }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* 高亮识别按钮 */
+    #recognizeBtn.highlight {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-color: #667eea;
+      box-shadow: 0 0 20px rgba(102, 126, 234, 0.6);
+      animation: pulse 2s ease-in-out infinite;
+      transform: scale(1.05);
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 20px rgba(102, 126, 234, 0.6); }
+      50% { box-shadow: 0 0 30px rgba(102, 126, 234, 0.9); }
+    }
+    .status { font-size: 13px; color: #96a2b2; }
+    #serverStatus { font-weight: 500; padding: 4px 8px; border-radius: 6px; background: rgba(42,90,156,0.1); }
+
+    /* 加载动画 - 炫彩版 */
+    .loading-spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: conic-gradient(
+        from 0deg,
+        #ff0080,
+        #ff8c00,
+        #ffd700,
+        #00ff00,
+        #00bfff,
+        #8a2be2,
+        #ff0080
+      );
+      animation: spin 1s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+      position: relative;
+    }
+    .loading-spinner::before {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      right: 2px;
+      bottom: 2px;
+      background: #171a21;
+      border-radius: 50%;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* 跳动的省略号 */
+    .loading-dots {
+      display: inline-block;
+    }
+    .loading-dots span {
+      animation: bounce 1.4s infinite;
+      display: inline-block;
+    }
+    .loading-dots span:nth-child(1) { animation-delay: 0s; }
+    .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      0%, 60%, 100% { transform: translateY(0); }
+      30% { transform: translateY(-4px); }
+    }
+    .split { height: 1px; background: #252a33; margin: 18px 0; }
+    .text-area { width: 100%; min-height: 120px; border-radius: 10px; border: 1px solid #2a313d; background: #0f1319; color: #e6e6e6; padding: 12px; box-sizing: border-box; white-space: pre-wrap; }
+    .grid { display: grid; grid-template-columns: 1fr 120px 120px 70px 100px; gap: 8px; align-items: center; }
+    .grid.header { font-size: 13px; color: #9aa6b2; }
+    .chip { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid #2a313d; background: #12161c; display: inline-block; }
+    .segment { padding: 8px; border-radius: 8px; border: 1px solid #1f2430; background: #141922; }
+    .segments { display: grid; gap: 8px; }
+    .sentence { margin-right: 0.25em; cursor: pointer; transition: background 0.2s; }
+    .sentence:hover { background: rgba(255,255,255,0.08); }
+    .sentence.active { background: var(--hl, #2a5a9c); color: #fff; border-radius: 4px; }
+    .sentence.deleted { opacity: .45; text-decoration: line-through; }
+    .sentence.dragover { outline: 1px dashed #6b7280; }
+    @keyframes insertPulse { 0% { border-right-color: transparent; } 50% { border-right-color: #f39c12; } 100% { border-right-color: transparent; } }
+    .sentence.insert-after { border-right: 2px solid #f39c12; animation: insertPulse 1s infinite; }
+    .badge { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid #2a313d; background: #2a5a9c; color: #fff; display: inline-block; }
+    .ctx-menu { position: fixed; z-index: 9999; background: #171a21; border: 1px solid #2a313d; border-radius: 8px; padding: 6px; display: none; }
+    .ctx-menu button { width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid #2a313d; background: #1e2430; color: #e6e6e6; cursor: pointer; }
+    .hidden { display: none; }
+    .modal { display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); }
+    .modal-content { background-color: #171a21; margin: 5% auto; padding: 20px; border: 1px solid #2a313d; border-radius: 12px; width: 80%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
+    .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .modal-title { font-size: 18px; font-weight: bold; }
+    .close { color: #96a2b2; font-size: 28px; font-weight: bold; cursor: pointer; }
+    .close:hover { color: #e6e6e6; }
+    .material-item { padding: 12px; border: 1px solid #2a313d; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+    .material-item:hover { background: #1e2430; }
+    .material-info { flex: 1; }
+    .material-name { font-weight: bold; color: #e6e6e6; }
+    .material-meta { font-size: 12px; color: #96a2b2; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>基于文本的音频编辑</h2>
+    <div class="card">
+      <div class="row">
+        <div>
+          <div class="label">选择音频文件</div>
+          <div class="input">
+            <input id="file" type="file" accept="audio/*">
+            <button id="clearBtn">清空</button>
+            <button id="materialsBtn">素材库</button>
+            <button id="adminBtn">管理</button>
+          </div>
+        </div>
+        <div>
+          <div class="label">接口地址</div>
+          <input id="endpoint" type="text" value="/asr">
+        </div>
+        <div>
+          <label class="label" style="display:flex;align-items:center;gap:8px">
+            <input id="advToggle" type="checkbox" checked>
+            启用高级识别（标点/VAD/说话人）
+          </label>
+        </div>
+        <div>
+          <label class="label" style="display:flex;align-items:center;gap:8px">
+            <input id="editModeToggle" type="checkbox">
+            逐字编辑模式（关闭为逐段编辑）
+          </label>
+        </div>
+        <div>
+          <div class="label">热词配置（多个热词用空格分隔，如：阿里巴巴 魔搭 达摩院）</div>
+          <input id="hotwords" type="text" placeholder="输入热词，用空格分隔">
+        </div>
+        <div>
+      <audio id="player" class="audio" controls></audio>
+    </div>
+    <div class="actions">
+      <button id="recognizeBtn">开始识别</button>
+      <button id="copyBtn">复制全文</button>
+      <button id="resetEditBtn">重置编辑</button>
+      <button id="clearCacheBtn">清除缓存</button>
+      <span id="status" class="status"></span>
+      <span id="cacheInfo" class="status"></span>
+      <span id="serverStatus" class="status" style="margin-left: auto;"></span>
+    </div>
+      </div>
+    </div>
+
+    <div class="split"></div>
+
+    <div class="card">
+      <div class="label">识别全文（点击句子可跳转，支持右键删除，拖动编辑顺序）</div>
+      <div id="hotwordsDisplay" style="margin-bottom: 8px; font-size: 13px; color: #96a2b2;"></div>
+      <div id="resultText" class="text-area"></div>
+    </div>
+
+    <div class="split"></div>
+
+    <div class="card">
+      <div class="label">分段结果</div>
+      <div class="grid header">
+        <div>文本</div>
+        <div>开始</div>
+        <div>结束</div>
+        <div>说话人</div>
+        <div>操作</div>
+      </div>
+      <div id="segments" class="segments"></div>
+    </div>
+    
+    <div class="split"></div>
+    
+    <div class="card">
+      <div class="label" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span>调试信息</span>
+        <button id="debugToggleBtn">展开调试信息</button>
+      </div>
+      <div id="debugInfo" class="text-area" style="min-height:80px"></div>
+    </div>
+  </div>
+
+  <!-- 素材库模态框 -->
+  <div id="materialsModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">素材库</span>
+        <span class="close" onclick="document.getElementById('materialsModal').style.display='none'">&times;</span>
+      </div>
+      <div id="materialsList"></div>
+    </div>
+  </div>
+
+  <!-- 管理员上传模态框 -->
+  <div id="adminModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">管理员上传</span>
+        <span class="close" onclick="document.getElementById('adminModal').style.display='none'">&times;</span>
+      </div>
+      <div class="row">
+        <div>
+          <div class="label">管理员密码</div>
+          <input id="adminPassword" type="password" placeholder="请输入管理员密码">
+        </div>
+        <div>
+          <div class="label">选择文件</div>
+          <input id="adminFile" type="file" accept="audio/*">
+        </div>
+        <div class="actions">
+          <button id="uploadBtn">上传素材</button>
+          <span id="uploadStatus" class="status"></span>
+        </div>
+      </div>
+      <div class="split"></div>
+      <div>
+        <div class="label">已上传的素材</div>
+        <div id="adminMaterialsList"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const fileInput = document.getElementById('file');
+    const player = document.getElementById('player');
+    const endpointInput = document.getElementById('endpoint');
+    const recognizeBtn = document.getElementById('recognizeBtn');
+    const copyBtn = document.getElementById('copyBtn');
+    const clearBtn = document.getElementById('clearBtn');
+    const clearCacheBtn = document.getElementById('clearCacheBtn');
+    const statusEl = document.getElementById('status');
+    const cacheInfoEl = document.getElementById('cacheInfo');
+    const serverStatusEl = document.getElementById('serverStatus');
+    const resultTextEl = document.getElementById('resultText');
+    const segmentsEl = document.getElementById('segments');
+    const debugEl = document.getElementById('debugInfo');
+    const hotwordsDisplayEl = document.getElementById('hotwordsDisplay');
+    const debugToggleBtn = document.getElementById('debugToggleBtn');
+    const materialsBtn = document.getElementById('materialsBtn');
+    const adminBtn = document.getElementById('adminBtn');
+    const materialsModal = document.getElementById('materialsModal');
+    const adminModal = document.getElementById('adminModal');
+    const materialsList = document.getElementById('materialsList');
+    const adminMaterialsList = document.getElementById('adminMaterialsList');
+    const adminPassword = document.getElementById('adminPassword');
+    const adminFile = document.getElementById('adminFile');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const uploadStatus = document.getElementById('uploadStatus');
+    let lastDebugText = '';
+
+    const SPEAKER_COLORS = ['#2a5a9c','#9c2a5a','#2a9c5a','#a15f3f','#c0392b','#16a085','#f39c12','#8e44ad','#27ae60','#2980b9'];
+    let currentFileUrl = null;
+    let currentMaterialName = null; // 记录当前选择的素材名称
+    let lastFullText = '';
+    let lastSegments = [];
+    let sentenceSpans = [];
+    let highlightRAF = null;
+    let composition = [];
+    let dragSrcIdx = null;
+    let statusClearTimer = null; // 用于管理状态清除定时器
+
+    // 设置状态的辅助函数，自动管理定时器
+    function setStatus(html, autoClearMs = 0) {
+      // 清除之前的定时器
+      if (statusClearTimer) {
+        clearTimeout(statusClearTimer);
+        statusClearTimer = null;
+      }
+
+      // 设置新状态
+      statusEl.innerHTML = html;
+
+      // 如果需要自动清除
+      if (autoClearMs > 0) {
+        statusClearTimer = setTimeout(() => {
+          statusEl.textContent = '';
+          statusClearTimer = null;
+        }, autoClearMs);
+      }
+    }
+
+    // 编辑播放相关状态
+    let editedPlaying = false;
+    let editedRAF = null;
+    let editedPlayPos = 0;
+    let hasEdited = false;
+    let usedHotwords = null;
+
+    // 逐字编辑相关状态
+    let charLevelData = [];        // 字级别数据数组
+    let charComposition = [];      // 字级别的编辑序列
+    let isCharEditMode = false;    // 当前是否为逐字编辑模式
+
+    const ctxMenu = (() => {
+      const el = document.createElement('div');
+      el.className = 'ctx-menu';
+      const delBtn = document.createElement('button');
+      delBtn.textContent = '删除';
+      el.appendChild(delBtn);
+      document.body.appendChild(el);
+      return { el, delBtn, targetPos: null };
+    })();
+
+    function msToTime(ms) {
+      const s = Math.max(0, Math.floor(ms / 1000));
+      const mm = String(Math.floor(s / 60)).padStart(2, '0');
+      const ss = String(s % 60).padStart(2, '0');
+      return `${mm}:${ss}`;
+    }
+
+    // ====== 缓存管理功能 ======
+    const CACHE_PREFIX = 'asr_cache_';
+    const CACHE_INDEX_KEY = 'asr_cache_index';
+
+    // 生成文件唯一标识符
+    function getFileIdentifier(file) {
+      if (!file) return null;
+      // 使用文件名、大小、最后修改时间作为标识
+      return `${file.name}_${file.size}_${file.lastModified}`;
+    }
+
+    // 获取缓存索引
+    function getCacheIndex() {
+      try {
+        const index = localStorage.getItem(CACHE_INDEX_KEY);
+        return index ? JSON.parse(index) : {};
+      } catch (e) {
+        console.error('读取缓存索引失败:', e);
+        return {};
+      }
+    }
+
+    // 保存缓存索引
+    function saveCacheIndex(index) {
+      try {
+        localStorage.setItem(CACHE_INDEX_KEY, JSON.stringify(index));
+      } catch (e) {
+        console.error('保存缓存索引失败:', e);
+      }
+    }
+
+    // 从缓存读取ASR结果
+    function getFromCache(fileId) {
+      if (!fileId) return null;
+      try {
+        const cacheKey = CACHE_PREFIX + fileId;
+        const cached = localStorage.getItem(cacheKey);
+        if (!cached) return null;
+
+        const data = JSON.parse(cached);
+        // 检查缓存是否过期（可选，这里设置7天过期）
+        const cacheTime = data.timestamp || 0;
+        const now = Date.now();
+        const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+        if (now - cacheTime > SEVEN_DAYS) {
+          // 缓存过期，删除
+          removeFromCache(fileId);
+          return null;
+        }
+
+        return data;
+      } catch (e) {
+        console.error('读取缓存失败:', e);
+        return null;
+      }
+    }
+
+    // 保存ASR结果到缓存
+    function saveToCache(fileId, fileName, asrResult) {
+      if (!fileId) return;
+      try {
+        const cacheKey = CACHE_PREFIX + fileId;
+        const cacheData = {
+          timestamp: Date.now(),
+          fileName: fileName,
+          result: asrResult
+        };
+
+        localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+
+        // 更新索引
+        const index = getCacheIndex();
+        index[fileId] = {
+          fileName: fileName,
+          timestamp: Date.now()
+        };
+        saveCacheIndex(index);
+
+        console.log('ASR结果已缓存:', fileName);
+      } catch (e) {
+        console.error('保存缓存失败:', e);
+        // 如果是空间不足，尝试清理旧缓存
+        if (e.name === 'QuotaExceededError') {
+          clearOldestCache();
+          // 重试一次
+          try {
+            localStorage.setItem(CACHE_PREFIX + fileId, JSON.stringify({
+              timestamp: Date.now(),
+              fileName: fileName,
+              result: asrResult
+            }));
+          } catch (e2) {
+            console.error('重试保存缓存仍然失败:', e2);
+          }
+        }
+      }
+    }
+
+    // 删除单个缓存
+    function removeFromCache(fileId) {
+      if (!fileId) return;
+      try {
+        localStorage.removeItem(CACHE_PREFIX + fileId);
+        const index = getCacheIndex();
+        delete index[fileId];
+        saveCacheIndex(index);
+      } catch (e) {
+        console.error('删除缓存失败:', e);
+      }
+    }
+
+    // 清除最旧的缓存项
+    function clearOldestCache() {
+      try {
+        const index = getCacheIndex();
+        const entries = Object.entries(index);
+        if (entries.length === 0) return;
+
+        // 按时间戳排序，删除最旧的
+        entries.sort((a, b) => (a[1].timestamp || 0) - (b[1].timestamp || 0));
+        const oldestId = entries[0][0];
+        removeFromCache(oldestId);
+        console.log('已清理最旧的缓存');
+      } catch (e) {
+        console.error('清理缓存失败:', e);
+      }
+    }
+
+    // 清除所有缓存
+    function clearAllCache() {
+      try {
+        const index = getCacheIndex();
+        Object.keys(index).forEach(fileId => {
+          localStorage.removeItem(CACHE_PREFIX + fileId);
+        });
+        localStorage.removeItem(CACHE_INDEX_KEY);
+        console.log('已清除所有ASR缓存');
+        return true;
+      } catch (e) {
+        console.error('清除所有缓存失败:', e);
+        return false;
+      }
+    }
+
+    // 获取缓存统计信息
+    function getCacheStats() {
+      try {
+        const index = getCacheIndex();
+        const count = Object.keys(index).length;
+        let totalSize = 0;
+
+        Object.keys(index).forEach(fileId => {
+          const cacheKey = CACHE_PREFIX + fileId;
+          const data = localStorage.getItem(cacheKey);
+          if (data) {
+            totalSize += data.length * 2; // 粗略估算（UTF-16编码）
+          }
+        });
+
+        return {
+          count: count,
+          totalSize: totalSize,
+          totalSizeKB: (totalSize / 1024).toFixed(2)
+        };
+      } catch (e) {
+        console.error('获取缓存统计失败:', e);
+        return { count: 0, totalSize: 0, totalSizeKB: '0' };
+      }
+    }
+
+    // 将文本分割成单元（中文字、英文单词、数字等）
+    // 注意：空格会被标记但保留，用于后续时间计算
+    function tokenizeText(text) {
+      const tokens = [];
+      let i = 0;
+
+      while (i < text.length) {
+        const char = text[i];
+
+        // 空格标记为特殊类型，后续处理时会跳过渲染
+        if (char === ' ' || char === '\t' || char === '\n') {
+          tokens.push({
+            text: char,
+            startIdx: i,
+            endIdx: i,
+            length: 1,
+            type: 'space'  // 标记为空格
+          });
+          i++;
+          continue;
+        }
+
+        // 检查是否是英文字母
+        if (/[a-zA-Z]/.test(char)) {
+          // 收集整个英文单词
+          let word = '';
+          let startIdx = i;
+          while (i < text.length && /[a-zA-Z]/.test(text[i])) {
+            word += text[i];
+            i++;
+          }
+          tokens.push({
+            text: word,
+            startIdx: startIdx,
+            endIdx: i - 1,
+            length: word.length,
+            type: 'word'
+          });
+        }
+        // 检查是否是数字
+        else if (/[0-9]/.test(char)) {
+          // 收集连续的数字
+          let num = '';
+          let startIdx = i;
+          while (i < text.length && /[0-9.]/.test(text[i])) {
+            num += text[i];
+            i++;
+          }
+          tokens.push({
+            text: num,
+            startIdx: startIdx,
+            endIdx: i - 1,
+            length: num.length,
+            type: 'number'
+          });
+        }
+        // 其他字符（中文、标点等），单个处理
+        else {
+          tokens.push({
+            text: char,
+            startIdx: i,
+            endIdx: i,
+            length: 1,
+            type: 'char'
+          });
+          i++;
+        }
+      }
+
+      return tokens;
+    }
+
+    // 从segments构建字级别数据（实际是单元级别）
+    function buildCharLevelData(segments) {
+      const units = [];
+      segments.forEach((seg, segIndex) => {
+        const text = seg.text || '';
+        const timestamps = seg.timestamp || [];
+        const segStart = seg.start || 0;
+        const segEnd = seg.end || segStart;
+        const spk = seg.spk;
+
+        // 先对文本进行分词
+        const tokens = tokenizeText(text);
+
+        // 过滤掉空格token（空格不对应timestamp）
+        const nonSpaceTokens = tokens.filter(t => t.type !== 'space');
+
+        // 如果有timestamp数组，使用它
+        if (Array.isArray(timestamps) && timestamps.length > 0) {
+          // timestamp数组与非空格tokens一一对应
+          nonSpaceTokens.forEach((token, tokenIndex) => {
+            let start, end;
+
+            if (tokenIndex < timestamps.length) {
+              // 使用对应的timestamp
+              const ts = timestamps[tokenIndex];
+              start = Array.isArray(ts) && ts.length >= 1 ? ts[0] : segStart;
+              end = Array.isArray(ts) && ts.length >= 2 ? ts[1] : start;
+            } else {
+              // 超出timestamp数组，使用默认计算
+              const lastTs = timestamps[timestamps.length - 1];
+              const lastEnd = Array.isArray(lastTs) && lastTs.length >= 2 ? lastTs[1] : segStart;
+              const remainingTokens = nonSpaceTokens.length - timestamps.length;
+              const remainingTime = Math.max(segEnd - lastEnd, 0);
+
+              const MIN_TOKEN_DURATION = 100; // 最小100ms每token
+              let tokenDuration;
+              if (remainingTime > 0 && remainingTokens > 0) {
+                tokenDuration = remainingTime / remainingTokens;
+              } else {
+                tokenDuration = MIN_TOKEN_DURATION;
+              }
+
+              const offset = tokenIndex - timestamps.length;
+              start = lastEnd + offset * tokenDuration;
+              end = start + tokenDuration;
+            }
+
+            units.push({
+              char: token.text,
+              start: start,
+              end: end,
+              segmentIndex: segIndex,
+              charIndex: token.startIdx,
+              spk: spk,
+              previewable: true,
+              type: token.type
+            });
+          });
+        } else {
+          // 没有timestamp，平均分配时间
+          const duration = segEnd - segStart;
+          const tokenDuration = nonSpaceTokens.length > 0 ? duration / nonSpaceTokens.length : 0;
+          let currentTime = segStart;
+
+          nonSpaceTokens.forEach((token) => {
+            const start = currentTime;
+            const end = currentTime + tokenDuration;
+
+            units.push({
+              char: token.text,
+              start: start,
+              end: end,
+              segmentIndex: segIndex,
+              charIndex: token.startIdx,
+              spk: spk,
+              previewable: true,
+              type: token.type
+            });
+
+            currentTime = end;
+          });
+        }
+      });
+
+      return units;
+    }
+
+    // 普通模式下的高亮逻辑
+    function highlightNow() {
+      if (isNaN(player.duration)) return;
+      const ct = player.currentTime * 1000;
+      const EPS = 30;
+      let active = null;
+      let bestMatch = null;
+      let bestScore = -1;
+
+      for (const sp of sentenceSpans) {
+        const s = Number(sp.dataset.start);
+        let e = Number(sp.dataset.end);
+        if (!Number.isFinite(e) || e <= s) e = s + EPS;
+
+        // 精确匹配：在时间范围内（开始有容差，结束无容差）
+        if (ct >= s - EPS && ct < e) {
+          active = sp;
+          break;
+        }
+
+        // 记录最接近的匹配（用于后备）
+        if (ct >= s - EPS && ct < e + EPS) {
+          // 计算匹配分数：优先选择当前时间更接近中点的
+          const mid = (s + e) / 2;
+          const score = 1000 - Math.abs(ct - mid); // 越接近中点分数越高
+          if (score > bestScore) {
+            bestScore = score;
+            bestMatch = sp;
+          }
+        }
+      }
+
+      // 如果没有精确匹配，使用最佳匹配
+      if (!active) {
+        active = bestMatch;
+      }
+
+      // 如果还是没有，尝试找最近的
+      if (!active) {
+        let best = null, bestDiff = Infinity;
+        for (const sp of sentenceSpans) {
+          const s = Number(sp.dataset.start);
+          const diff = Math.abs(ct - s);
+          if (diff < bestDiff && diff <= EPS * 2) { best = sp; bestDiff = diff; }
+        }
+        active = best || active;
+      }
+
+      sentenceSpans.forEach(sp => sp.classList.toggle('active', sp === active));
+    }
+
+    function resetUI() {
+      stopEditedPlayback();
+      resultTextEl.innerHTML = '';
+      segmentsEl.innerHTML = '';
+      setStatus(''); // 使用 setStatus 清除状态和定时器
+      debugEl.textContent = '';
+      lastFullText = '';
+      lastSegments = [];
+      sentenceSpans = [];
+      composition = [];
+      charLevelData = [];
+      charComposition = [];
+      dragSrcIdx = null;
+      hasEdited = false;
+    }
+
+    fileInput.addEventListener('change', () => {
+      resetUI();
+      currentMaterialName = null; // 选择本地文件时清除素材标记
+      document.getElementById('hotwords').value = ''; // 清空热词输入框
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) {
+        if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
+        player.removeAttribute('src');
+        player.load();
+        recognizeBtn.classList.remove('highlight'); // 移除高亮
+        return;
+      }
+      if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
+      currentFileUrl = URL.createObjectURL(file);
+      player.src = currentFileUrl;
+      player.load();
+
+      // 高亮识别按钮，引导用户点击
+      recognizeBtn.classList.add('highlight');
+    });
+
+    clearBtn.addEventListener('click', () => {
+      fileInput.value = '';
+      if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
+      currentFileUrl = null;
+      currentMaterialName = null; // 清空时也清除素材标记
+      player.removeAttribute('src');
+      player.load();
+      resetUI();
+      recognizeBtn.classList.remove('highlight'); // 清空时移除高亮
+      document.getElementById('hotwords').value = ''; // 清空热词输入框
+    });
+
+    // --- 播放事件监听 ---
+    player.addEventListener('play', () => {
+      if (highlightRAF) cancelAnimationFrame(highlightRAF);
+      const loop = () => {
+        if (!player.paused) highlightNow();
+        if (!player.paused) highlightRAF = requestAnimationFrame(loop);
+      };
+      loop();
+    });
+    
+    player.addEventListener('pause', () => {
+      if (highlightRAF) { cancelAnimationFrame(highlightRAF); highlightRAF = null; }
+      if (!editedPlaying) sentenceSpans.forEach(sp => sp.classList.remove('active'));
+      
+      // 只有当用户手动暂停（且不是脚本控制的跳转）时，才停止编辑模式
+      // 在新的逻辑中，我们尽量不使用 player.pause() 进行段间跳转，所以这里的判断更安全
+      // 为了防止用户点击控件暂停导致逻辑错乱，这里稍作延迟判断或者依赖 editedPlaying 标志
+      // 如果是用户点击暂停，editedPlaying 仍为 true，我们需要手动关掉它
+      // 但由于 seek 操作有时也会触发 pause/play 事件组合，这里我们不做激进的停止
+      // 改为：如果处于编辑模式，用户暂停了，我们认为只是暂停播放，保留编辑状态（如高亮）
+      // 但为了简化交互，这里设定：只要暂停，就退出编辑回放模式
+      if (editedPlaying) {
+          // 检查是否是因为 seeking 导致的 pause (部分浏览器行为)
+          // 这里简单处理：手动点击暂停键退出编辑模式
+          stopEditedPlayback();
+      }
+    });
+
+    player.addEventListener('ended', () => {
+      if (highlightRAF) { cancelAnimationFrame(highlightRAF); highlightRAF = null; }
+      sentenceSpans.forEach(sp => sp.classList.remove('active'));
+      stopEditedPlayback();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      const t = e.target;
+      const tag = t && t.tagName;
+      const editable = tag === 'INPUT' || tag === 'TEXTAREA' || (t && t.isContentEditable);
+      if (e.code === 'Space' || e.key === ' ') {
+        if (!editable) {
+          e.preventDefault();
+          if (player.paused) { player.play(); } else { player.pause(); }
+        }
+      }
+    });
+
+    // 调试信息折叠控制（默认关闭）
+    let debugCollapsed = true;
+    if (debugEl) debugEl.classList.add('hidden');
+    if (debugToggleBtn) {
+      debugToggleBtn.textContent = '展开调试信息';
+      debugToggleBtn.addEventListener('click', () => {
+        debugCollapsed = !debugCollapsed;
+        debugEl.classList.toggle('hidden', debugCollapsed);
+        debugToggleBtn.textContent = debugCollapsed ? '展开调试信息' : '收起调试信息';
+        if (!debugCollapsed) {
+          debugEl.textContent = lastDebugText || '（暂无调试数据）';
+        }
+      });
+    }
+
+    copyBtn.addEventListener('click', async () => {
+      if (!lastFullText) {
+        setStatus('没有可复制的文本', 1200);
+        return;
+      }
+
+      try {
+        // 如果有编辑，复制编辑后的文本；否则复制原始文本
+        let textToCopy = lastFullText;
+
+        if (hasEdited) {
+          if (isCharEditMode && charLevelData && charLevelData.length > 0) {
+            // 逐字编辑模式：从 charComposition 重建文本
+            textToCopy = charComposition
+              .map(idx => charLevelData[idx])
+              .filter(unit => unit && !unit.deleted)
+              .map(unit => unit.char)
+              .join('');
+          } else if (!isCharEditMode && lastSegments && lastSegments.length > 0) {
+            // 逐段编辑模式：从 composition 重建文本
+            textToCopy = composition
+              .map(idx => lastSegments[idx])
+              .filter(seg => seg && !seg.deleted)
+              .map(seg => seg.text || '')
+              .join('');
+          }
+        }
+
+        // 优先使用现代 Clipboard API
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(textToCopy);
+          setStatus('已复制', 1200);
+        } else {
+          // 降级方案：使用传统的 execCommand
+          const textarea = document.createElement('textarea');
+          textarea.value = textToCopy;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          document.body.appendChild(textarea);
+          textarea.select();
+
+          const success = document.execCommand('copy');
+          document.body.removeChild(textarea);
+
+          if (success) {
+            setStatus('已复制', 1200);
+          } else {
+            throw new Error('execCommand failed');
+          }
+        }
+      } catch (e) {
+        console.error('复制失败:', e);
+        setStatus(`复制失败: ${e.message || '请检查浏览器权限'}`, 3000);
+      }
+    });
+
+    // 编辑模式切换
+    const editModeToggle = document.getElementById('editModeToggle');
+    editModeToggle.addEventListener('change', () => {
+      isCharEditMode = editModeToggle.checked;
+      // 切换模式时自动触发“重置编辑”
+      if (editedPlaying) {
+        stopEditedPlayback();
+      }
+      if (isCharEditMode) {
+        charComposition = Array.from({ length: charLevelData.length }, (_, i) => i);
+      } else {
+        composition = Array.from({ length: lastSegments.length }, (_, i) => i);
+      }
+      hasEdited = true;
+      renderResult(lastFullText, lastSegments);
+    });
+
+    // 更新缓存信息显示
+    function updateCacheInfo() {
+      const stats = getCacheStats();
+      if (stats.count > 0) {
+        cacheInfoEl.textContent = `缓存: ${stats.count}个文件, ${stats.totalSizeKB}KB`;
+      } else {
+        cacheInfoEl.textContent = '';
+      }
+    }
+
+    // 清除缓存按钮
+    clearCacheBtn.addEventListener('click', () => {
+      if (confirm('确定要清除所有ASR缓存吗？')) {
+        const success = clearAllCache();
+        if (success) {
+          setStatus('缓存已清除', 1200);
+          updateCacheInfo();
+        } else {
+          setStatus('清除缓存失败');
+        }
+      }
+    });
+
+    // 页面加载时显示缓存信息
+    updateCacheInfo();
+
+    // 服务器状态监控
+    async function updateServerStatus() {
+      try {
+        const resp = await fetch('/server-status');
+        if (!resp.ok) {
+          serverStatusEl.textContent = '🔴 服务器错误';
+          return;
+        }
+        const data = await resp.json();
+
+        // 构建状态文本
+        let statusText = '';
+        if (data.total_active === 0) {
+          statusText = '🟢 服务器空闲';
+        } else {
+          const parts = [];
+          if (data.basic.processing > 0) {
+            parts.push(`基础模型处理中(${data.basic.processing})`);
+          }
+          if (data.basic.waiting > 0) {
+            parts.push(`基础模型排队(${data.basic.waiting})`);
+          }
+          if (data.advanced.processing > 0) {
+            parts.push(`高级模型处理中(${data.advanced.processing})`);
+          }
+          if (data.advanced.waiting > 0) {
+            parts.push(`高级模型排队(${data.advanced.waiting})`);
+          }
+          statusText = '🟡 ' + parts.join(' | ');
+        }
+
+        serverStatusEl.textContent = statusText;
+      } catch (e) {
+        // 网络错误或服务器未启动
+        serverStatusEl.textContent = '🔴 找不到服务器';
+      }
+    }
+
+    // 初始更新并设置定时器（每2秒更新一次）
+    updateServerStatus();
+    setInterval(updateServerStatus, 2000);
+
+    // --- 核心：编辑后播放逻辑 (修复版) ---
+    // 统一高亮：依赖时间与句子范围，无编辑专用高亮
+
+    function startEditedPlayback(fromPos = 0) {
+      if (editedPlaying) stopEditedPlayback();
+      if (!composition.length || isNaN(player.duration)) return;
+      
+      editedPlaying = true;
+      editedPlayPos = fromPos;
+
+      // 立即跳转到第一段开始
+      const firstIdx = composition[editedPlayPos];
+      const firstSeg = lastSegments[firstIdx];
+      if (firstSeg) {
+          player.currentTime = (firstSeg.start || 0) / 1000;
+          highlightNow();
+          player.play().catch(e => {
+              console.error("Play error:", e);
+              stopEditedPlayback();
+          });
+      }
+
+      // 启动监控循环
+      const monitor = () => {
+        if (!editedPlaying) return;
+        if (player.paused) {
+            // 如果暂停了，不继续循环，等待 play 事件再次触发(或者由外部停止)
+            // 这里为了防止 requestAnimationFrame 堆积，暂不自动重连
+            return; 
+        }
+
+        const currentIdx = composition[editedPlayPos];
+        const seg = lastSegments[currentIdx];
+        
+        if (!seg) {
+            stopEditedPlayback();
+            return;
+        }
+
+        const endTime = (seg.end || seg.start) / 1000;
+
+        // 检查是否到达当前片段末尾
+        // 增加 0.05s 的缓冲防止浮点数临界问题，或者严格判断
+        if (player.currentTime >= endTime) {
+            editedPlayPos++; // 准备下一段
+
+            if (editedPlayPos >= composition.length) {
+                // 播放结束
+                player.pause();
+                stopEditedPlayback();
+                return;
+            }
+
+            // 获取下一段信息
+            const nextIdx = composition[editedPlayPos];
+            const nextSeg = lastSegments[nextIdx];
+            const nextStart = (nextSeg.start || 0) / 1000;
+
+            // 关键逻辑：判断是否连续
+            // 如果下一段的开始时间 就在 当前播放位置附近 (误差 < 0.15s)
+            // 则认为是连续音频，不需要 seek，直接让它播过去，避免卡顿
+            if (Math.abs(player.currentTime - nextStart) > 0.15) {
+                player.currentTime = nextStart;
+            }
+            
+            highlightNow();
+        }
+
+        editedRAF = requestAnimationFrame(monitor);
+      };
+
+      editedRAF = requestAnimationFrame(monitor);
+    }
+
+    function stopEditedPlayback() {
+      editedPlaying = false;
+      if (editedRAF) { cancelAnimationFrame(editedRAF); editedRAF = null; }
+    }
+
+
+    const resetEditBtn = document.getElementById('resetEditBtn');
+    resetEditBtn.onclick = () => {
+      // 根据当前模式重置
+      if (isCharEditMode) {
+        charComposition = Array.from({ length: charLevelData.length }, (_, i) => i);
+      } else {
+        composition = Array.from({ length: lastSegments.length }, (_, i) => i);
+      }
+      hasEdited = true;
+      renderResult(lastFullText, lastSegments);
+    };
+
+    // 右键菜单
+    ctxMenu.delBtn.addEventListener('click', () => {
+      ctxMenu.el.style.display = 'none';
+      const pos = ctxMenu.targetPos;
+      if (typeof pos !== 'number') return;
+
+      // 停止当前播放，避免索引错位
+      if (editedPlaying) {
+        stopEditedPlayback();
+      }
+
+      // 根据当前模式删除
+      if (isCharEditMode) {
+        if (pos >= 0 && pos < charComposition.length) {
+          charComposition.splice(pos, 1);
+          hasEdited = true;
+          renderResult(lastFullText, lastSegments);
+        }
+      } else {
+        if (pos >= 0 && pos < composition.length) {
+          composition.splice(pos, 1);
+          hasEdited = true;
+          renderResult(lastFullText, lastSegments);
+        }
+      }
+      ctxMenu.targetPos = null;
+    });
+
+    document.addEventListener('click', (e) => {
+      if (ctxMenu.el.style.display === 'block' && !ctxMenu.el.contains(e.target)) {
+        ctxMenu.el.style.display = 'none';
+        ctxMenu.targetIdx = null;
+      }
+    });
+
+    function getEditPlan() {
+      return composition.map((i) => {
+        const s = lastSegments[i];
+        return {
+          index: i,
+          start: s && typeof s.start === 'number' ? s.start : 0,
+          end: s && typeof s.end === 'number' ? s.end : 0,
+          text: s && typeof s.text === 'string' ? s.text : '',
+          spk: typeof s && typeof s.spk === 'number' ? s.spk : null
+        };
+      });
+    }
+    window.getEditPlan = getEditPlan;
+
+    recognizeBtn.addEventListener('click', async () => {
+      const file = fileInput.files && fileInput.files[0];
+
+      // 检查是否选择了文件或素材
+      if (!file && !currentMaterialName) {
+        setStatus('请先选择音频文件或素材');
+        return;
+      }
+
+      // 生成文件标识符（素材使用素材名，上传文件使用哈希）
+      const fileId = currentMaterialName || getFileIdentifier(file);
+      const adv = document.getElementById('advToggle').checked;
+      const hotwords = document.getElementById('hotwords').value.trim();
+
+      // 构建缓存key（包含配置信息）
+      const cacheKey = `${fileId}_${adv ? 'adv' : 'basic'}_${hotwords || 'nohotwords'}`;
+
+      // 先检查缓存
+      const cached = getFromCache(cacheKey);
+      if (cached && cached.result) {
+        setStatus('<span class="loading-spinner"></span>从缓存加载<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>');
+        try {
+          const data = cached.result;
+          try { lastDebugText = JSON.stringify(data, null, 2); } catch (e) { lastDebugText = String(data); }
+          debugEl.textContent = lastDebugText;
+          const { fullText, segments } = normalizeResult(data);
+          lastFullText = fullText || '';
+          lastSegments = Array.isArray(segments) ? segments : [];
+          composition = Array.from({ length: lastSegments.length }, (_, i) => i);
+
+          // 构建字级别数据
+          charLevelData = buildCharLevelData(lastSegments);
+          charComposition = Array.from({ length: charLevelData.length }, (_, i) => i);
+
+          hasEdited = false;
+          usedHotwords = data.hotwords_used || null;
+          renderResult(lastFullText, lastSegments);
+          setStatus('完成（使用缓存）', 1200);
+          updateCacheInfo();
+          recognizeBtn.classList.remove('highlight'); // 移除高亮
+          return;
+        } catch (err) {
+          console.error('使用缓存失败，将重新识别:', err);
+          // 缓存损坏，删除并继续识别
+          removeFromCache(cacheKey);
+        }
+      }
+
+      // 缓存不存在或失败，进行识别
+      const endpoint = endpointInput.value.trim() || '/asr';
+      setStatus('<span class="loading-spinner"></span>正在识别<span class="loading-dots"><span>.</span><span>.</span><span>.</span></span>');
+      recognizeBtn.disabled = true;
+      recognizeBtn.classList.remove('highlight'); // 开始识别时移除高亮
+
+      // 立即更新服务器状态
+      updateServerStatus();
+
+      try {
+        const fd = new FormData();
+
+        // 如果是素材库文件，传递素材名称；否则上传文件
+        if (currentMaterialName) {
+          fd.append('material_name', currentMaterialName);
+        } else {
+          fd.append('audio', file);
+        }
+
+        fd.append('enable_advanced', adv ? 'true' : 'false');
+        if (hotwords) {
+          fd.append('hotwords', hotwords);
+        }
+        const resp = await fetch(endpoint, { method: 'POST', body: fd });
+        const text = await resp.text();
+        const headers = [];
+        resp.headers.forEach((v, k) => headers.push(`${v ? v : ''}`));
+        lastDebugText = `HTTP ${resp.status} ${resp.statusText}\n${headers.join('\n')}\n\n${text}`;
+        debugEl.textContent = lastDebugText;
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status} ${resp.statusText}`);
+        }
+        let data;
+        try { data = JSON.parse(text); } catch { throw new Error('响应不可解析为JSON'); }
+
+        // 保存到缓存
+        const fileName = currentMaterialName || file.name;
+        saveToCache(cacheKey, fileName, data);
+
+        const { fullText, segments } = normalizeResult(data);
+        lastFullText = fullText || '';
+        lastSegments = Array.isArray(segments) ? segments : [];
+        composition = Array.from({ length: lastSegments.length }, (_, i) => i);
+
+        // 构建字级别数据
+        charLevelData = buildCharLevelData(lastSegments);
+        charComposition = Array.from({ length: charLevelData.length }, (_, i) => i);
+
+        hasEdited = false;
+        usedHotwords = data.hotwords_used || null;
+        renderResult(lastFullText, lastSegments);
+        setStatus('完成', 1200);
+        updateCacheInfo();
+      } catch (err) {
+        setStatus(`错误：${err.message}`);
+      } finally {
+        recognizeBtn.disabled = false;
+        // 识别完成后更新服务器状态
+        updateServerStatus();
+      }
+    });
+
+    function normalizeResult(data) {
+      if (Array.isArray(data)) {
+        const full = data[0] && typeof data[0].text === 'string' ? data[0].text : '';
+        return { fullText: full, segments: data.slice(1) };
+      }
+      if (data && Array.isArray(data.segments)) {
+        const full = typeof data.text === 'string' ? data.text : data.segments.map(s => s && s.text || '').join('');
+        return { fullText: full, segments: data.segments };
+      }
+      const full = data && typeof data.text === 'string' ? data.text : '';
+      const segs = data && Array.isArray(data) ? data : [];
+      return { fullText: full, segments: segs };
+    }
+
+    function renderResult(fullText, segments) {
+      if (highlightRAF) { cancelAnimationFrame(highlightRAF); highlightRAF = null; }
+      resultTextEl.innerHTML = '';
+      segmentsEl.innerHTML = '';
+      sentenceSpans = [];
+
+      // 显示热词信息
+      if (usedHotwords) {
+        hotwordsDisplayEl.innerHTML = `<span class="badge">使用的热词: ${usedHotwords}</span>`;
+      } else {
+        hotwordsDisplayEl.innerHTML = '';
+      }
+
+      if (!fullText && !segments.length) return;
+
+      // 根据编辑模式选择渲染方式
+      if (isCharEditMode) {
+        renderCharLevel();
+      } else {
+        renderSegmentLevel(segments);
+      }
+    }
+
+    // 逐段编辑渲染
+    function renderSegmentLevel(segments) {
+      // 根据 composition 构建显示列表
+      const list = composition.map(i => segments[i]).filter(Boolean);
+
+      // 1. 渲染文本区域
+      list.forEach((s, renderIndex) => {
+        const span = document.createElement('span');
+        span.className = 'sentence';
+        span.textContent = s.text;
+        const start = s.start || 0;
+        const end = s.end || start;
+        span.dataset.start = start;
+        span.dataset.end = end;
+        // 存储原始索引以便查找
+        const originalIdx = composition[renderIndex]; // 这就是 segments 里的 index
+        span.dataset.idx = String(originalIdx);
+        span.dataset.compIndex = String(renderIndex);
+        
+        if (typeof s.spk === 'number') {
+          span.dataset.spk = String(s.spk);
+          const color = SPEAKER_COLORS[Math.abs(s.spk) % SPEAKER_COLORS.length];
+          span.style.setProperty('--hl', color);
+        }
+        span.title = `点击跳转 ${msToTime(start)}-${msToTime(end)}`;
+        span.draggable = true;
+
+        // 点击跳转逻辑
+        span.addEventListener('click', () => {
+          const posInComp = Number(span.dataset.compIndex);
+          if (hasEdited && posInComp >= 0) {
+            startEditedPlayback(posInComp);
+            return;
+          }
+          if (!isNaN(player.duration)) {
+            player.currentTime = start / 1000;
+            player.play().catch(() => {});
+          }
+          highlightNow();
+        });
+        
+        // 双击从此处开始编辑播放
+        span.addEventListener('dblclick', () => {
+           startEditedPlayback(renderIndex);
+        });
+
+        // 右键
+        span.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          ctxMenu.targetPos = renderIndex;
+          ctxMenu.el.style.left = `${e.clientX}px`;
+          ctxMenu.el.style.top = `${e.clientY}px`;
+          ctxMenu.el.style.display = 'block';
+        });
+
+        // 拖拽逻辑
+        span.addEventListener('dragstart', () => { dragSrcIdx = renderIndex; }); // 记录当前渲染列表的索引
+        
+        span.addEventListener('dragover', (e) => { 
+            e.preventDefault(); 
+            span.classList.add('insert-after'); 
+        });
+        span.addEventListener('dragleave', () => { span.classList.remove('insert-after'); });
+        span.addEventListener('drop', () => {
+          span.classList.remove('insert-after');
+          if (dragSrcIdx === null) return;
+          const fromPos = dragSrcIdx;
+          const toPos = renderIndex;
+          if (fromPos === toPos) { dragSrcIdx = null; return; }
+
+          // 停止当前播放，避免索引错位
+          if (editedPlaying) {
+            stopEditedPlayback();
+          }
+
+          const arr = composition.slice();
+          const [moved] = arr.splice(fromPos, 1);
+          const dstAfter = fromPos < toPos ? (toPos - 1) : toPos;
+          arr.splice(Math.min(dstAfter + 1, arr.length), 0, moved);
+          composition = arr;
+          hasEdited = true;
+          dragSrcIdx = null;
+          renderResult(lastFullText, lastSegments);
+        });
+
+        resultTextEl.appendChild(span);
+        sentenceSpans.push(span); // 这里的 sentenceSpans 顺序与 composition 一致
+      });
+
+      // 2. 渲染表格 (Segments List)
+      list.forEach((s, i) => {
+        const row = document.createElement('div');
+        row.className = 'segment';
+        const g = document.createElement('div');
+        g.className = 'grid';
+        const textCell = document.createElement('div');
+        textCell.textContent = s.text;
+        const startCell = document.createElement('div');
+        startCell.textContent = msToTime(s.start || 0);
+        const endCell = document.createElement('div');
+        endCell.textContent = msToTime(s.end || 0);
+        const spkCell = document.createElement('div');
+        spkCell.innerHTML = `<span class="chip">${typeof s.spk === 'number' ? s.spk : '-'}</span>`;
+        const actionCell = document.createElement('div');
+        const playBtn = document.createElement('button');
+        playBtn.textContent = '播放片段';
+        playBtn.addEventListener('click', () => {
+          const posInComp = i;
+          if (hasEdited && posInComp >= 0) {
+            startEditedPlayback(posInComp);
+            return;
+          }
+          const startMs = s.start || 0;
+          const endMs = s.end || null;
+          if (!isNaN(player.duration)) {
+            player.currentTime = startMs / 1000;
+            player.play();
+            if (endMs) {
+                const stopAt = endMs / 1000;
+                const check = () => {
+                    if (player.paused) return;
+                    if (player.currentTime >= stopAt) {
+                        player.pause();
+                    } else {
+                        requestAnimationFrame(check);
+                    }
+                };
+                requestAnimationFrame(check);
+            }
+          }
+        });
+        actionCell.appendChild(playBtn);
+        g.appendChild(textCell);
+        g.appendChild(startCell);
+        g.appendChild(endCell);
+        g.appendChild(spkCell);
+        g.appendChild(actionCell);
+        row.appendChild(g);
+        segmentsEl.appendChild(row);
+      });
+    }
+
+    // 逐字编辑渲染
+    function renderCharLevel() {
+      const list = charComposition.map(i => charLevelData[i]).filter(Boolean);
+      list.forEach((c, renderIndex) => {
+        const span = document.createElement('span');
+        span.className = 'sentence';  // 复用相同的样式
+        span.textContent = c.char;
+        const start = c.start || 0;
+        const end = c.end || start;
+        span.dataset.start = start;
+        span.dataset.end = end;
+        span.dataset.idx = String(renderIndex);  // 在charComposition中的索引
+        span.dataset.compIndex = String(renderIndex);
+
+        if (typeof c.spk === 'number') {
+          span.dataset.spk = String(c.spk);
+          const color = SPEAKER_COLORS[Math.abs(c.spk) % SPEAKER_COLORS.length];
+          span.style.setProperty('--hl', color);
+        }
+        span.title = `点击跳转 ${msToTime(start)}-${msToTime(end)}`;
+        span.draggable = true;
+
+        // 点击跳转逻辑
+        span.addEventListener('click', () => {
+          const posInComp = Number(span.dataset.compIndex);
+          if (hasEdited && posInComp >= 0) {
+            startCharEditedPlayback(posInComp);
+            return;
+          }
+          if (!isNaN(player.duration)) {
+            player.currentTime = start / 1000;
+            player.play().catch(() => {});
+          }
+          highlightNow();
+        });
+
+        // 双击从此处开始编辑播放
+        span.addEventListener('dblclick', () => {
+           startCharEditedPlayback(renderIndex);
+        });
+
+        // 右键
+        span.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          ctxMenu.targetPos = renderIndex;
+          ctxMenu.el.style.left = `${e.clientX}px`;
+          ctxMenu.el.style.top = `${e.clientY}px`;
+          ctxMenu.el.style.display = 'block';
+        });
+
+        // 拖拽逻辑
+        span.addEventListener('dragstart', () => { dragSrcIdx = renderIndex; });
+
+        span.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            span.classList.add('insert-after');
+        });
+        span.addEventListener('dragleave', () => { span.classList.remove('insert-after'); });
+        span.addEventListener('drop', () => {
+          span.classList.remove('insert-after');
+          if (dragSrcIdx === null) return;
+          const fromPos = dragSrcIdx;
+          const toPos = renderIndex;
+          if (fromPos === toPos) { dragSrcIdx = null; return; }
+
+          // 停止当前播放，避免索引错位
+          if (editedPlaying) {
+            stopEditedPlayback();
+          }
+
+          const arr = charComposition.slice();
+          const [moved] = arr.splice(fromPos, 1);
+          const dstAfter = fromPos < toPos ? (toPos - 1) : toPos;
+          arr.splice(Math.min(dstAfter + 1, arr.length), 0, moved);
+          charComposition = arr;
+          hasEdited = true;
+          dragSrcIdx = null;
+          renderResult(lastFullText, lastSegments);
+        });
+
+        resultTextEl.appendChild(span);
+        sentenceSpans.push(span);
+      });
+      renderSegmentsTable(lastSegments);
+    }
+
+    function renderSegmentsTable(segments) {
+      const list = composition.map(i => segments[i]).filter(Boolean);
+      list.forEach((s, i) => {
+        const row = document.createElement('div');
+        row.className = 'segment';
+        const g = document.createElement('div');
+        g.className = 'grid';
+        const textCell = document.createElement('div');
+        textCell.textContent = s.text;
+        const startCell = document.createElement('div');
+        startCell.textContent = msToTime(s.start || 0);
+        const endCell = document.createElement('div');
+        endCell.textContent = msToTime(s.end || 0);
+        const spkCell = document.createElement('div');
+        spkCell.innerHTML = `<span class="chip">${typeof s.spk === 'number' ? s.spk : '-'}</span>`;
+        const actionCell = document.createElement('div');
+        const playBtn = document.createElement('button');
+        playBtn.textContent = '播放片段';
+        playBtn.addEventListener('click', () => {
+          const posInComp = i;
+          if (hasEdited && posInComp >= 0) {
+            startEditedPlayback(posInComp);
+            return;
+          }
+          const startMs = s.start || 0;
+          const endMs = s.end || null;
+          if (!isNaN(player.duration)) {
+            player.currentTime = startMs / 1000;
+            player.play();
+            if (endMs) {
+              const stopAt = endMs / 1000;
+              const check = () => {
+                if (player.paused) return;
+                if (player.currentTime >= stopAt) {
+                  player.pause();
+                } else {
+                  requestAnimationFrame(check);
+                }
+              };
+              requestAnimationFrame(check);
+            }
+          }
+        });
+        actionCell.appendChild(playBtn);
+        g.appendChild(textCell);
+        g.appendChild(startCell);
+        g.appendChild(endCell);
+        g.appendChild(spkCell);
+        g.appendChild(actionCell);
+        row.appendChild(g);
+        segmentsEl.appendChild(row);
+      });
+    }
+
+    // 逐字编辑播放逻辑
+    function startCharEditedPlayback(fromPos = 0) {
+      if (editedPlaying) stopEditedPlayback();
+      if (!charComposition.length || isNaN(player.duration)) return;
+
+      editedPlaying = true;
+      editedPlayPos = fromPos;
+
+      // 立即跳转到第一个字开始
+      const firstIdx = charComposition[editedPlayPos];
+      const firstChar = charLevelData[firstIdx];
+      if (firstChar) {
+          player.currentTime = (firstChar.start || 0) / 1000;
+          highlightNow();
+          player.play().catch(e => {
+              console.error("Play error:", e);
+              stopEditedPlayback();
+          });
+      }
+
+      // 启动监控循环
+      const monitor = () => {
+        if (!editedPlaying) return;
+        if (player.paused) {
+            return;
+        }
+
+        const currentIdx = charComposition[editedPlayPos];
+        const charData = charLevelData[currentIdx];
+
+        if (!charData) {
+            stopEditedPlayback();
+            return;
+        }
+
+        const endTime = (charData.end || charData.start) / 1000;
+
+        // 检查是否到达当前字符末尾
+        if (player.currentTime >= endTime) {
+            editedPlayPos++;
+
+            if (editedPlayPos >= charComposition.length) {
+                // 播放结束
+                player.pause();
+                stopEditedPlayback();
+                return;
+            }
+
+            // 获取下一个字信息
+            const nextIdx = charComposition[editedPlayPos];
+            const nextChar = charLevelData[nextIdx];
+            const nextStart = (nextChar.start || 0) / 1000;
+
+            // 判断是否连续
+            if (Math.abs(player.currentTime - nextStart) > 0.15) {
+                player.currentTime = nextStart;
+            }
+
+            highlightNow();
+        }
+
+        editedRAF = requestAnimationFrame(monitor);
+      };
+
+      editedRAF = requestAnimationFrame(monitor);
+    }
+
+    // ====== 素材库功能 ======
+
+    // 格式化文件大小
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      else if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+      else return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    // 加载素材列表
+    async function loadMaterials() {
+      try {
+        const resp = await fetch('/materials');
+        const data = await resp.json();
+        return data.materials || [];
+      } catch (e) {
+        console.error('加载素材列表失败:', e);
+        return [];
+      }
+    }
+
+    // 渲染素材列表（用户选择）
+    async function renderMaterialsList() {
+      materialsList.innerHTML = '加载中...';
+      const materials = await loadMaterials();
+
+      if (materials.length === 0) {
+        materialsList.innerHTML = '<div style="text-align:center;color:#96a2b2;padding:20px;">素材库为空</div>';
+        return;
+      }
+
+      materialsList.innerHTML = '';
+      materials.forEach(mat => {
+        const item = document.createElement('div');
+        item.className = 'material-item';
+        item.innerHTML = `
+          <div class="material-info">
+            <div class="material-name">${mat.name}</div>
+            <div class="material-meta">${formatFileSize(mat.size)} • 上传于 ${mat.uploaded_at}</div>
+          </div>
+        `;
+        item.addEventListener('click', () => selectMaterial(mat.name));
+        materialsList.appendChild(item);
+      });
+    }
+
+    // 渲染素材列表（管理员管理）
+    async function renderAdminMaterialsList() {
+      adminMaterialsList.innerHTML = '加载中...';
+      const materials = await loadMaterials();
+
+      if (materials.length === 0) {
+        adminMaterialsList.innerHTML = '<div style="text-align:center;color:#96a2b2;padding:20px;">暂无素材</div>';
+        return;
+      }
+
+      adminMaterialsList.innerHTML = '';
+      materials.forEach(mat => {
+        const item = document.createElement('div');
+        item.className = 'material-item';
+        item.innerHTML = `
+          <div class="material-info">
+            <div class="material-name">${mat.name}</div>
+            <div class="material-meta">${formatFileSize(mat.size)} • ${mat.uploaded_at}</div>
+          </div>
+          <button onclick="deleteMaterial('${mat.name}')" style="margin-left:10px;">删除</button>
+        `;
+        adminMaterialsList.appendChild(item);
+      });
+    }
+
+    // 选择素材
+    async function selectMaterial(filename) {
+      try {
+        // 清理所有状态
+        resetUI();
+
+        // 清空文件上传输入框
+        fileInput.value = '';
+
+        // 清空热词输入框
+        document.getElementById('hotwords').value = '';
+
+        // 记录素材名称，不下载文件
+        currentMaterialName = filename;
+
+        // 加载音频到播放器（用于预览）
+        if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
+        currentFileUrl = `/materials/${encodeURIComponent(filename)}`;
+        player.src = currentFileUrl;
+        player.load();
+
+        // 高亮识别按钮，引导用户点击
+        recognizeBtn.classList.add('highlight');
+
+        // 关闭模态框
+        materialsModal.style.display = 'none';
+        setStatus(`已选择素材: ${filename}`, 3000);
+      } catch (e) {
+        console.error('选择素材失败:', e);
+        setStatus(`错误: ${e.message}`);
+        alert(`选择素材失败: ${e.message}`);
+      }
+    }
+
+    // 删除素材
+    window.deleteMaterial = async function(filename) {
+      const password = adminPassword.value.trim();
+      if (!password) {
+        alert('请先输入管理员密码');
+        return;
+      }
+
+      if (!confirm(`确定要删除素材"${filename}"吗？`)) return;
+
+      try {
+        const resp = await fetch(`/admin/delete/${encodeURIComponent(filename)}`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password })
+        });
+
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.error || '删除失败');
+        }
+
+        uploadStatus.textContent = '删除成功';
+        setTimeout(() => uploadStatus.textContent = '', 2000);
+        renderAdminMaterialsList();
+      } catch (e) {
+        uploadStatus.textContent = `错误: ${e.message}`;
+      }
+    };
+
+    // 打开素材库
+    materialsBtn.addEventListener('click', () => {
+      materialsModal.style.display = 'block';
+      renderMaterialsList();
+    });
+
+    // 打开管理界面
+    adminBtn.addEventListener('click', () => {
+      adminModal.style.display = 'block';
+      renderAdminMaterialsList();
+    });
+
+    // 上传素材
+    uploadBtn.addEventListener('click', async () => {
+      const password = adminPassword.value.trim();
+      const file = adminFile.files && adminFile.files[0];
+
+      if (!password) {
+        uploadStatus.textContent = '请输入管理员密码';
+        return;
+      }
+
+      if (!file) {
+        uploadStatus.textContent = '请选择文件';
+        return;
+      }
+
+      try {
+        uploadStatus.textContent = '上传中...';
+        uploadBtn.disabled = true;
+
+        const fd = new FormData();
+        fd.append('password', password);
+        fd.append('file', file);
+
+        const resp = await fetch('/admin/upload', {
+          method: 'POST',
+          body: fd
+        });
+
+        const data = await resp.json();
+        if (!resp.ok) {
+          throw new Error(data.error || '上传失败');
+        }
+
+        uploadStatus.textContent = '上传成功！';
+        adminFile.value = '';
+        setTimeout(() => uploadStatus.textContent = '', 2000);
+        renderAdminMaterialsList();
+      } catch (e) {
+        uploadStatus.textContent = `错误: ${e.message}`;
+      } finally {
+        uploadBtn.disabled = false;
+      }
+    });
+
+    // 点击模态框外部关闭
+    window.onclick = function(event) {
+      if (event.target === materialsModal) {
+        materialsModal.style.display = 'none';
+      }
+      if (event.target === adminModal) {
+        adminModal.style.display = 'none';
+      }
+    };
+  </script>
+</body>
+</html>
