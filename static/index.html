@@ -724,6 +724,7 @@
     fileInput.addEventListener('change', () => {
       resetUI();
       currentMaterialName = null; // 选择本地文件时清除素材标记
+      document.getElementById('hotwords').value = ''; // 清空热词输入框
       const file = fileInput.files && fileInput.files[0];
       if (!file) {
         if (currentFileUrl) URL.revokeObjectURL(currentFileUrl);
@@ -1671,6 +1672,9 @@
 
         // 清空文件上传输入框
         fileInput.value = '';
+
+        // 清空热词输入框
+        document.getElementById('hotwords').value = '';
 
         // 记录素材名称，不下载文件
         currentMaterialName = filename;
