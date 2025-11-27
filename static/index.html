@@ -349,6 +349,10 @@
     let charComposition = [];      // 字级别的编辑序列
     let isCharEditMode = false;    // 当前是否为逐字编辑模式
 
+    // 智能分段编辑状态
+    let smartParagraphGroups = [];  // 保存段落分组：[[0,1,2], [3,4,5], ...]，每个数组是composition的索引
+    let isSmartParagraphManuallyEdited = false;  // 是否已手动编辑智能分段
+
     const ctxMenu = (() => {
       const el = document.createElement('div');
       el.className = 'ctx-menu';
@@ -969,6 +973,12 @@
       // 应用CSS样式
       applyDisplayMode(mode);
 
+      // 切换到智能分段模式时，重置手动编辑标记
+      if (mode === 'smart-paragraph') {
+        isSmartParagraphManuallyEdited = false;
+        smartParagraphGroups = [];
+      }
+
       // 刷新文本区域显示
       if (lastSegments.length > 0) {
         renderResult(lastFullText, lastSegments);
@@ -1132,6 +1142,11 @@
         composition = Array.from({ length: lastSegments.length }, (_, i) => i);
       }
       hasEdited = true;
+
+      // 重置智能分段的手动编辑标记
+      isSmartParagraphManuallyEdited = false;
+      smartParagraphGroups = [];
+
       renderResult(lastFullText, lastSegments);
     };
 
@@ -1157,6 +1172,34 @@
         if (pos >= 0 && pos < composition.length) {
           composition.splice(pos, 1);
           hasEdited = true;
+
+          // 在智能分段模式下，更新段落分组
+          if (getDisplayMode() === 'smart-paragraph') {
+            isSmartParagraphManuallyEdited = true;
+
+            // 从段落分组中移除
+            let newGroups = smartParagraphGroups.map(group => group.slice());
+            for (let i = 0; i < newGroups.length; i++) {
+              const idx = newGroups[i].indexOf(pos);
+              if (idx !== -1) {
+                newGroups[i].splice(idx, 1);
+                break;
+              }
+            }
+
+            // 更新后面所有索引（因为composition删除了一个元素）
+            for (let i = 0; i < newGroups.length; i++) {
+              for (let j = 0; j < newGroups[i].length; j++) {
+                if (newGroups[i][j] > pos) {
+                  newGroups[i][j]--;
+                }
+              }
+            }
+
+            // 移除空段落
+            smartParagraphGroups = newGroups.filter(group => group.length > 0);
+          }
+
           renderResult(lastFullText, lastSegments);
         }
       }
@@ -1344,10 +1387,10 @@
         spk: null
       };
 
-      const PAUSE_THRESHOLD = 2000; // 2秒停顿分段
+      const PAUSE_THRESHOLD = 5000; // 2秒停顿分段
       const MIN_PARAGRAPH_LENGTH = 20; // 最小段落长度（字符）
-      const MAX_PARAGRAPH_LENGTH = 300; // 最大段落长度（字符）
-      const IDEAL_SENTENCES = 8; // 理想句子数
+      const MAX_PARAGRAPH_LENGTH = 500; // 最大段落长度（字符）
+      const IDEAL_SENTENCES = 15; // 理想句子数
 
       for (let i = 0; i < list.length; i++) {
         const seg = list[i];
@@ -1426,8 +1469,34 @@
       // 根据显示模式决定如何组织显示单元
       let displayUnits;
       if (displayMode === 'smart-paragraph') {
-        // 智能分段：将segments组合成段落
-        displayUnits = groupSegmentsToParagraphs(list);
+        // 智能分段模式
+        if (isSmartParagraphManuallyEdited && smartParagraphGroups.length > 0) {
+          // 用户已手动编辑，使用保存的段落分组
+          displayUnits = smartParagraphGroups.map(group => {
+            const segments = group.map(idx => list[idx]).filter(Boolean);
+            if (segments.length === 0) return null;
+            return {
+              segments: segments,
+              text: segments.map(s => s.text).join(''),
+              start: segments[0].start,
+              end: segments[segments.length - 1].end,
+              spk: segments[0].spk
+            };
+          }).filter(Boolean);
+        } else {
+          // 首次应用智能分段规则
+          displayUnits = groupSegmentsToParagraphs(list);
+
+          // 保存段落分组结构（composition索引）
+          let currentIndex = 0;
+          smartParagraphGroups = displayUnits.map(unit => {
+            const groupIndices = [];
+            for (let i = 0; i < unit.segments.length; i++) {
+              groupIndices.push(currentIndex++);
+            }
+            return groupIndices;
+          });
+        }
       } else if (displayMode === 'line-by-line') {
         // 逐句显示：每个segment独立显示
         displayUnits = list.map((seg, idx) => ({
@@ -1458,11 +1527,23 @@
 
         // 为段落中的每个句子创建span
         unit.segments.forEach((s, segIndex) => {
-          const renderIndex = (displayMode === 'smart-paragraph') ?
-            list.indexOf(s) :
-            unitIndex;
+          // 计算renderIndex：在composition数组中的位置
+          let renderIndex;
+          if (displayMode === 'smart-paragraph') {
+            // 智能分段模式：需要找到这个segment在composition中的索引
+            if (isSmartParagraphManuallyEdited && smartParagraphGroups.length > 0) {
+              // 手动编辑模式：从smartParagraphGroups中获取索引
+              renderIndex = smartParagraphGroups[unitIndex][segIndex];
+            } else {
+              // 自动分段模式：通过list查找
+              renderIndex = list.indexOf(s);
+            }
+          } else {
+            // 其他模式：unitIndex就是renderIndex
+            renderIndex = unitIndex;
+          }
 
-          if (renderIndex === -1) return; // 安全检查
+          if (renderIndex === -1 || renderIndex === undefined) return; // 安全检查
 
         const span = document.createElement('span');
         span.className = 'sentence';
@@ -1535,9 +1616,98 @@
           const arr = composition.slice();
           const [moved] = arr.splice(fromPos, 1);
           const dstAfter = fromPos < toPos ? (toPos - 1) : toPos;
-          arr.splice(Math.min(dstAfter + 1, arr.length), 0, moved);
+          const newPos = Math.min(dstAfter + 1, arr.length);
+          arr.splice(newPos, 0, moved);
           composition = arr;
           hasEdited = true;
+
+          // 在智能分段模式下，更新段落分组
+          if (getDisplayMode() === 'smart-paragraph') {
+            isSmartParagraphManuallyEdited = true;
+
+            // 更新段落分组：移动元素
+            let newGroups = smartParagraphGroups.map(group => group.slice());
+
+            // 找到源位置所在的段落和位置
+            let srcGroupIdx = -1, srcPosInGroup = -1;
+            for (let i = 0; i < newGroups.length; i++) {
+              const idx = newGroups[i].indexOf(fromPos);
+              if (idx !== -1) {
+                srcGroupIdx = i;
+                srcPosInGroup = idx;
+                break;
+              }
+            }
+
+            // 找到目标位置所在的段落和位置
+            let dstGroupIdx = -1, dstPosInGroup = -1;
+            for (let i = 0; i < newGroups.length; i++) {
+              const idx = newGroups[i].indexOf(toPos);
+              if (idx !== -1) {
+                dstGroupIdx = i;
+                dstPosInGroup = idx;
+                break;
+              }
+            }
+
+            if (srcGroupIdx !== -1 && dstGroupIdx !== -1) {
+              if (srcGroupIdx === dstGroupIdx) {
+                // 同一段落内移动
+                // 从源位置移除
+                newGroups[srcGroupIdx].splice(srcPosInGroup, 1);
+
+                // 计算插入位置（删除后索引可能变化）
+                let insertPos;
+                if (srcPosInGroup < dstPosInGroup) {
+                  // 向后拖拽：因为删除了前面的元素，目标位置索引-1
+                  insertPos = dstPosInGroup;
+                } else {
+                  // 向前拖拽：目标位置索引不变，插入到目标位置后面
+                  insertPos = dstPosInGroup + 1;
+                }
+
+                newGroups[srcGroupIdx].splice(insertPos, 0, fromPos);
+
+                // 段内移动不需要更新其他索引
+              } else {
+                // 跨段落移动
+                // 从源段落移除
+                newGroups[srcGroupIdx].splice(srcPosInGroup, 1);
+                // 插入到目标段落（目标位置后面）
+                newGroups[dstGroupIdx].splice(dstPosInGroup + 1, 0, fromPos);
+
+                // 关键：更新所有段落中的索引，因为composition重新排列了
+                // fromPos位置的元素移动到newPos
+                for (let i = 0; i < newGroups.length; i++) {
+                  for (let j = 0; j < newGroups[i].length; j++) {
+                    const oldIdx = newGroups[i][j];
+                    let newIdx = oldIdx;
+
+                    if (oldIdx === fromPos) {
+                      // 被移动的元素
+                      newIdx = newPos;
+                    } else if (fromPos < newPos) {
+                      // 向后移动：fromPos+1 到 newPos 之间的元素左移
+                      if (oldIdx > fromPos && oldIdx <= newPos) {
+                        newIdx = oldIdx - 1;
+                      }
+                    } else {
+                      // 向前移动：newPos 到 fromPos-1 之间的元素右移
+                      if (oldIdx >= newPos && oldIdx < fromPos) {
+                        newIdx = oldIdx + 1;
+                      }
+                    }
+
+                    newGroups[i][j] = newIdx;
+                  }
+                }
+              }
+
+              // 移除空段落
+              smartParagraphGroups = newGroups.filter(group => group.length > 0);
+            }
+          }
+
           dragSrcIdx = null;
           renderResult(lastFullText, lastSegments);
         });
