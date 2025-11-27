@@ -91,13 +91,46 @@
     .chip { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid #2a313d; background: #12161c; display: inline-block; }
     .segment { padding: 8px; border-radius: 8px; border: 1px solid #1f2430; background: #141922; }
     .segments { display: grid; gap: 8px; }
-    .sentence { margin-right: 0.25em; cursor: pointer; transition: background 0.2s; }
+    .sentence {
+      margin-right: 0.25em;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    /* 逐句显示模式 - 每句独占一行 */
+    .text-area.line-by-line .sentence {
+      display: block;
+      margin-bottom: 0.8em;
+      margin-right: 0;
+      padding: 4px 0;
+      line-height: 1.6;
+    }
+
+    /* 智能分段模式 - 几句话组成一段 */
+    .text-area.smart-paragraph .sentence {
+      display: inline;
+      margin-right: 0.25em;
+      line-height: 1.6;
+    }
+    .text-area.smart-paragraph .paragraph {
+      display: block;
+      margin-bottom: 1.2em;
+      padding: 4px 0;
+    }
+
     .sentence:hover { background: rgba(255,255,255,0.08); }
+    .text-area.line-by-line .sentence:hover,
+    .text-area.smart-paragraph .sentence:hover { border-radius: 4px; padding: 4px 8px; }
     .sentence.active { background: var(--hl, #2a5a9c); color: #fff; border-radius: 4px; }
+    .text-area.line-by-line .sentence.active,
+    .text-area.smart-paragraph .sentence.active { padding: 4px 8px; }
     .sentence.deleted { opacity: .45; text-decoration: line-through; }
     .sentence.dragover { outline: 1px dashed #6b7280; }
-    @keyframes insertPulse { 0% { border-right-color: transparent; } 50% { border-right-color: #f39c12; } 100% { border-right-color: transparent; } }
-    .sentence.insert-after { border-right: 2px solid #f39c12; animation: insertPulse 1s infinite; }
+    @keyframes insertPulseRight { 0% { border-right-color: transparent; } 50% { border-right-color: #f39c12; } 100% { border-right-color: transparent; } }
+    @keyframes insertPulseBottom { 0% { border-bottom-color: transparent; } 50% { border-bottom-color: #f39c12; } 100% { border-bottom-color: transparent; } }
+    .sentence.insert-after { border-right: 2px solid #f39c12; animation: insertPulseRight 1s infinite; }
+    .text-area.line-by-line .sentence.insert-after { border-right: none; border-bottom: 2px solid #f39c12; animation: insertPulseBottom 1s infinite; }
+    .text-area.smart-paragraph .sentence.insert-after { border-right: 2px solid #f39c12; animation: insertPulseRight 1s infinite; }
     .badge { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid #2a313d; background: #2a5a9c; color: #fff; display: inline-block; }
     .ctx-menu { position: fixed; z-index: 9999; background: #171a21; border: 1px solid #2a313d; border-radius: 8px; padding: 6px; display: none; }
     .ctx-menu button { width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid #2a313d; background: #1e2430; color: #e6e6e6; cursor: pointer; }
@@ -144,6 +177,14 @@
             <input id="editModeToggle" type="checkbox">
             逐字编辑模式（关闭为逐段编辑）
           </label>
+        </div>
+        <div>
+          <div class="label">文本显示模式</div>
+          <select id="displayModeSelect" style="width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #2a313d; background: #101318; color: #e6e6e6; box-sizing: border-box;">
+            <option value="continuous">连续显示（所有句子在一起）</option>
+            <option value="line-by-line">逐句显示（每句独占一行）</option>
+            <option value="smart-paragraph">智能分段（几句话组成一段）</option>
+          </select>
         </div>
         <div>
           <div class="label">热词配置（多个热词用空格分隔，如：阿里巴巴 魔搭 达摩院）</div>
@@ -875,7 +916,7 @@
     const editModeToggle = document.getElementById('editModeToggle');
     editModeToggle.addEventListener('change', () => {
       isCharEditMode = editModeToggle.checked;
-      // 切换模式时自动触发“重置编辑”
+      // 切换模式时自动触发"重置编辑"
       if (editedPlaying) {
         stopEditedPlayback();
       }
@@ -886,6 +927,52 @@
       }
       hasEdited = true;
       renderResult(lastFullText, lastSegments);
+    });
+
+    // 文本显示模式切换
+    const displayModeSelect = document.getElementById('displayModeSelect');
+
+    // 获取当前显示模式
+    function getDisplayMode() {
+      return displayModeSelect.value;
+    }
+
+    // 应用显示模式的CSS class
+    function applyDisplayMode(mode) {
+      // 移除所有显示模式的class
+      resultTextEl.classList.remove('line-by-line', 'smart-paragraph');
+
+      // 应用新的模式
+      if (mode === 'line-by-line') {
+        resultTextEl.classList.add('line-by-line');
+      } else if (mode === 'smart-paragraph') {
+        resultTextEl.classList.add('smart-paragraph');
+      }
+      // continuous模式不需要添加class
+    }
+
+    // 从localStorage恢复显示模式设置
+    const savedDisplayMode = localStorage.getItem('displayMode');
+    if (savedDisplayMode) {
+      displayModeSelect.value = savedDisplayMode;
+    }
+    // 初始化时应用设置
+    applyDisplayMode(displayModeSelect.value);
+
+    // 监听下拉框变化
+    displayModeSelect.addEventListener('change', () => {
+      const mode = displayModeSelect.value;
+
+      // 保存设置到localStorage
+      localStorage.setItem('displayMode', mode);
+
+      // 应用CSS样式
+      applyDisplayMode(mode);
+
+      // 刷新文本区域显示
+      if (lastSegments.length > 0) {
+        renderResult(lastFullText, lastSegments);
+      }
     });
 
     // 更新缓存信息显示
@@ -1244,13 +1331,139 @@
       }
     }
 
+    // 智能分段：将多个segments组合成段落
+    function groupSegmentsToParagraphs(list) {
+      if (!list || list.length === 0) return [];
+
+      const paragraphs = [];
+      let currentParagraph = {
+        segments: [],
+        text: '',
+        start: null,
+        end: null,
+        spk: null
+      };
+
+      const PAUSE_THRESHOLD = 2000; // 2秒停顿分段
+      const MIN_PARAGRAPH_LENGTH = 20; // 最小段落长度（字符）
+      const MAX_PARAGRAPH_LENGTH = 300; // 最大段落长度（字符）
+      const IDEAL_SENTENCES = 8; // 理想句子数
+
+      for (let i = 0; i < list.length; i++) {
+        const seg = list[i];
+        const prevSeg = i > 0 ? list[i - 1] : null;
+
+        // 决定是否应该分段
+        let shouldBreak = false;
+
+        if (currentParagraph.segments.length > 0) {
+          // 1. 说话人变化 - 分段
+          if (typeof seg.spk === 'number' && typeof currentParagraph.spk === 'number' &&
+              seg.spk !== currentParagraph.spk) {
+            shouldBreak = true;
+          }
+
+          // 2. 时间间隔过长 - 分段
+          if (prevSeg && seg.start && prevSeg.end) {
+            const pause = seg.start - prevSeg.end;
+            if (pause > PAUSE_THRESHOLD) {
+              shouldBreak = true;
+            }
+          }
+
+          // 3. 当前段落已达到理想句子数，且长度适中
+          if (currentParagraph.segments.length >= IDEAL_SENTENCES &&
+              currentParagraph.text.length >= MIN_PARAGRAPH_LENGTH) {
+            shouldBreak = true;
+          }
+
+          // 4. 当前段落过长 - 强制分段
+          if (currentParagraph.text.length + seg.text.length > MAX_PARAGRAPH_LENGTH) {
+            shouldBreak = true;
+          }
+        }
+
+        if (shouldBreak) {
+          // 保存当前段落
+          paragraphs.push({ ...currentParagraph });
+          // 开始新段落
+          currentParagraph = {
+            segments: [seg],
+            text: seg.text,
+            start: seg.start,
+            end: seg.end,
+            spk: seg.spk
+          };
+        } else {
+          // 添加到当前段落
+          currentParagraph.segments.push(seg);
+          currentParagraph.text += seg.text;
+          if (currentParagraph.start === null) {
+            currentParagraph.start = seg.start;
+          }
+          currentParagraph.end = seg.end;
+          if (currentParagraph.spk === null) {
+            currentParagraph.spk = seg.spk;
+          }
+        }
+      }
+
+      // 添加最后一个段落
+      if (currentParagraph.segments.length > 0) {
+        paragraphs.push(currentParagraph);
+      }
+
+      return paragraphs;
+    }
+
     // 逐段编辑渲染
     function renderSegmentLevel(segments) {
       // 根据 composition 构建显示列表
       const list = composition.map(i => segments[i]).filter(Boolean);
 
+      const displayMode = getDisplayMode();
+
+      // 根据显示模式决定如何组织显示单元
+      let displayUnits;
+      if (displayMode === 'smart-paragraph') {
+        // 智能分段：将segments组合成段落
+        displayUnits = groupSegmentsToParagraphs(list);
+      } else if (displayMode === 'line-by-line') {
+        // 逐句显示：每个segment独立显示
+        displayUnits = list.map((seg, idx) => ({
+          segments: [seg],
+          text: seg.text,
+          start: seg.start,
+          end: seg.end,
+          spk: seg.spk
+        }));
+      } else {
+        // 连续显示：每个segment独立，但不分组
+        displayUnits = list.map((seg, idx) => ({
+          segments: [seg],
+          text: seg.text,
+          start: seg.start,
+          end: seg.end,
+          spk: seg.spk
+        }));
+      }
+
       // 1. 渲染文本区域
-      list.forEach((s, renderIndex) => {
+      displayUnits.forEach((unit, unitIndex) => {
+        // 在智能分段模式下，创建段落容器
+        const paragraphContainer = (displayMode === 'smart-paragraph') ? document.createElement('div') : null;
+        if (paragraphContainer) {
+          paragraphContainer.className = 'paragraph';
+        }
+
+        // 为段落中的每个句子创建span
+        unit.segments.forEach((s, segIndex) => {
+          const renderIndex = (displayMode === 'smart-paragraph') ?
+            list.indexOf(s) :
+            unitIndex;
+
+          if (renderIndex === -1) return; // 安全检查
+
         const span = document.createElement('span');
         span.className = 'sentence';
         span.textContent = s.text;
@@ -1329,8 +1542,18 @@
           renderResult(lastFullText, lastSegments);
         });
 
-        resultTextEl.appendChild(span);
+        if (paragraphContainer) {
+          paragraphContainer.appendChild(span);
+        } else {
+          resultTextEl.appendChild(span);
+        }
         sentenceSpans.push(span); // 这里的 sentenceSpans 顺序与 composition 一致
+        });
+
+        // 在逐行模式下，将段落容器添加到结果区域
+        if (paragraphContainer) {
+          resultTextEl.appendChild(paragraphContainer);
+        }
       });
 
       // 2. 渲染表格 (Segments List)
