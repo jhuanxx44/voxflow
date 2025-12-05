@@ -11,7 +11,7 @@ app = Flask(__name__)
 CORS(app)  # 启用 CORS，支持跨域请求
 
 # 设置最大上传文件大小为 50MB
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 300 * 1024 * 1024
 
 # 初始化基础模型（支持热词）
 basic_model = AutoModel(
@@ -91,12 +91,12 @@ if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR)
 
 # 素材库目录
-MATERIALS_DIR = "materials"
+MATERIALS_DIR = "~/funasr_server/materials"
 if not os.path.exists(MATERIALS_DIR):
     os.makedirs(MATERIALS_DIR)
 
 # 服务器端缓存目录（用于素材库文件）
-CACHE_DIR = "cache"
+CACHE_DIR = "~/funasr_server/cache"
 if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
 
@@ -503,4 +503,4 @@ if __name__ == '__main__':
     print("  - POST /admin/upload : Upload material (admin)")
     print("\n并发模式: 多线程 (使用锁保护模型调用)")
     print("Access the service at: http://localhost:8080")
-    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=8082, debug=False, threaded=True)
