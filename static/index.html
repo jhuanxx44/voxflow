@@ -971,6 +971,23 @@
     applyDisplayMode(displayModeSelect.value);
 
     // 监听下拉框变化
+    // 重置编辑函数（提前定义，便于在模式切换时使用）
+    function resetEdit() {
+      // 根据当前模式重置
+      if (isCharEditMode) {
+        charComposition = Array.from({ length: charLevelData.length }, (_, i) => i);
+      } else {
+        composition = Array.from({ length: lastSegments.length }, (_, i) => i);
+      }
+      hasEdited = true;
+
+      // 重置智能分段的手动编辑标记
+      isSmartParagraphManuallyEdited = false;
+      smartParagraphGroups = [];
+
+      renderResult(lastFullText, lastSegments);
+    }
+
     displayModeSelect.addEventListener('change', () => {
       const mode = displayModeSelect.value;
 
@@ -980,15 +997,9 @@
       // 应用CSS样式
       applyDisplayMode(mode);
 
-      // 切换到智能分段模式时，重置手动编辑标记
-      if (mode === 'smart-paragraph') {
-        isSmartParagraphManuallyEdited = false;
-        smartParagraphGroups = [];
-      }
-
-      // 刷新文本区域显示
+      // 切换显示模式时，自动触发重置编辑
       if (lastSegments.length > 0) {
-        renderResult(lastFullText, lastSegments);
+        resetEdit();
       }
     });
 
@@ -1260,21 +1271,10 @@
     }
 
 
+    // 重置编辑按钮（使用前面定义的resetEdit函数）
     const resetEditBtn = document.getElementById('resetEditBtn');
     resetEditBtn.onclick = () => {
-      // 根据当前模式重置
-      if (isCharEditMode) {
-        charComposition = Array.from({ length: charLevelData.length }, (_, i) => i);
-      } else {
-        composition = Array.from({ length: lastSegments.length }, (_, i) => i);
-      }
-      hasEdited = true;
-
-      // 重置智能分段的手动编辑标记
-      isSmartParagraphManuallyEdited = false;
-      smartParagraphGroups = [];
-
-      renderResult(lastFullText, lastSegments);
+      resetEdit();
     };
 
     // 右键菜单
