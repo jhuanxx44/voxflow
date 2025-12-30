@@ -91,12 +91,12 @@ if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR)
 
 # 素材库目录
-MATERIALS_DIR = "~/funasr_server/materials"
+MATERIALS_DIR = os.path.expanduser("~/funasr_server/materials")
 if not os.path.exists(MATERIALS_DIR):
     os.makedirs(MATERIALS_DIR)
 
 # 服务器端缓存目录（用于素材库文件）
-CACHE_DIR = "~/funasr_server/cache"
+CACHE_DIR = os.path.expanduser("~/funasr_server/cache")
 if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
 
