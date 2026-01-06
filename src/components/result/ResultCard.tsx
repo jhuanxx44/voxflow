@@ -1,0 +1,492 @@
+/**
+ * ResultCard - Main recognition result display component
+ *
+ * Features:
+ * - Three display modes: continuous, line-by-line, smart-paragraph
+ * - Edit mode toggle (char-level vs segment-level)
+ * - Right-click context menu integration
+ * - Toolbar buttons (reset, copy, save, etc.)
+ * - Integration with playback highlighting
+ * - Drag and drop reordering
+ */
+
+import React, { useRef, useEffect, useState, useCallback } from 'react';
+import { useEditorStore } from '@/stores/editorStore';
+import { useUIStore } from '@/stores/uiStore';
+import { SentenceSpan } from './SentenceSpan';
+import { ParagraphGroup } from './ParagraphGroup';
+import { useComposition } from '@/hooks/useComposition';
+import { useDragAndDrop } from '@/hooks/useDragAndDrop';
+import { useHighlight } from '@/hooks/useHighlight';
+import { useEditedPlayback } from '@/hooks/useEditedPlayback';
+import { groupSegmentsToParagraphs } from '@/utils/paragraphGrouping';
+import type { DisplayMode } from '@/types';
+
+interface ResultCardProps {
+  audioRef: React.RefObject<HTMLAudioElement>;
+}
+
+export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
+  const {
+    lastFullText,
+    lastSegments,
+    charLevelData,
+    composition,
+    charComposition,
+    isCharEditMode,
+    displayMode,
+    smartParagraphGroups,
+    isSmartParagraphManuallyEdited,
+    hasEdited,
+    setDisplayMode,
+    toggleCharEditMode,
+    resetEdits,
+    setSmartParagraphGroups,
+    deleteMultiplePositions,
+    deleteMultipleCharPositions,
+  } = useEditorStore();
+
+  const { showContextMenu } = useUIStore();
+
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [fillerText, setFillerText] = useState('');
+
+  // Hooks
+  const { reorderComposition } = useComposition();
+  const { highlightNow, startHighlightLoop, stopHighlightLoop, findActiveIndex } = useHighlight({
+    audioRef,
+  });
+  const { startEditedPlayback, stopEditedPlayback, isPlaying } = useEditedPlayback({
+    audioRef,
+    onHighlight: () => {
+      const index = findActiveIndex();
+      setActiveIndex(index);
+    },
+  });
+  const { handleDragStart, handleDragOver, handleDragLeave, handleDrop } = useDragAndDrop({
+    onReorder: reorderComposition,
+  });
+
+  /**
+   * Handle audio play event
+   */
+  useEffect(() => {
+    const player = audioRef.current;
+    if (!player) return;
+
+    const handlePlay = () => {
+      startHighlightLoop();
+    };
+
+    const handlePause = () => {
+      stopHighlightLoop();
+      if (!isPlaying) {
+        setActiveIndex(null);
+      }
+    };
+
+    const handleEnded = () => {
+      stopHighlightLoop();
+      setActiveIndex(null);
+      stopEditedPlayback();
+    };
+
+    player.addEventListener('play', handlePlay);
+    player.addEventListener('pause', handlePause);
+    player.addEventListener('ended', handleEnded);
+
+    return () => {
+      player.removeEventListener('play', handlePlay);
+      player.removeEventListener('pause', handlePause);
+      player.removeEventListener('ended', handleEnded);
+    };
+  }, [audioRef, startHighlightLoop, stopHighlightLoop, isPlaying, stopEditedPlayback]);
+
+  /**
+   * Update active index during playback using timeupdate event
+   */
+  useEffect(() => {
+    const player = audioRef.current;
+    if (!player) return;
+
+    const handleTimeUpdate = () => {
+      if (!player.paused) {
+        const index = findActiveIndex();
+        setActiveIndex(index);
+      }
+    };
+
+    player.addEventListener('timeupdate', handleTimeUpdate);
+
+    return () => {
+      player.removeEventListener('timeupdate', handleTimeUpdate);
+    };
+  }, [audioRef, findActiveIndex]);
+
+  /**
+   * Handle seek to specific time or start edited playback
+   * If content has been edited (reordered/deleted), use edited playback
+   */
+  const handleSeek = useCallback(
+    (time: number, renderIndex?: number) => {
+      if (!audioRef.current) return;
+
+      // If edited and we have a valid render index, use edited playback
+      if (hasEdited && renderIndex !== undefined && renderIndex >= 0) {
+        startEditedPlayback(renderIndex);
+        return;
+      }
+
+      // Normal playback - just seek and play
+      audioRef.current.currentTime = time;
+      if (!isNaN(audioRef.current.duration)) {
+        audioRef.current.play().catch(() => {});
+      }
+      highlightNow();
+    },
+    [audioRef, highlightNow, hasEdited, startEditedPlayback]
+  );
+
+  /**
+   * Handle double-click to start edited playback from position
+   */
+  const handleDoubleClick = useCallback(
+    (index: number) => {
+      startEditedPlayback(index);
+    },
+    [startEditedPlayback]
+  );
+
+  /**
+   * Handle context menu
+   */
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, index: number) => {
+      e.preventDefault();
+      showContextMenu(e.clientX, e.clientY, index);
+    },
+    [showContextMenu]
+  );
+
+  /**
+   * Handle display mode change
+   */
+  const handleDisplayModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const mode = e.target.value as DisplayMode;
+    setDisplayMode(mode);
+
+    // Reset edits when switching modes
+    if (lastSegments.length > 0) {
+      resetEdits();
+    }
+  };
+
+  /**
+   * Copy full text to clipboard
+   */
+  const handleCopyText = useCallback(() => {
+    const activeComposition = isCharEditMode ? charComposition : composition;
+    const activeData = isCharEditMode ? charLevelData : lastSegments;
+
+    const text = activeComposition
+      .map((idx) => {
+        const item = activeData[idx];
+        if (!item) return '';
+        return 'text' in item ? item.text : (item as any).char;
+      })
+      .join('');
+
+    navigator.clipboard.writeText(text).then(
+      () => {
+        alert('已复制到剪贴板');
+      },
+      () => {
+        alert('复制失败');
+      }
+    );
+  }, [isCharEditMode, composition, charComposition, lastSegments, charLevelData]);
+
+  /**
+   * 去除文本末尾的标点符号（用于口癖匹配）
+   */
+  const removePunctuation = useCallback((text: string): string => {
+    if (!text) return '';
+    return text.replace(/[。，、！？；：""''（）【】《》,.!?;:()\[\]<>]+$/g, '').trim();
+  }, []);
+
+  /**
+   * Handle delete filler words (删除口癖)
+   */
+  const handleDeleteFiller = useCallback(() => {
+    const trimmedFiller = fillerText.trim();
+    if (!trimmedFiller) {
+      alert('请输入要删除的口癖文本');
+      return;
+    }
+
+    if (!lastSegments.length) {
+      alert('没有可删除的文本');
+      return;
+    }
+
+    // 停止播放
+    stopEditedPlayback();
+
+    // 去除用户输入的标点符号，用于匹配
+    const normalizedFillerText = removePunctuation(trimmedFiller);
+
+    // 根据当前模式查找匹配的 segments
+    const matchedIndices: number[] = [];
+
+    if (isCharEditMode) {
+      // 逐字编辑模式
+      for (let i = 0; i < charComposition.length; i++) {
+        const idx = charComposition[i];
+        const char = charLevelData[idx];
+        if (char && removePunctuation(char.char) === normalizedFillerText) {
+          matchedIndices.push(i);
+        }
+      }
+    } else {
+      // 逐段编辑模式
+      for (let i = 0; i < composition.length; i++) {
+        const idx = composition[i];
+        const seg = lastSegments[idx];
+        if (seg && removePunctuation(seg.text) === normalizedFillerText) {
+          matchedIndices.push(i);
+        }
+      }
+    }
+
+    if (matchedIndices.length === 0) {
+      alert(`未找到匹配的文本"${trimmedFiller}"`);
+      return;
+    }
+
+    // 确认删除
+    if (!confirm(`找到 ${matchedIndices.length} 个匹配项，确定要删除吗？`)) {
+      return;
+    }
+
+    // 批量删除
+    if (isCharEditMode) {
+      deleteMultipleCharPositions(matchedIndices);
+    } else {
+      deleteMultiplePositions(matchedIndices);
+    }
+
+    // 清空输入框
+    setFillerText('');
+    alert(`已删除 ${matchedIndices.length} 个"${trimmedFiller}"`);
+  }, [
+    fillerText,
+    lastSegments,
+    charLevelData,
+    composition,
+    charComposition,
+    isCharEditMode,
+    removePunctuation,
+    stopEditedPlayback,
+    deleteMultiplePositions,
+    deleteMultipleCharPositions,
+  ]);
+
+  /**
+   * Auto-generate smart paragraph groups when switching to smart-paragraph mode
+   */
+  useEffect(() => {
+    if (displayMode !== 'smart-paragraph') return;
+    if (isSmartParagraphManuallyEdited && smartParagraphGroups.length > 0) return;
+    if (!lastSegments.length) return;
+
+    const activeComposition = isCharEditMode ? charComposition : composition;
+    const activeData = isCharEditMode ? charLevelData : lastSegments;
+    const list = activeComposition.map((idx) => activeData[idx]).filter(Boolean);
+
+    if (list.length === 0) return;
+
+    const paragraphs = groupSegmentsToParagraphs(list as any);
+
+    // Build paragraph group structure (composition indices)
+    let currentIndex = 0;
+    const groups = paragraphs.map((para) => {
+      const groupIndices: number[] = [];
+      for (let i = 0; i < para.segments.length; i++) {
+        groupIndices.push(currentIndex++);
+      }
+      return groupIndices;
+    });
+
+    setSmartParagraphGroups(groups);
+  }, [
+    displayMode,
+    isSmartParagraphManuallyEdited,
+    smartParagraphGroups.length,
+    lastSegments,
+    charLevelData,
+    composition,
+    charComposition,
+    isCharEditMode,
+    setSmartParagraphGroups,
+  ]);
+
+  /**
+   * Render content based on display mode
+   */
+  const renderContent = () => {
+    if (!lastSegments.length) {
+      return <div className="text-gray-500">暂无识别结果</div>;
+    }
+
+    const activeComposition = isCharEditMode ? charComposition : composition;
+    const activeData = isCharEditMode ? charLevelData : lastSegments;
+
+    // Get segments to display based on composition
+    const list = activeComposition.map((idx) => activeData[idx]).filter(Boolean);
+
+    if (displayMode === 'smart-paragraph') {
+      // Smart paragraph mode - use pre-computed groups
+      if (smartParagraphGroups.length === 0) {
+        // Groups not yet computed, show loading or empty
+        return <div className="text-gray-500">正在计算分段...</div>;
+      }
+
+      const displayUnits = smartParagraphGroups.map((group) => {
+        const segments = group.map((idx) => list[idx]).filter(Boolean);
+        if (segments.length === 0) return null;
+        return {
+          segments,
+          renderIndices: group,
+          originalIndices: group.map((idx) => activeComposition[idx]),
+        };
+      }).filter(Boolean);
+
+      return (
+        <div className="text-area smart-paragraph">
+          {displayUnits.map((unit, idx) => (
+            <ParagraphGroup
+              key={`para-${idx}`}
+              segments={unit!.segments}
+              renderIndices={unit!.renderIndices}
+              originalIndices={unit!.originalIndices}
+              activeIndex={activeIndex}
+              onSeek={handleSeek}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={(toIndex) => handleDrop(toIndex, stopEditedPlayback)}
+              onContextMenu={handleContextMenu}
+            />
+          ))}
+        </div>
+      );
+    } else if (displayMode === 'line-by-line') {
+      // Line by line mode
+      return (
+        <div className="text-area line-by-line">
+          {list.map((item, idx) => (
+            <SentenceSpan
+              key={`${idx}-${activeComposition[idx]}`}
+              data={item}
+              renderIndex={idx}
+              originalIndex={activeComposition[idx]}
+              isActive={idx === activeIndex}
+              onSeek={handleSeek}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={(toIndex) => handleDrop(toIndex, stopEditedPlayback)}
+              onContextMenu={handleContextMenu}
+            />
+          ))}
+        </div>
+      );
+    } else {
+      // Continuous mode (default)
+      return (
+        <div className="text-area continuous">
+          {list.map((item, idx) => (
+            <SentenceSpan
+              key={`${idx}-${activeComposition[idx]}`}
+              data={item}
+              renderIndex={idx}
+              originalIndex={activeComposition[idx]}
+              isActive={idx === activeIndex}
+              onSeek={handleSeek}
+              onDragStart={handleDragStart}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={(toIndex) => handleDrop(toIndex, stopEditedPlayback)}
+              onContextMenu={handleContextMenu}
+            />
+          ))}
+        </div>
+      );
+    }
+  };
+
+  return (
+    <div className="rounded-lg border border-[var(--border-input)] bg-[var(--bg-card)] p-4">
+      <h2 className="mb-4 text-lg font-semibold">识别全文</h2>
+
+      {/* Toolbar */}
+      <div className="mb-4 flex flex-wrap gap-2">
+        <select
+          value={displayMode}
+          onChange={handleDisplayModeChange}
+          className="rounded border border-[var(--border-input)] bg-[var(--bg-input)] px-3 py-1 text-sm"
+        >
+          <option value="continuous">连续显示</option>
+          <option value="line-by-line">逐行显示</option>
+          <option value="smart-paragraph">智能分段</option>
+        </select>
+
+        {charLevelData.length > 0 && (
+          <button
+            onClick={toggleCharEditMode}
+            className="rounded border border-[var(--border-input)] bg-[var(--bg-button)] px-3 py-1 text-sm"
+          >
+            {isCharEditMode ? '段落编辑' : '逐字编辑'}
+          </button>
+        )}
+
+        <button
+          onClick={resetEdits}
+          className="rounded border border-[var(--border-input)] bg-[var(--bg-button)] px-3 py-1 text-sm"
+        >
+          重置编辑
+        </button>
+
+        <button
+          onClick={handleCopyText}
+          className="rounded border border-[var(--border-input)] bg-[var(--bg-button)] px-3 py-1 text-sm"
+        >
+          复制全文
+        </button>
+      </div>
+
+      {/* Filler word deletion - separate row */}
+      <div className="mb-4 flex items-center gap-2">
+        <input
+          type="text"
+          value={fillerText}
+          onChange={(e) => setFillerText(e.target.value)}
+          placeholder="输入口癖文本"
+          className="w-32 rounded border border-[var(--border-input)] bg-[var(--bg-input)] px-2 py-1 text-sm"
+        />
+        <button
+          onClick={handleDeleteFiller}
+          disabled={!fillerText.trim() || !lastSegments.length}
+          className="rounded border border-[var(--border-input)] bg-[var(--bg-button)] px-3 py-1 text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-500 hover:text-white hover:border-red-500 transition-colors"
+        >
+          删除口癖
+        </button>
+      </div>
+
+      {/* Content area */}
+      <div className="rounded bg-[var(--bg-text-area)] p-4 text-[var(--text-primary)]">
+        {renderContent()}
+      </div>
+    </div>
+  );
+};

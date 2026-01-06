@@ -1,5 +1,5 @@
-# 识别结果目录
-result/
+# 识别结果目录（仅根目录下的 result 文件夹）
+/result/
 
 # Node.js
 node_modules/
