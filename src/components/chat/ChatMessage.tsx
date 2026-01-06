@@ -1,27 +1,14 @@
 /**
  * Chat Message Component - Displays a single chat message bubble
- * Supports user/assistant roles and thinking animation
+ * Supports user/assistant roles, markdown rendering, and thinking animation
  */
 
 import type { ChatMessage as ChatMessageType } from '@/types';
+import ReactMarkdown from 'react-markdown';
 
 interface ChatMessageProps {
   message: ChatMessageType;
   isThinking?: boolean; // 是否正在思考（有 reasoning 但没有 content）
-}
-
-/**
- * Simple markdown-like text formatter
- * Handles basic inline code and preserves line breaks
- */
-function formatText(text: string): JSX.Element[] {
-  const lines = text.split('\n');
-  return lines.map((line, idx) => (
-    <span key={idx}>
-      {line}
-      {idx < lines.length - 1 && <br />}
-    </span>
-  ));
 }
 
 /**
@@ -57,18 +44,62 @@ export function ChatMessage({ message, isThinking = false }: ChatMessageProps) {
     return null;
   }
 
+  // 用户消息：简单显示
+  if (role === 'user') {
+    return (
+      <div className="self-end px-3 py-2.5 rounded-[10px] rounded-br-[4px] max-w-[90%] break-words leading-[1.5] text-[14px] bg-[var(--highlight-color)] text-white">
+        {content}
+      </div>
+    );
+  }
+
+  // 助手消息：渲染 Markdown
   return (
-    <div
-      className={`
-        px-3 py-2.5 rounded-[10px] max-w-[90%] break-words leading-[1.5] text-[14px]
-        ${
-          role === 'user'
-            ? 'self-end bg-[var(--highlight-color)] text-white rounded-br-[4px]'
-            : 'self-start bg-[var(--bg-button)] text-[var(--text-primary)] rounded-bl-[4px]'
-        }
-      `}
-    >
-      {formatText(content)}
+    <div className="self-start px-3 py-2.5 rounded-[10px] rounded-bl-[4px] max-w-[90%] break-words text-[14px] bg-[var(--bg-button)] text-[var(--text-primary)] markdown-content">
+      <ReactMarkdown
+        components={{
+          // 自定义代码块样式
+          code: ({ node, className, children, ...props }) => {
+            const isInline = !className;
+            return isInline ? (
+              <code className="px-1 py-0.5 rounded bg-[var(--bg-text-area)] text-[13px] font-mono" {...props}>
+                {children}
+              </code>
+            ) : (
+              <code className="block p-2 rounded bg-[var(--bg-text-area)] text-[13px] font-mono overflow-x-auto my-2" {...props}>
+                {children}
+              </code>
+            );
+          },
+          // 段落
+          p: ({ children }) => <p className="my-1 leading-[1.6]">{children}</p>,
+          // 列表
+          ul: ({ children }) => <ul className="list-disc list-inside my-2 space-y-1">{children}</ul>,
+          ol: ({ children }) => <ol className="list-decimal list-inside my-2 space-y-1">{children}</ol>,
+          li: ({ children }) => <li className="leading-[1.5]">{children}</li>,
+          // 标题
+          h1: ({ children }) => <h1 className="text-lg font-bold my-2">{children}</h1>,
+          h2: ({ children }) => <h2 className="text-base font-bold my-2">{children}</h2>,
+          h3: ({ children }) => <h3 className="text-sm font-bold my-1">{children}</h3>,
+          // 强调
+          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+          em: ({ children }) => <em className="italic">{children}</em>,
+          // 链接
+          a: ({ href, children }) => (
+            <a href={href} target="_blank" rel="noopener noreferrer" className="text-[var(--highlight-color)] underline">
+              {children}
+            </a>
+          ),
+          // 引用块
+          blockquote: ({ children }) => (
+            <blockquote className="border-l-2 border-[var(--border-color)] pl-3 my-2 text-[var(--text-muted)]">
+              {children}
+            </blockquote>
+          ),
+        }}
+      >
+        {content}
+      </ReactMarkdown>
     </div>
   );
 }
