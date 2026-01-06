@@ -3,7 +3,7 @@
  * Sticky positioned, 380px width, card-style container
  */
 
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { useChatHistory } from '@/hooks/useChatHistory';
@@ -35,7 +35,9 @@ export function ChatPanel() {
       .join('');
   }, [lastSegments, composition, charComposition, isCharEditMode, charLevelData]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [isThinking, setIsThinking] = useState(false); // 是否正在思考（有reasoning但没content）
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const isThinkingRef = useRef(false); // 用 ref 避免闭包问题
 
   /**
    * Auto-scroll to bottom when new messages arrive
@@ -56,9 +58,10 @@ export function ChatPanel() {
 
     // Add placeholder for assistant message
     addMessage({ role: 'assistant', content: '' });
+    setIsThinking(true);
+    isThinkingRef.current = true; // 同步更新 ref
 
     let assistantContent = '';
-    let reasoningContent = '';
 
     // Build messages with ASR context
     const contextMessages = [...messages, { role: 'user' as const, content }];
@@ -68,27 +71,30 @@ export function ChatPanel() {
         contextMessages,
         currentText, // Pass ASR result as context
         (chunk) => {
-          // Update reasoning content
-          if (chunk.reasoning) {
-            reasoningContent += chunk.reasoning;
-          }
-
-          // Update main content
+          // 收到 content 时，结束思考状态
           if (chunk.content) {
+            if (isThinkingRef.current) {
+              isThinkingRef.current = false;
+              setIsThinking(false);
+            }
             assistantContent += chunk.content;
+            // Update the last message (assistant) with accumulated content
+            updateLastMessage(assistantContent);
           }
-
-          // Update the last message (assistant) with accumulated content
-          updateLastMessage(assistantContent, reasoningContent || undefined);
+          // reasoning 不处理，只用于判断思考状态
         }
       );
     } catch (error) {
+      console.error('Chat error:', error);
       // Handle error by updating the last message
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
       updateLastMessage(`错误: ${errorMessage}`);
     } finally {
+      console.log('Chat completed, resetting states');
       setIsStreaming(false);
+      setIsThinking(false);
+      isThinkingRef.current = false;
     }
   };
 
@@ -125,13 +131,21 @@ export function ChatPanel() {
         {/* Messages area */}
         <div className="flex-1 overflow-y-auto py-2 flex flex-col gap-3">
           {messages.map((message, index) => (
-            <ChatMessage key={index} message={message} />
+            <ChatMessage
+              key={index}
+              message={message}
+              isThinking={isThinking && index === messages.length - 1}
+            />
           ))}
           <div ref={messagesEndRef} />
         </div>
 
         {/* Input area */}
-        <ChatInput onSend={handleSendMessage} disabled={isStreaming} />
+        <ChatInput
+          onSend={handleSendMessage}
+          disabled={isStreaming}
+          hasASRResult={!!currentText}
+        />
       </div>
     </div>
   );
