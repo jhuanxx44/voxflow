@@ -60,6 +60,7 @@ interface EditorState {
   updateCharComposition: (charComposition: number[]) => void;
   setSmartParagraphGroups: (groups: number[][]) => void;
   setSmartParagraphManuallyEdited: (edited: boolean) => void;
+  deleteByText: (text: string) => void;
 }
 
 export const useEditorStore = create<EditorState>()(
@@ -252,6 +253,55 @@ export const useEditorStore = create<EditorState>()(
     setSmartParagraphManuallyEdited: (edited) => {
       set((state) => {
         state.isSmartParagraphManuallyEdited = edited;
+      });
+    },
+
+    deleteByText: (text) => {
+      set((state) => {
+        // 去除末尾标点进行匹配
+        const normalizedText = text
+          .replace(/[。，、！？；：""''（）【】《》,.!?;:()[\]<>]+$/g, '')
+          .trim();
+
+        if (state.isCharEditMode) {
+          const toDelete: number[] = [];
+          for (let i = 0; i < state.charComposition.length; i++) {
+            const idx = state.charComposition[i];
+            const char = state.charLevelData[idx];
+            const charText = char?.char
+              ?.replace(/[。，、！？；：""''（）【】《》,.!?;:()[\]<>]+$/g, '')
+              .trim();
+            if (charText === normalizedText) {
+              toDelete.push(i);
+            }
+          }
+          const toDeleteSet = new Set(toDelete);
+          state.charComposition = state.charComposition.filter(
+            (_, i) => !toDeleteSet.has(i)
+          );
+        } else {
+          const toDelete: number[] = [];
+          for (let i = 0; i < state.composition.length; i++) {
+            const idx = state.composition[i];
+            const seg = state.lastSegments[idx];
+            const segText = seg?.text
+              ?.replace(/[。，、！？；：""''（）【】《》,.!?;:()[\]<>]+$/g, '')
+              .trim();
+            if (segText === normalizedText) {
+              toDelete.push(i);
+            }
+          }
+          const toDeleteSet = new Set(toDelete);
+          state.composition = state.composition.filter(
+            (_, i) => !toDeleteSet.has(i)
+          );
+        }
+
+        state.hasEdited = true;
+        if (state.displayMode === 'smart-paragraph') {
+          state.isSmartParagraphManuallyEdited = true;
+          state.smartParagraphGroups = [];
+        }
       });
     },
   }))

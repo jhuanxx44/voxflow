@@ -28,3 +28,20 @@ export interface ChatHistory {
   /** Maximum number of messages to keep in history */
   maxMessages: number;
 }
+
+/**
+ * Filler word detected in ASR result
+ */
+export interface FillerWord {
+  /** The filler word text */
+  text: string;
+  /** Number of occurrences */
+  count: number;
+}
+
+/**
+ * Result of filler word analysis from LLM
+ */
+export interface FillerAnalysisResult {
+  fillers: FillerWord[];
+}

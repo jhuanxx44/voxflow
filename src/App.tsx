@@ -119,20 +119,11 @@ function App() {
 
         {/* Audio Section */}
         <Card title="音频文件" className="mb-4">
-          {/* File Selector */}
-          <FileSelector className="mb-4" />
-
-          {/* Audio Player */}
-          <AudioPlayerWithRef ref={audioRef} className="mb-4" />
-
-          {/* Recognition Settings */}
-          <RecognitionSettings
-            onRecognize={handleRecognize}
-            isRecognizing={isRecognizing}
-          />
-
-          {/* Quick actions */}
-          <div className="mt-4 pt-4 border-t border-[var(--border-color)] flex gap-2 flex-wrap">
+          {/* File Selector and Quick Actions */}
+          <div className="flex items-start gap-2 mb-4">
+            <div className="flex-1">
+              <FileSelector />
+            </div>
             <Button
               variant="secondary"
               size="sm"
@@ -148,6 +139,15 @@ function App() {
               管理员
             </Button>
           </div>
+
+          {/* Audio Player */}
+          <AudioPlayerWithRef ref={audioRef} className="mb-4" />
+
+          {/* Recognition Settings */}
+          <RecognitionSettings
+            onRecognize={handleRecognize}
+            isRecognizing={isRecognizing}
+          />
         </Card>
 
         {/* Recognition Result Section */}

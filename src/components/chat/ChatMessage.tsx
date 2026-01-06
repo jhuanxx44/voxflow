@@ -3,8 +3,9 @@
  * Supports user/assistant roles, markdown rendering, and thinking animation
  */
 
-import type { ChatMessage as ChatMessageType } from '@/types';
+import type { ChatMessage as ChatMessageType, FillerWord } from '@/types';
 import ReactMarkdown from 'react-markdown';
+import { FillerAnalysis } from './FillerAnalysis';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -25,6 +26,32 @@ function ThinkingAnimation() {
       </span>
     </div>
   );
+}
+
+/**
+ * Parse filler data from message content
+ * Extracts JSON from <filler_data> tags and returns both text and parsed fillers
+ */
+function parseFillerData(content: string): {
+  text: string;
+  fillers: FillerWord[] | null;
+} {
+  const match = content.match(/<filler_data>([\s\S]*?)<\/filler_data>/);
+  if (!match) {
+    return { text: content, fillers: null };
+  }
+
+  try {
+    const json = JSON.parse(match[1].trim());
+    // Remove filler_data tag from display text
+    const textWithoutTag = content
+      .replace(/<filler_data>[\s\S]*?<\/filler_data>/, '')
+      .trim();
+    return { text: textWithoutTag, fillers: json.fillers || [] };
+  } catch {
+    // If JSON parsing fails, return original content
+    return { text: content, fillers: null };
+  }
 }
 
 export function ChatMessage({ message, isThinking = false }: ChatMessageProps) {
@@ -53,7 +80,9 @@ export function ChatMessage({ message, isThinking = false }: ChatMessageProps) {
     );
   }
 
-  // 助手消息：渲染 Markdown
+  // 助手消息：解析口癖数据并渲染 Markdown
+  const { text: displayText, fillers } = parseFillerData(content);
+
   return (
     <div className="self-start px-3 py-2.5 rounded-[10px] rounded-bl-[4px] max-w-[90%] break-words text-[14px] bg-[var(--bg-button)] text-[var(--text-primary)] markdown-content">
       <ReactMarkdown
@@ -98,8 +127,9 @@ export function ChatMessage({ message, isThinking = false }: ChatMessageProps) {
           ),
         }}
       >
-        {content}
+        {displayText}
       </ReactMarkdown>
+      {fillers && fillers.length > 0 && <FillerAnalysis fillers={fillers} />}
     </div>
   );
 }
