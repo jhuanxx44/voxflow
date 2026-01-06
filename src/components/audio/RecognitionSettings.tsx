@@ -66,8 +66,8 @@ export const RecognitionSettings: React.FC<RecognitionSettingsProps> = ({
 
   return (
     <div className={`space-y-4 ${className}`}>
-      {/* Recognition Mode Toggle */}
-      <div>
+      {/* Recognition Mode Toggle - Hidden, default to advanced */}
+      {/* <div>
         <label className="flex items-center gap-2 cursor-pointer">
           <input
             type="checkbox"
@@ -84,7 +84,7 @@ export const RecognitionSettings: React.FC<RecognitionSettingsProps> = ({
             启用高级识别（标点/VAD/说话人）
           </span>
         </label>
-      </div>
+      </div> */}
 
       {/* Hotwords Input */}
       <div>
