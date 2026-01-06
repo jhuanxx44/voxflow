@@ -56,7 +56,7 @@
     .container { max-width: 1600px; margin: 0 auto; padding: 24px; }
     .card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; transition: background 0.3s, border-color 0.3s; }
     .row { display: grid; grid-template-columns: 1fr; gap: 12px; }
-    .label { font-size: 14px; color: var(--text-secondary); }
+    .label { font-size: 14px; color: var(--text-secondary); font-weight: 600; }
     .input { display: flex; align-items: center; gap: 10px; }
     input[type="file"] { padding: 8px; }
     input[type="text"] { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-input); background: var(--bg-input); color: var(--text-primary); box-sizing: border-box; transition: background 0.3s, border-color 0.3s, color 0.3s; }
@@ -380,28 +380,37 @@
       <div id="resultText" class="text-area"></div>
     </div>
 
+    <div id="segmentsSection" class="hidden">
     <div class="split"></div>
 
     <div class="card">
-      <div class="label">分段结果</div>
-      <div class="grid header">
-        <div>文本</div>
-        <div>开始</div>
-        <div>结束</div>
-        <div>说话人</div>
-        <div>操作</div>
+      <div class="label" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span>分段结果</span>
+        <button id="hideSegmentsBtn" style="padding: 6px 10px; font-size: 12px;">隐藏结果</button>
       </div>
-      <div id="segments" class="segments"></div>
+      <div id="segmentsContent">
+        <div class="grid header">
+          <div>文本</div>
+          <div>开始</div>
+          <div>结束</div>
+          <div>说话人</div>
+          <div>操作</div>
+        </div>
+        <div id="segments" class="segments"></div>
+      </div>
     </div>
-    
+    </div>
+
+    <div id="debugSection" class="hidden">
     <div class="split"></div>
-    
+
     <div class="card">
       <div class="label" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
         <span>调试信息</span>
         <button id="debugToggleBtn">展开调试信息</button>
       </div>
       <div id="debugInfo" class="text-area" style="min-height:80px"></div>
+    </div>
     </div>
     </div><!-- end main-content -->
 
@@ -475,7 +484,10 @@
     const serverStatusEl = document.getElementById('serverStatus');
     const resultTextEl = document.getElementById('resultText');
     const segmentsEl = document.getElementById('segments');
+    const segmentsSection = document.getElementById('segmentsSection');
+    const hideSegmentsBtn = document.getElementById('hideSegmentsBtn');
     const debugEl = document.getElementById('debugInfo');
+    const debugSection = document.getElementById('debugSection');
     const hotwordsDisplayEl = document.getElementById('hotwordsDisplay');
     const debugToggleBtn = document.getElementById('debugToggleBtn');
     const materialsBtn = document.getElementById('materialsBtn');
@@ -1027,6 +1039,15 @@
           if (player.paused) { player.play(); } else { player.pause(); }
         }
       }
+    });
+
+    // 分段结果内容折叠控制
+    const segmentsContent = document.getElementById('segmentsContent');
+    let segmentsCollapsed = false;
+    hideSegmentsBtn.addEventListener('click', () => {
+      segmentsCollapsed = !segmentsCollapsed;
+      segmentsContent.classList.toggle('hidden', segmentsCollapsed);
+      hideSegmentsBtn.textContent = segmentsCollapsed ? '显示结果' : '隐藏结果';
     });
 
     // 调试信息折叠控制（默认关闭）
@@ -1669,6 +1690,10 @@
       }
 
       if (!fullText && !segments.length) return;
+
+      // 有结果时显示分段结果和调试信息区域
+      segmentsSection.classList.remove('hidden');
+      debugSection.classList.remove('hidden');
 
       // 根据编辑模式选择渲染方式
       if (isCharEditMode) {
@@ -2570,9 +2595,9 @@
       sendChatBtn.classList.add('sending');
       sendChatBtn.textContent = '发送中...';
 
-      // 创建助手消息占位
-      const assistantDiv = appendMessage('assistant', '');
+      // 创建消息占位（思考过程在上，答案在下）
       let reasoningDiv = null;
+      let assistantDiv = null;
       let assistantContent = '';
       let reasoningContent = '';
 
@@ -2607,17 +2632,21 @@
 
               try {
                 const parsed = JSON.parse(data);
-                if (parsed.content) {
-                  assistantContent += parsed.content;
-                  assistantDiv.textContent = assistantContent;
-                  chatMessages.scrollTop = chatMessages.scrollHeight;
-                }
                 if (parsed.reasoning) {
                   if (!reasoningDiv) {
                     reasoningDiv = appendMessage('assistant', '', true);
                   }
                   reasoningContent += parsed.reasoning;
                   reasoningDiv.textContent = reasoningContent;
+                  chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+                if (parsed.content) {
+                  if (!assistantDiv) {
+                    assistantDiv = appendMessage('assistant', '');
+                  }
+                  assistantContent += parsed.content;
+                  assistantDiv.textContent = assistantContent;
+                  chatMessages.scrollTop = chatMessages.scrollHeight;
                 }
               } catch (e) {
                 // 忽略解析错误
@@ -2633,8 +2662,9 @@
         }
 
       } catch (err) {
-        assistantDiv.textContent = `错误: ${err.message}`;
-        assistantDiv.style.color = '#ff6b6b';
+        const errorDiv = assistantDiv || appendMessage('assistant', '');
+        errorDiv.textContent = `错误: ${err.message}`;
+        errorDiv.style.color = '#ff6b6b';
       } finally {
         sendChatBtn.classList.remove('sending');
         sendChatBtn.textContent = '发送';
