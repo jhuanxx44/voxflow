@@ -44,6 +44,8 @@ interface EditorState {
   ) => void;
   deleteAtPosition: (index: number) => void;
   deleteCharAtPosition: (index: number) => void;
+  deleteMultiplePositions: (indices: number[]) => void;
+  deleteMultipleCharPositions: (indices: number[]) => void;
   reorderComposition: (fromIndex: number, toIndex: number) => void;
   setDisplayMode: (mode: DisplayMode) => void;
   toggleCharEditMode: () => void;
@@ -110,6 +112,28 @@ export const useEditorStore = create<EditorState>()(
         state.charComposition = state.charComposition.filter(
           (_, i) => i !== index
         );
+        state.hasEdited = true;
+      });
+    },
+
+    deleteMultiplePositions: (indices) => {
+      set((state) => {
+        // 创建要删除的索引集合
+        const toDelete = new Set(indices);
+        state.composition = state.composition.filter((_, i) => !toDelete.has(i));
+        state.hasEdited = true;
+        if (state.displayMode === 'smart-paragraph') {
+          state.isSmartParagraphManuallyEdited = true;
+          // 重新计算段落分组
+          state.smartParagraphGroups = [];
+        }
+      });
+    },
+
+    deleteMultipleCharPositions: (indices) => {
+      set((state) => {
+        const toDelete = new Set(indices);
+        state.charComposition = state.charComposition.filter((_, i) => !toDelete.has(i));
         state.hasEdited = true;
       });
     },
