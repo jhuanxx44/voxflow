@@ -20,8 +20,11 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const { currentFile, setCurrentFile, setAudioUrl } = useASRStore();
+  const { currentFile, currentMaterial, setCurrentFile, setAudioUrl, clearCurrentAudio } = useASRStore();
   const { clearAll } = useEditorStore();
+
+  // Check if there's any audio source selected
+  const hasAudioSource = currentFile !== null || currentMaterial !== null;
 
   const handleFileChange = useCallback(
     (file: File | null) => {
@@ -86,7 +89,8 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-    handleFileChange(null);
+    // Clear both file and material
+    clearCurrentAudio();
     // Clear editor state (recognition results)
     clearAll();
   };
@@ -146,6 +150,15 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
                     {(currentFile.size / 1024 / 1024).toFixed(2)} MB
                   </div>
                 </div>
+              ) : currentMaterial ? (
+                <div>
+                  <div className="text-sm font-medium text-[var(--text-primary)]">
+                    {currentMaterial}
+                  </div>
+                  <div className="text-xs text-[var(--text-muted)]">
+                    来自素材库
+                  </div>
+                </div>
               ) : (
                 <div className="text-sm text-[var(--text-secondary)]">
                   {isDragging
@@ -157,8 +170,8 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
           </div>
         </div>
 
-        {/* Clear button */}
-        {currentFile && (
+        {/* Clear button - show when file or material is selected */}
+        {hasAudioSource && (
           <button
             onClick={handleClear}
             className="px-3 py-2 rounded-lg border border-[var(--border-input)]
