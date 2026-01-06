@@ -18,20 +18,61 @@ export interface StreamChunk {
 export type StreamCallback = (chunk: StreamChunk) => void;
 
 /**
+ * Build system message with ASR context
+ */
+function buildSystemMessage(asrText: string): string {
+  if (!asrText) {
+    return '你是一个有帮助的助手。';
+  }
+
+  return `你是一个有帮助的助手。
+
+以下是用户的语音识别结果（ASR转录文本），你可以基于这些内容回答用户的问题：
+
+<asr_transcript>
+${asrText}
+</asr_transcript>
+
+请注意：
+- 用户可能会询问关于这段文本的问题
+- 用户可能要求你总结、分析、修改或翻译这段内容
+- 如果用户的问题与转录内容无关，正常回答即可`;
+}
+
+/**
  * Send a chat message and stream the response
  * @param messages - Chat history to send
+ * @param asrText - ASR recognition result text (optional)
  * @param onChunk - Callback for each chunk received
  * @returns Promise that resolves when streaming completes
  */
 export async function streamChatResponse(
   messages: ChatMessage[],
+  asrText: string,
   onChunk: StreamCallback
 ): Promise<void> {
+  // Build messages with system context
+  const systemMessage: ChatMessage = {
+    role: 'system',
+    content: buildSystemMessage(asrText),
+  };
+
+  // Filter out any existing system messages and add our own
+  const userMessages = messages.filter((m) => m.role !== 'system');
+  const fullMessages = [systemMessage, ...userMessages];
+
+  // Debug: 打印 LLM 收到的完整上下文
+  console.log('=== LLM Context ===');
+  console.log('ASR Text Length:', asrText?.length || 0);
+  console.log('System Message:', systemMessage.content);
+  console.log('Full Messages:', JSON.stringify(fullMessages, null, 2));
+  console.log('===================');
+
   const response = await fetch('/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      messages,
+      messages: fullMessages,
       stream: true,
     }),
   });

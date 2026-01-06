@@ -3,15 +3,37 @@
  * Sticky positioned, 380px width, card-style container
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { useChatHistory } from '@/hooks/useChatHistory';
 import { streamChatResponse } from '@/services/chatService';
+import { useEditorStore } from '@/stores/editorStore';
 
 export function ChatPanel() {
   const { messages, addMessage, updateLastMessage, clearHistory } =
     useChatHistory();
+
+  // Get ASR result from editor store
+  const { lastFullText, lastSegments, composition, isCharEditMode, charComposition, charLevelData } = useEditorStore();
+
+  /**
+   * Build current text based on composition (respects edits like reordering/deletion)
+   */
+  const currentText = useMemo(() => {
+    if (!lastSegments.length) return '';
+
+    const activeComposition = isCharEditMode ? charComposition : composition;
+    const activeData = isCharEditMode ? charLevelData : lastSegments;
+
+    return activeComposition
+      .map((idx) => {
+        const item = activeData[idx];
+        if (!item) return '';
+        return 'text' in item ? item.text : (item as any).char;
+      })
+      .join('');
+  }, [lastSegments, composition, charComposition, isCharEditMode, charLevelData]);
   const [isStreaming, setIsStreaming] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -38,9 +60,13 @@ export function ChatPanel() {
     let assistantContent = '';
     let reasoningContent = '';
 
+    // Build messages with ASR context
+    const contextMessages = [...messages, { role: 'user' as const, content }];
+
     try {
       await streamChatResponse(
-        [...messages, { role: 'user', content }],
+        contextMessages,
+        currentText, // Pass ASR result as context
         (chunk) => {
           // Update reasoning content
           if (chunk.reasoning) {
