@@ -14,6 +14,7 @@ interface QuickCommand {
 // 快捷命令列表
 const QUICK_COMMANDS: QuickCommand[] = [
   { label: '概括ASR结果', message: '请概括一下这段语音识别的内容，提取主要观点和关键信息。' },
+  { label: '翻译为英文', message: '请将这段语音识别的内容翻译成英文。' },
 ];
 
 interface ChatInputProps {
