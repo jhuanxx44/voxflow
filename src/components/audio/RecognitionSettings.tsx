@@ -12,12 +12,14 @@ import type { RecognitionMode, ServerStatus } from '@/stores/asrStore';
 interface RecognitionSettingsProps {
   onRecognize?: () => void;
   isRecognizing?: boolean;
+  hasAudioSource?: boolean;
   className?: string;
 }
 
 export const RecognitionSettings: React.FC<RecognitionSettingsProps> = ({
   onRecognize,
   isRecognizing = false,
+  hasAudioSource = false,
   className = '',
 }) => {
   const {
@@ -145,12 +147,12 @@ export const RecognitionSettings: React.FC<RecognitionSettingsProps> = ({
         <div className="pt-2">
           <button
             onClick={onRecognize}
-            disabled={isRecognizing}
+            disabled={isRecognizing || !hasAudioSource}
             className={`
               w-full px-4 py-3 rounded-lg font-medium
               transition-all duration-300
               ${
-                isRecognizing
+                isRecognizing || !hasAudioSource
                   ? 'bg-[var(--bg-button)] text-[var(--text-primary)] opacity-50 cursor-not-allowed'
                   : 'bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white hover:shadow-lg hover:scale-105'
               }

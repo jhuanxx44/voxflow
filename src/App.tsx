@@ -38,6 +38,7 @@ function App() {
 
   // Stores
   const { isRecognizing, currentFile, currentMaterial } = useASRStore();
+  const hasAudioSource = currentFile !== null || currentMaterial !== null;
   const { lastSegments } = useEditorStore();
 
   // Debug: log lastSegments
@@ -119,25 +120,38 @@ function App() {
 
         {/* Audio Section */}
         <Card title="音频文件" className="mb-4">
-          {/* File Selector and Quick Actions */}
-          <div className="flex items-start gap-2 mb-4">
-            <div className="flex-1">
-              <FileSelector />
-            </div>
-            <Button
-              variant="secondary"
-              size="sm"
+          {/* Materials Library Button - Above File Selector */}
+          <div className="flex items-center gap-3 mb-4">
+            <button
               onClick={() => setMaterialsModalOpen(true)}
+              className={`
+                flex-1 px-4 py-3 rounded-lg font-medium
+                transition-all duration-300
+                flex items-center justify-center gap-2
+                ${
+                  hasAudioSource
+                    ? 'bg-[var(--bg-button)] text-[var(--text-primary)] border border-[var(--border-input)] hover:bg-[var(--hover-bg)]'
+                    : 'bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white hover:shadow-lg hover:scale-[1.02]'
+                }
+              `}
             >
-              素材库
-            </Button>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+              从素材库选择
+            </button>
             <Button
               variant="secondary"
-              size="sm"
+              size="md"
               onClick={() => setAdminModalOpen(true)}
             >
               管理员
             </Button>
+          </div>
+
+          {/* File Selector */}
+          <div className="mb-4">
+            <FileSelector />
           </div>
 
           {/* Audio Player */}
@@ -147,6 +161,7 @@ function App() {
           <RecognitionSettings
             onRecognize={handleRecognize}
             isRecognizing={isRecognizing}
+            hasAudioSource={hasAudioSource}
           />
         </Card>
 
