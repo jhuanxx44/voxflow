@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, Response
 from flask_cors import CORS
 from funasr import AutoModel
 from werkzeug.utils import secure_filename
@@ -6,6 +6,7 @@ import os
 import json
 from datetime import datetime
 import threading
+import openai
 
 app = Flask(__name__)
 CORS(app)  # 启用 CORS，支持跨域请求
@@ -484,6 +485,66 @@ def admin_delete(filename):
             "message": "Material deleted successfully"
         })
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ====== LLM 对话接口 ======
+
+LLM_API_KEY = "***REMOVED***"
+LLM_BASE_URL = "http://llmapi.bilibili.co/v1"
+
+llm_client = openai.OpenAI(
+    base_url=LLM_BASE_URL,
+    api_key=LLM_API_KEY,
+)
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    """LLM 对话接口，支持流式返回"""
+    try:
+        data = request.get_json()
+        messages = data.get('messages', [])
+        stream = data.get('stream', True)
+
+        if not messages:
+            return jsonify({"error": "No messages provided"}), 400
+
+        # 添加系统提示
+        if not any(m.get('role') == 'system' for m in messages):
+            messages.insert(0, {"role": "system", "content": "你是一个有帮助的助手。"})
+
+        if stream:
+            # 流式响应
+            def generate():
+                response = llm_client.chat.completions.create(
+                    model="deepseek-r1",
+                    messages=messages,
+                    stream=True
+                )
+                for chunk in response:
+                    if chunk.choices[0].delta.content:
+                        yield f"data: {json.dumps({'content': chunk.choices[0].delta.content}, ensure_ascii=False)}\n\n"
+                    # 如果有 reasoning_content（思考过程），也可以返回
+                    if hasattr(chunk.choices[0].delta, 'reasoning_content') and chunk.choices[0].delta.reasoning_content:
+                        yield f"data: {json.dumps({'reasoning': chunk.choices[0].delta.reasoning_content}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return Response(generate(), mimetype='text/event-stream')
+        else:
+            # 非流式响应
+            response = llm_client.chat.completions.create(
+                model="deepseek-r1",
+                messages=messages
+            )
+            result = {
+                "content": response.choices[0].message.content,
+            }
+            # 如果有思考过程
+            if hasattr(response.choices[0].message, 'reasoning_content'):
+                result["reasoning"] = response.choices[0].message.reasoning_content
+            return jsonify(result)
+
+    except Exception as e:
+        print(f"Chat error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/<path:filename>')
