@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, Response
 from flask_cors import CORS
 from funasr import AutoModel
 from werkzeug.utils import secure_filename
@@ -6,12 +6,13 @@ import os
 import json
 from datetime import datetime
 import threading
+import openai
 
 app = Flask(__name__)
 CORS(app)  # 启用 CORS，支持跨域请求
 
 # 设置最大上传文件大小为 50MB
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 300 * 1024 * 1024
 
 # 初始化基础模型（支持热词）
 basic_model = AutoModel(
@@ -91,12 +92,12 @@ if not os.path.exists(STATIC_DIR):
     os.makedirs(STATIC_DIR)
 
 # 素材库目录
-MATERIALS_DIR = "materials"
+MATERIALS_DIR = os.path.expanduser("~/funasr_server/materials")
 if not os.path.exists(MATERIALS_DIR):
     os.makedirs(MATERIALS_DIR)
 
 # 服务器端缓存目录（用于素材库文件）
-CACHE_DIR = "cache"
+CACHE_DIR = os.path.expanduser("~/funasr_server/cache")
 if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
 
@@ -486,6 +487,66 @@ def admin_delete(filename):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# ====== LLM 对话接口 ======
+
+LLM_API_KEY = "replace-with-provider-key"
+LLM_BASE_URL = "http://llmapi.provider.example/v1"
+
+llm_client = openai.OpenAI(
+    base_url=LLM_BASE_URL,
+    api_key=LLM_API_KEY,
+)
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    """LLM 对话接口，支持流式返回"""
+    try:
+        data = request.get_json()
+        messages = data.get('messages', [])
+        stream = data.get('stream', True)
+
+        if not messages:
+            return jsonify({"error": "No messages provided"}), 400
+
+        # 添加系统提示
+        if not any(m.get('role') == 'system' for m in messages):
+            messages.insert(0, {"role": "system", "content": "你是一个有帮助的助手。"})
+
+        if stream:
+            # 流式响应
+            def generate():
+                response = llm_client.chat.completions.create(
+                    model="deepseek-r1",
+                    messages=messages,
+                    stream=True
+                )
+                for chunk in response:
+                    if chunk.choices[0].delta.content:
+                        yield f"data: {json.dumps({'content': chunk.choices[0].delta.content}, ensure_ascii=False)}\n\n"
+                    # 如果有 reasoning_content（思考过程），也可以返回
+                    if hasattr(chunk.choices[0].delta, 'reasoning_content') and chunk.choices[0].delta.reasoning_content:
+                        yield f"data: {json.dumps({'reasoning': chunk.choices[0].delta.reasoning_content}, ensure_ascii=False)}\n\n"
+                yield "data: [DONE]\n\n"
+
+            return Response(generate(), mimetype='text/event-stream')
+        else:
+            # 非流式响应
+            response = llm_client.chat.completions.create(
+                model="deepseek-r1",
+                messages=messages
+            )
+            result = {
+                "content": response.choices[0].message.content,
+            }
+            # 如果有思考过程
+            if hasattr(response.choices[0].message, 'reasoning_content'):
+                result["reasoning"] = response.choices[0].message.reasoning_content
+            return jsonify(result)
+
+    except Exception as e:
+        print(f"Chat error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/<path:filename>')
 def serve_static_files(filename):
     try:
@@ -503,4 +564,4 @@ if __name__ == '__main__':
     print("  - POST /admin/upload : Upload material (admin)")
     print("\n并发模式: 多线程 (使用锁保护模型调用)")
     print("Access the service at: http://localhost:8080")
-    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=8082, debug=False, threaded=True)

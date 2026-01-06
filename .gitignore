@@ -1,0 +1,6 @@
+# 识别结果目录
+result/
+
+# Node.js
+node_modules/
+dist/

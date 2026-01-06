@@ -5,18 +5,64 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>基于文本的音频编辑</title>
   <style>
-    :root { color-scheme: light dark; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; margin: 0; background: #0f1216; color: #e6e6e6; }
-    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
-    .card { background: #171a21; border: 1px solid #252a33; border-radius: 12px; padding: 16px; }
+    /* 深色主题（默认） */
+    :root {
+      color-scheme: light dark;
+      --bg-body: #0f1216;
+      --bg-card: #171a21;
+      --bg-input: #101318;
+      --bg-button: #1e2430;
+      --bg-segment: #141922;
+      --bg-chip: #12161c;
+      --bg-text-area: #0f1319;
+      --bg-reasoning: #1a1d24;
+      --border-color: #252a33;
+      --border-input: #2a313d;
+      --border-segment: #1f2430;
+      --text-primary: #e6e6e6;
+      --text-secondary: #a9b2c0;
+      --text-muted: #96a2b2;
+      --text-grid-header: #9aa6b2;
+      --highlight-color: #2a5a9c;
+      --hover-bg: rgba(255,255,255,0.08);
+      --modal-overlay: rgba(0,0,0,0.7);
+      --spinner-bg: #171a21;
+    }
+
+    /* 浅色主题 */
+    :root.light {
+      --bg-body: #f5f7fa;
+      --bg-card: #ffffff;
+      --bg-input: #f0f2f5;
+      --bg-button: #e8eaed;
+      --bg-segment: #f8f9fa;
+      --bg-chip: #eef0f2;
+      --bg-text-area: #fafbfc;
+      --bg-reasoning: #f0f2f5;
+      --border-color: #d0d7de;
+      --border-input: #c5ccd3;
+      --border-segment: #e1e4e8;
+      --text-primary: #1f2328;
+      --text-secondary: #57606a;
+      --text-muted: #6e7781;
+      --text-grid-header: #57606a;
+      --highlight-color: #0969da;
+      --hover-bg: rgba(0,0,0,0.06);
+      --modal-overlay: rgba(0,0,0,0.5);
+      --spinner-bg: #ffffff;
+    }
+
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif; margin: 0; background: var(--bg-body); color: var(--text-primary); transition: background 0.3s, color 0.3s; }
+    .container { max-width: 1600px; margin: 0 auto; padding: 24px; }
+    .card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; transition: background 0.3s, border-color 0.3s; }
     .row { display: grid; grid-template-columns: 1fr; gap: 12px; }
-    .label { font-size: 14px; color: #a9b2c0; }
+    .label { font-size: 14px; color: var(--text-secondary); font-weight: 600; }
     .input { display: flex; align-items: center; gap: 10px; }
     input[type="file"] { padding: 8px; }
-    input[type="text"] { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid #2a313d; background: #101318; color: #e6e6e6; box-sizing: border-box; }
+    input[type="text"] { width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-input); background: var(--bg-input); color: var(--text-primary); box-sizing: border-box; transition: background 0.3s, border-color 0.3s, color 0.3s; }
     .audio { width: 100%; }
     .actions { display: flex; gap: 10px; align-items: center; }
-    button { padding: 10px 14px; border-radius: 10px; border: 1px solid #2a313d; background: #1e2430; color: #e6e6e6; cursor: pointer; transition: all 0.3s ease; }
+    button { padding: 10px 14px; border-radius: 10px; border: 1px solid var(--border-input); background: var(--bg-button); color: var(--text-primary); cursor: pointer; transition: all 0.3s ease; }
     button:disabled { opacity: .5; cursor: not-allowed; }
 
     /* 高亮识别按钮 */
@@ -31,7 +77,7 @@
       0%, 100% { box-shadow: 0 0 20px rgba(102, 126, 234, 0.6); }
       50% { box-shadow: 0 0 30px rgba(102, 126, 234, 0.9); }
     }
-    .status { font-size: 13px; color: #96a2b2; }
+    .status { font-size: 13px; color: var(--text-muted); }
     #serverStatus { font-weight: 500; padding: 4px 8px; border-radius: 6px; background: rgba(42,90,156,0.1); }
 
     /* 加载动画 - 炫彩版 */
@@ -62,7 +108,7 @@
       left: 2px;
       right: 2px;
       bottom: 2px;
-      background: #171a21;
+      background: var(--spinner-bg);
       border-radius: 50%;
     }
     @keyframes spin {
@@ -84,40 +130,187 @@
       0%, 60%, 100% { transform: translateY(0); }
       30% { transform: translateY(-4px); }
     }
-    .split { height: 1px; background: #252a33; margin: 18px 0; }
-    .text-area { width: 100%; min-height: 120px; border-radius: 10px; border: 1px solid #2a313d; background: #0f1319; color: #e6e6e6; padding: 12px; box-sizing: border-box; white-space: pre-wrap; }
+    .split { height: 1px; background: var(--border-color); margin: 18px 0; }
+    .text-area { width: 100%; min-height: 120px; border-radius: 10px; border: 1px solid var(--border-input); background: var(--bg-text-area); color: var(--text-primary); padding: 12px; box-sizing: border-box; white-space: pre-wrap; transition: background 0.3s, border-color 0.3s, color 0.3s; }
     .grid { display: grid; grid-template-columns: 1fr 120px 120px 70px 100px; gap: 8px; align-items: center; }
-    .grid.header { font-size: 13px; color: #9aa6b2; }
-    .chip { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid #2a313d; background: #12161c; display: inline-block; }
-    .segment { padding: 8px; border-radius: 8px; border: 1px solid #1f2430; background: #141922; }
+    .grid.header { font-size: 13px; color: var(--text-grid-header); }
+    .chip { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border-input); background: var(--bg-chip); display: inline-block; }
+    .segment { padding: 8px; border-radius: 8px; border: 1px solid var(--border-segment); background: var(--bg-segment); transition: background 0.3s, border-color 0.3s; }
     .segments { display: grid; gap: 8px; }
-    .sentence { margin-right: 0.25em; cursor: pointer; transition: background 0.2s; }
-    .sentence:hover { background: rgba(255,255,255,0.08); }
-    .sentence.active { background: var(--hl, #2a5a9c); color: #fff; border-radius: 4px; }
+    .sentence {
+      margin-right: 0.25em;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    /* 逐句显示模式 - 每句独占一行 */
+    .text-area.line-by-line .sentence {
+      display: block;
+      margin-bottom: 0.8em;
+      margin-right: 0;
+      padding: 4px 0;
+      line-height: 1.6;
+    }
+
+    /* 智能分段模式 - 几句话组成一段 */
+    .text-area.smart-paragraph .sentence {
+      display: inline;
+      margin-right: 0.25em;
+      line-height: 1.6;
+    }
+    .text-area.smart-paragraph .paragraph {
+      display: block;
+      margin-bottom: 1.2em;
+      padding: 4px 0;
+    }
+
+    .sentence:hover { background: var(--hover-bg); }
+    .text-area.line-by-line .sentence:hover,
+    .text-area.smart-paragraph .sentence:hover { border-radius: 4px; padding: 4px 8px; }
+    .sentence.active { background: var(--hl, var(--highlight-color)); color: #fff; border-radius: 4px; }
+    .text-area.line-by-line .sentence.active,
+    .text-area.smart-paragraph .sentence.active { padding: 4px 8px; }
     .sentence.deleted { opacity: .45; text-decoration: line-through; }
     .sentence.dragover { outline: 1px dashed #6b7280; }
-    @keyframes insertPulse { 0% { border-right-color: transparent; } 50% { border-right-color: #f39c12; } 100% { border-right-color: transparent; } }
-    .sentence.insert-after { border-right: 2px solid #f39c12; animation: insertPulse 1s infinite; }
-    .badge { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid #2a313d; background: #2a5a9c; color: #fff; display: inline-block; }
-    .ctx-menu { position: fixed; z-index: 9999; background: #171a21; border: 1px solid #2a313d; border-radius: 8px; padding: 6px; display: none; }
-    .ctx-menu button { width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid #2a313d; background: #1e2430; color: #e6e6e6; cursor: pointer; }
+    @keyframes insertPulseRight { 0% { border-right-color: transparent; } 50% { border-right-color: #f39c12; } 100% { border-right-color: transparent; } }
+    @keyframes insertPulseBottom { 0% { border-bottom-color: transparent; } 50% { border-bottom-color: #f39c12; } 100% { border-bottom-color: transparent; } }
+    .sentence.insert-after { border-right: 2px solid #f39c12; animation: insertPulseRight 1s infinite; }
+    .text-area.line-by-line .sentence.insert-after { border-right: none; border-bottom: 2px solid #f39c12; animation: insertPulseBottom 1s infinite; }
+    .text-area.smart-paragraph .sentence.insert-after { border-right: 2px solid #f39c12; animation: insertPulseRight 1s infinite; }
+    .badge { font-size: 12px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border-input); background: var(--highlight-color); color: #fff; display: inline-block; }
+    .ctx-menu { position: fixed; z-index: 9999; background: var(--bg-card); border: 1px solid var(--border-input); border-radius: 8px; padding: 6px; display: none; }
+    .ctx-menu button { width: 100%; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border-input); background: var(--bg-button); color: var(--text-primary); cursor: pointer; }
     .hidden { display: none; }
-    .modal { display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.7); }
-    .modal-content { background-color: #171a21; margin: 5% auto; padding: 20px; border: 1px solid #2a313d; border-radius: 12px; width: 80%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
+    .modal { display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; background-color: var(--modal-overlay); }
+    .modal-content { background-color: var(--bg-card); margin: 5% auto; padding: 20px; border: 1px solid var(--border-input); border-radius: 12px; width: 80%; max-width: 600px; max-height: 80vh; overflow-y: auto; }
     .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
     .modal-title { font-size: 18px; font-weight: bold; }
-    .close { color: #96a2b2; font-size: 28px; font-weight: bold; cursor: pointer; }
-    .close:hover { color: #e6e6e6; }
-    .material-item { padding: 12px; border: 1px solid #2a313d; border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
-    .material-item:hover { background: #1e2430; }
+    .close { color: var(--text-muted); font-size: 28px; font-weight: bold; cursor: pointer; }
+    .close:hover { color: var(--text-primary); }
+    .material-item { padding: 12px; border: 1px solid var(--border-input); border-radius: 8px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+    .material-item:hover { background: var(--bg-button); }
     .material-info { flex: 1; }
-    .material-name { font-weight: bold; color: #e6e6e6; }
-    .material-meta { font-size: 12px; color: #96a2b2; margin-top: 4px; }
+    .material-name { font-weight: bold; color: var(--text-primary); }
+    .material-meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+    /* 主布局：左侧内容 + 右侧对话框 */
+    .main-layout { display: flex; gap: 20px; }
+    .main-content { flex: 1; min-width: 0; }
+
+    /* 右侧对话框 */
+    .chat-panel {
+      width: 380px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      height: calc(100vh - 120px);
+      position: sticky;
+      top: 24px;
+    }
+    .chat-panel .card {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .chat-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 12px;
+    }
+    .chat-header .label { margin: 0; }
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .chat-message {
+      padding: 10px 12px;
+      border-radius: 10px;
+      max-width: 90%;
+      word-wrap: break-word;
+      line-height: 1.5;
+      font-size: 14px;
+    }
+    .chat-message.user {
+      background: var(--highlight-color);
+      color: #fff;
+      align-self: flex-end;
+      border-bottom-right-radius: 4px;
+    }
+    .chat-message.assistant {
+      background: var(--bg-button);
+      color: var(--text-primary);
+      align-self: flex-start;
+      border-bottom-left-radius: 4px;
+    }
+    .chat-message.reasoning {
+      background: var(--bg-reasoning);
+      color: var(--text-muted);
+      font-size: 13px;
+      border-left: 2px solid var(--border-input);
+      margin-left: 8px;
+    }
+    .chat-message pre {
+      background: var(--bg-text-area);
+      padding: 8px;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin: 8px 0;
+    }
+    .chat-message code {
+      font-family: 'Monaco', 'Menlo', monospace;
+      font-size: 13px;
+    }
+    .chat-input-area {
+      display: flex;
+      gap: 8px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border-color);
+      margin-top: auto;
+    }
+    .chat-input-area textarea {
+      flex: 1;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border-input);
+      background: var(--bg-input);
+      color: var(--text-primary);
+      resize: none;
+      min-height: 40px;
+      max-height: 120px;
+      font-family: inherit;
+      font-size: 14px;
+      transition: background 0.3s, border-color 0.3s, color 0.3s;
+    }
+    .chat-input-area textarea:focus {
+      outline: none;
+      border-color: var(--highlight-color);
+    }
+    .chat-input-area button {
+      padding: 10px 16px;
+      white-space: nowrap;
+    }
+    .chat-input-area button.sending {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2>基于文本的音频编辑</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+      <h2 style="margin: 0;">基于文本的音频编辑</h2>
+      <button id="themeToggleBtn" style="padding: 8px 12px; font-size: 14px;">切换主题</button>
+    </div>
+    <div class="main-layout">
+    <div class="main-content">
     <div class="card">
       <div class="row">
         <div>
@@ -146,8 +339,23 @@
           </label>
         </div>
         <div>
+          <div class="label">文本显示模式</div>
+          <select id="displayModeSelect" style="width: 100%; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border-input); background: var(--bg-input); color: var(--text-primary); box-sizing: border-box; transition: background 0.3s, border-color 0.3s, color 0.3s;">
+            <option value="continuous">连续显示（所有句子在一起）</option>
+            <option value="line-by-line">逐句显示（每句独占一行）</option>
+            <option value="smart-paragraph">智能分段（几句话组成一段）</option>
+          </select>
+        </div>
+        <div>
           <div class="label">热词配置（多个热词用空格分隔，如：阿里巴巴 魔搭 达摩院）</div>
           <input id="hotwords" type="text" placeholder="输入热词，用空格分隔">
+        </div>
+        <div>
+          <div class="label">删除口癖（输入要删除的文本，如：嗯嗯、那个、就是）</div>
+          <div style="display: flex; gap: 10px;">
+            <input id="fillerText" type="text" placeholder="输入要删除的口癖" style="flex: 1;">
+            <button id="deleteFillerBtn">搜索并删除</button>
+          </div>
         </div>
         <div>
       <audio id="player" class="audio" controls></audio>
@@ -172,22 +380,30 @@
       <div id="resultText" class="text-area"></div>
     </div>
 
+    <div id="segmentsSection" class="hidden">
     <div class="split"></div>
 
     <div class="card">
-      <div class="label">分段结果</div>
-      <div class="grid header">
-        <div>文本</div>
-        <div>开始</div>
-        <div>结束</div>
-        <div>说话人</div>
-        <div>操作</div>
+      <div class="label" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+        <span>分段结果</span>
+        <button id="hideSegmentsBtn" style="padding: 6px 10px; font-size: 12px;">隐藏结果</button>
       </div>
-      <div id="segments" class="segments"></div>
+      <div id="segmentsContent">
+        <div class="grid header">
+          <div>文本</div>
+          <div>开始</div>
+          <div>结束</div>
+          <div>说话人</div>
+          <div>操作</div>
+        </div>
+        <div id="segments" class="segments"></div>
+      </div>
     </div>
-    
+    </div>
+
+    <div id="debugSection" class="hidden">
     <div class="split"></div>
-    
+
     <div class="card">
       <div class="label" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
         <span>调试信息</span>
@@ -195,6 +411,24 @@
       </div>
       <div id="debugInfo" class="text-area" style="min-height:80px"></div>
     </div>
+    </div>
+    </div><!-- end main-content -->
+
+    <!-- 右侧对话框 -->
+    <div class="chat-panel">
+      <div class="card">
+        <div class="chat-header">
+          <span class="label">LLM 助手</span>
+          <button id="clearChatBtn" style="padding: 6px 10px; font-size: 12px;">清空对话</button>
+        </div>
+        <div id="chatMessages" class="chat-messages"></div>
+        <div class="chat-input-area">
+          <textarea id="chatInput" placeholder="输入消息..." rows="1"></textarea>
+          <button id="sendChatBtn">发送</button>
+        </div>
+      </div>
+    </div>
+    </div><!-- end main-layout -->
   </div>
 
   <!-- 素材库模态框 -->
@@ -250,7 +484,10 @@
     const serverStatusEl = document.getElementById('serverStatus');
     const resultTextEl = document.getElementById('resultText');
     const segmentsEl = document.getElementById('segments');
+    const segmentsSection = document.getElementById('segmentsSection');
+    const hideSegmentsBtn = document.getElementById('hideSegmentsBtn');
     const debugEl = document.getElementById('debugInfo');
+    const debugSection = document.getElementById('debugSection');
     const hotwordsDisplayEl = document.getElementById('hotwordsDisplay');
     const debugToggleBtn = document.getElementById('debugToggleBtn');
     const materialsBtn = document.getElementById('materialsBtn');
@@ -307,6 +544,10 @@
     let charLevelData = [];        // 字级别数据数组
     let charComposition = [];      // 字级别的编辑序列
     let isCharEditMode = false;    // 当前是否为逐字编辑模式
+
+    // 智能分段编辑状态
+    let smartParagraphGroups = [];  // 保存段落分组：[[0,1,2], [3,4,5], ...]，每个数组是composition的索引
+    let isSmartParagraphManuallyEdited = false;  // 是否已手动编辑智能分段
 
     const ctxMenu = (() => {
       const el = document.createElement('div');
@@ -800,6 +1041,15 @@
       }
     });
 
+    // 分段结果内容折叠控制
+    const segmentsContent = document.getElementById('segmentsContent');
+    let segmentsCollapsed = false;
+    hideSegmentsBtn.addEventListener('click', () => {
+      segmentsCollapsed = !segmentsCollapsed;
+      segmentsContent.classList.toggle('hidden', segmentsCollapsed);
+      hideSegmentsBtn.textContent = segmentsCollapsed ? '显示结果' : '隐藏结果';
+    });
+
     // 调试信息折叠控制（默认关闭）
     let debugCollapsed = true;
     if (debugEl) debugEl.classList.add('hidden');
@@ -875,7 +1125,7 @@
     const editModeToggle = document.getElementById('editModeToggle');
     editModeToggle.addEventListener('change', () => {
       isCharEditMode = editModeToggle.checked;
-      // 切换模式时自动触发“重置编辑”
+      // 切换模式时自动触发"重置编辑"
       if (editedPlaying) {
         stopEditedPlayback();
       }
@@ -886,6 +1136,69 @@
       }
       hasEdited = true;
       renderResult(lastFullText, lastSegments);
+    });
+
+    // 文本显示模式切换
+    const displayModeSelect = document.getElementById('displayModeSelect');
+
+    // 获取当前显示模式
+    function getDisplayMode() {
+      return displayModeSelect.value;
+    }
+
+    // 应用显示模式的CSS class
+    function applyDisplayMode(mode) {
+      // 移除所有显示模式的class
+      resultTextEl.classList.remove('line-by-line', 'smart-paragraph');
+
+      // 应用新的模式
+      if (mode === 'line-by-line') {
+        resultTextEl.classList.add('line-by-line');
+      } else if (mode === 'smart-paragraph') {
+        resultTextEl.classList.add('smart-paragraph');
+      }
+      // continuous模式不需要添加class
+    }
+
+    // 从localStorage恢复显示模式设置
+    const savedDisplayMode = localStorage.getItem('displayMode');
+    if (savedDisplayMode) {
+      displayModeSelect.value = savedDisplayMode;
+    }
+    // 初始化时应用设置
+    applyDisplayMode(displayModeSelect.value);
+
+    // 监听下拉框变化
+    // 重置编辑函数（提前定义，便于在模式切换时使用）
+    function resetEdit() {
+      // 根据当前模式重置
+      if (isCharEditMode) {
+        charComposition = Array.from({ length: charLevelData.length }, (_, i) => i);
+      } else {
+        composition = Array.from({ length: lastSegments.length }, (_, i) => i);
+      }
+      hasEdited = true;
+
+      // 重置智能分段的手动编辑标记
+      isSmartParagraphManuallyEdited = false;
+      smartParagraphGroups = [];
+
+      renderResult(lastFullText, lastSegments);
+    }
+
+    displayModeSelect.addEventListener('change', () => {
+      const mode = displayModeSelect.value;
+
+      // 保存设置到localStorage
+      localStorage.setItem('displayMode', mode);
+
+      // 应用CSS样式
+      applyDisplayMode(mode);
+
+      // 切换显示模式时，自动触发重置编辑
+      if (lastSegments.length > 0) {
+        resetEdit();
+      }
     });
 
     // 更新缓存信息显示
@@ -909,6 +1222,126 @@
           setStatus('清除缓存失败');
         }
       }
+    });
+
+    // 删除口癖功能
+    const fillerTextInput = document.getElementById('fillerText');
+    const deleteFillerBtn = document.getElementById('deleteFillerBtn');
+
+    // 辅助函数：去除文本末尾的标点符号
+    function removePunctuation(text) {
+      if (!text) return '';
+      // 移除常见的中英文标点符号
+      return text.replace(/[。，、！？；：""''（）【】《》,.!?;:()\[\]<>]+$/g, '').trim();
+    }
+
+    deleteFillerBtn.addEventListener('click', () => {
+      const fillerText = fillerTextInput.value.trim();
+
+      if (!fillerText) {
+        setStatus('请输入要删除的口癖文本', 2000);
+        return;
+      }
+
+      if (!lastSegments || lastSegments.length === 0) {
+        setStatus('没有可删除的文本', 2000);
+        return;
+      }
+
+      // 停止播放
+      if (editedPlaying) {
+        stopEditedPlayback();
+      }
+
+      // 去除用户输入的标点符号，用于匹配
+      const normalizedFillerText = removePunctuation(fillerText);
+
+      // 根据当前模式查找匹配的segments
+      let matchedIndices = [];
+      if (isCharEditMode) {
+        // 逐字编辑模式
+        for (let i = 0; i < charComposition.length; i++) {
+          const idx = charComposition[i];
+          const char = charLevelData[idx];
+          if (char && removePunctuation(char.char) === normalizedFillerText) {
+            matchedIndices.push(i);
+          }
+        }
+      } else {
+        // 逐段编辑模式
+        for (let i = 0; i < composition.length; i++) {
+          const idx = composition[i];
+          const seg = lastSegments[idx];
+          if (seg && removePunctuation(seg.text) === normalizedFillerText) {
+            matchedIndices.push(i);
+          }
+        }
+      }
+
+      if (matchedIndices.length === 0) {
+        setStatus(`未找到匹配的文本"${fillerText}"`, 2000);
+        return;
+      }
+
+      // 确认删除
+      const confirmMsg = `找到 ${matchedIndices.length} 个匹配项，确定要删除吗？`;
+      if (!confirm(confirmMsg)) {
+        return;
+      }
+
+      // 批量删除（从后往前删除，避免索引变化）
+      if (isCharEditMode) {
+        for (let i = matchedIndices.length - 1; i >= 0; i--) {
+          charComposition.splice(matchedIndices[i], 1);
+        }
+      } else {
+        // 在智能分段模式下需要特殊处理
+        if (getDisplayMode() === 'smart-paragraph') {
+          isSmartParagraphManuallyEdited = true;
+
+          // 从后往前删除，避免索引变化问题
+          for (let i = matchedIndices.length - 1; i >= 0; i--) {
+            const pos = matchedIndices[i];
+
+            // 从composition中删除
+            composition.splice(pos, 1);
+
+            // 从段落分组中移除
+            let newGroups = smartParagraphGroups.map(group => group.slice());
+            for (let g = 0; g < newGroups.length; g++) {
+              const idx = newGroups[g].indexOf(pos);
+              if (idx !== -1) {
+                newGroups[g].splice(idx, 1);
+                break;
+              }
+            }
+
+            // 更新后面所有索引（因为composition删除了一个元素）
+            for (let g = 0; g < newGroups.length; g++) {
+              for (let j = 0; j < newGroups[g].length; j++) {
+                if (newGroups[g][j] > pos) {
+                  newGroups[g][j]--;
+                }
+              }
+            }
+
+            // 移除空段落
+            smartParagraphGroups = newGroups.filter(group => group.length > 0);
+          }
+        } else {
+          // 其他模式直接删除
+          for (let i = matchedIndices.length - 1; i >= 0; i--) {
+            composition.splice(matchedIndices[i], 1);
+          }
+        }
+      }
+
+      hasEdited = true;
+      renderResult(lastFullText, lastSegments);
+      setStatus(`已删除 ${matchedIndices.length} 个匹配项`, 3000);
+
+      // 清空输入框
+      fillerTextInput.value = '';
     });
 
     // 页面加载时显示缓存信息
@@ -1036,16 +1469,10 @@
     }
 
 
+    // 重置编辑按钮（使用前面定义的resetEdit函数）
     const resetEditBtn = document.getElementById('resetEditBtn');
     resetEditBtn.onclick = () => {
-      // 根据当前模式重置
-      if (isCharEditMode) {
-        charComposition = Array.from({ length: charLevelData.length }, (_, i) => i);
-      } else {
-        composition = Array.from({ length: lastSegments.length }, (_, i) => i);
-      }
-      hasEdited = true;
-      renderResult(lastFullText, lastSegments);
+      resetEdit();
     };
 
     // 右键菜单
@@ -1070,6 +1497,34 @@
         if (pos >= 0 && pos < composition.length) {
           composition.splice(pos, 1);
           hasEdited = true;
+
+          // 在智能分段模式下，更新段落分组
+          if (getDisplayMode() === 'smart-paragraph') {
+            isSmartParagraphManuallyEdited = true;
+
+            // 从段落分组中移除
+            let newGroups = smartParagraphGroups.map(group => group.slice());
+            for (let i = 0; i < newGroups.length; i++) {
+              const idx = newGroups[i].indexOf(pos);
+              if (idx !== -1) {
+                newGroups[i].splice(idx, 1);
+                break;
+              }
+            }
+
+            // 更新后面所有索引（因为composition删除了一个元素）
+            for (let i = 0; i < newGroups.length; i++) {
+              for (let j = 0; j < newGroups[i].length; j++) {
+                if (newGroups[i][j] > pos) {
+                  newGroups[i][j]--;
+                }
+              }
+            }
+
+            // 移除空段落
+            smartParagraphGroups = newGroups.filter(group => group.length > 0);
+          }
+
           renderResult(lastFullText, lastSegments);
         }
       }
@@ -1236,6 +1691,10 @@
 
       if (!fullText && !segments.length) return;
 
+      // 有结果时显示分段结果和调试信息区域
+      segmentsSection.classList.remove('hidden');
+      debugSection.classList.remove('hidden');
+
       // 根据编辑模式选择渲染方式
       if (isCharEditMode) {
         renderCharLevel();
@@ -1244,13 +1703,177 @@
       }
     }
 
+    // 智能分段：将多个segments组合成段落
+    function groupSegmentsToParagraphs(list) {
+      if (!list || list.length === 0) return [];
+
+      const paragraphs = [];
+      let currentParagraph = {
+        segments: [],
+        text: '',
+        start: null,
+        end: null,
+        spk: null
+      };
+
+      const PAUSE_THRESHOLD = 5000; // 2秒停顿分段
+      const MIN_PARAGRAPH_LENGTH = 20; // 最小段落长度（字符）
+      const MAX_PARAGRAPH_LENGTH = 500; // 最大段落长度（字符）
+      const IDEAL_SENTENCES = 15; // 理想句子数
+
+      for (let i = 0; i < list.length; i++) {
+        const seg = list[i];
+        const prevSeg = i > 0 ? list[i - 1] : null;
+
+        // 决定是否应该分段
+        let shouldBreak = false;
+
+        if (currentParagraph.segments.length > 0) {
+          // 1. 说话人变化 - 分段
+          if (typeof seg.spk === 'number' && typeof currentParagraph.spk === 'number' &&
+              seg.spk !== currentParagraph.spk) {
+            shouldBreak = true;
+          }
+
+          // 2. 时间间隔过长 - 分段
+          if (prevSeg && seg.start && prevSeg.end) {
+            const pause = seg.start - prevSeg.end;
+            if (pause > PAUSE_THRESHOLD) {
+              shouldBreak = true;
+            }
+          }
+
+          // 3. 当前段落已达到理想句子数，且长度适中
+          if (currentParagraph.segments.length >= IDEAL_SENTENCES &&
+              currentParagraph.text.length >= MIN_PARAGRAPH_LENGTH) {
+            shouldBreak = true;
+          }
+
+          // 4. 当前段落过长 - 强制分段
+          if (currentParagraph.text.length + seg.text.length > MAX_PARAGRAPH_LENGTH) {
+            shouldBreak = true;
+          }
+        }
+
+        if (shouldBreak) {
+          // 保存当前段落
+          paragraphs.push({ ...currentParagraph });
+          // 开始新段落
+          currentParagraph = {
+            segments: [seg],
+            text: seg.text,
+            start: seg.start,
+            end: seg.end,
+            spk: seg.spk
+          };
+        } else {
+          // 添加到当前段落
+          currentParagraph.segments.push(seg);
+          currentParagraph.text += seg.text;
+          if (currentParagraph.start === null) {
+            currentParagraph.start = seg.start;
+          }
+          currentParagraph.end = seg.end;
+          if (currentParagraph.spk === null) {
+            currentParagraph.spk = seg.spk;
+          }
+        }
+      }
+
+      // 添加最后一个段落
+      if (currentParagraph.segments.length > 0) {
+        paragraphs.push(currentParagraph);
+      }
+
+      return paragraphs;
+    }
+
     // 逐段编辑渲染
     function renderSegmentLevel(segments) {
       // 根据 composition 构建显示列表
       const list = composition.map(i => segments[i]).filter(Boolean);
 
+      const displayMode = getDisplayMode();
+
+      // 根据显示模式决定如何组织显示单元
+      let displayUnits;
+      if (displayMode === 'smart-paragraph') {
+        // 智能分段模式
+        if (isSmartParagraphManuallyEdited && smartParagraphGroups.length > 0) {
+          // 用户已手动编辑，使用保存的段落分组
+          displayUnits = smartParagraphGroups.map(group => {
+            const segments = group.map(idx => list[idx]).filter(Boolean);
+            if (segments.length === 0) return null;
+            return {
+              segments: segments,
+              text: segments.map(s => s.text).join(''),
+              start: segments[0].start,
+              end: segments[segments.length - 1].end,
+              spk: segments[0].spk
+            };
+          }).filter(Boolean);
+        } else {
+          // 首次应用智能分段规则
+          displayUnits = groupSegmentsToParagraphs(list);
+
+          // 保存段落分组结构（composition索引）
+          let currentIndex = 0;
+          smartParagraphGroups = displayUnits.map(unit => {
+            const groupIndices = [];
+            for (let i = 0; i < unit.segments.length; i++) {
+              groupIndices.push(currentIndex++);
+            }
+            return groupIndices;
+          });
+        }
+      } else if (displayMode === 'line-by-line') {
+        // 逐句显示：每个segment独立显示
+        displayUnits = list.map((seg, idx) => ({
+          segments: [seg],
+          text: seg.text,
+          start: seg.start,
+          end: seg.end,
+          spk: seg.spk
+        }));
+      } else {
+        // 连续显示：每个segment独立，但不分组
+        displayUnits = list.map((seg, idx) => ({
+          segments: [seg],
+          text: seg.text,
+          start: seg.start,
+          end: seg.end,
+          spk: seg.spk
+        }));
+      }
+
       // 1. 渲染文本区域
-      list.forEach((s, renderIndex) => {
+      displayUnits.forEach((unit, unitIndex) => {
+        // 在智能分段模式下，创建段落容器
+        const paragraphContainer = (displayMode === 'smart-paragraph') ? document.createElement('div') : null;
+        if (paragraphContainer) {
+          paragraphContainer.className = 'paragraph';
+        }
+
+        // 为段落中的每个句子创建span
+        unit.segments.forEach((s, segIndex) => {
+          // 计算renderIndex：在composition数组中的位置
+          let renderIndex;
+          if (displayMode === 'smart-paragraph') {
+            // 智能分段模式：需要找到这个segment在composition中的索引
+            if (isSmartParagraphManuallyEdited && smartParagraphGroups.length > 0) {
+              // 手动编辑模式：从smartParagraphGroups中获取索引
+              renderIndex = smartParagraphGroups[unitIndex][segIndex];
+            } else {
+              // 自动分段模式：通过list查找
+              renderIndex = list.indexOf(s);
+            }
+          } else {
+            // 其他模式：unitIndex就是renderIndex
+            renderIndex = unitIndex;
+          }
+
+          if (renderIndex === -1 || renderIndex === undefined) return; // 安全检查
+
         const span = document.createElement('span');
         span.className = 'sentence';
         span.textContent = s.text;
@@ -1322,15 +1945,114 @@
           const arr = composition.slice();
           const [moved] = arr.splice(fromPos, 1);
           const dstAfter = fromPos < toPos ? (toPos - 1) : toPos;
-          arr.splice(Math.min(dstAfter + 1, arr.length), 0, moved);
+          const newPos = Math.min(dstAfter + 1, arr.length);
+          arr.splice(newPos, 0, moved);
           composition = arr;
           hasEdited = true;
+
+          // 在智能分段模式下，更新段落分组
+          if (getDisplayMode() === 'smart-paragraph') {
+            isSmartParagraphManuallyEdited = true;
+
+            // 更新段落分组：移动元素
+            let newGroups = smartParagraphGroups.map(group => group.slice());
+
+            // 找到源位置所在的段落和位置
+            let srcGroupIdx = -1, srcPosInGroup = -1;
+            for (let i = 0; i < newGroups.length; i++) {
+              const idx = newGroups[i].indexOf(fromPos);
+              if (idx !== -1) {
+                srcGroupIdx = i;
+                srcPosInGroup = idx;
+                break;
+              }
+            }
+
+            // 找到目标位置所在的段落和位置
+            let dstGroupIdx = -1, dstPosInGroup = -1;
+            for (let i = 0; i < newGroups.length; i++) {
+              const idx = newGroups[i].indexOf(toPos);
+              if (idx !== -1) {
+                dstGroupIdx = i;
+                dstPosInGroup = idx;
+                break;
+              }
+            }
+
+            if (srcGroupIdx !== -1 && dstGroupIdx !== -1) {
+              if (srcGroupIdx === dstGroupIdx) {
+                // 同一段落内移动
+                // 从源位置移除
+                newGroups[srcGroupIdx].splice(srcPosInGroup, 1);
+
+                // 计算插入位置（删除后索引可能变化）
+                let insertPos;
+                if (srcPosInGroup < dstPosInGroup) {
+                  // 向后拖拽：因为删除了前面的元素，目标位置索引-1
+                  insertPos = dstPosInGroup;
+                } else {
+                  // 向前拖拽：目标位置索引不变，插入到目标位置后面
+                  insertPos = dstPosInGroup + 1;
+                }
+
+                newGroups[srcGroupIdx].splice(insertPos, 0, fromPos);
+
+                // 段内移动不需要更新其他索引
+              } else {
+                // 跨段落移动
+                // 从源段落移除
+                newGroups[srcGroupIdx].splice(srcPosInGroup, 1);
+                // 插入到目标段落（目标位置后面）
+                newGroups[dstGroupIdx].splice(dstPosInGroup + 1, 0, fromPos);
+
+                // 关键：更新所有段落中的索引，因为composition重新排列了
+                // fromPos位置的元素移动到newPos
+                for (let i = 0; i < newGroups.length; i++) {
+                  for (let j = 0; j < newGroups[i].length; j++) {
+                    const oldIdx = newGroups[i][j];
+                    let newIdx = oldIdx;
+
+                    if (oldIdx === fromPos) {
+                      // 被移动的元素
+                      newIdx = newPos;
+                    } else if (fromPos < newPos) {
+                      // 向后移动：fromPos+1 到 newPos 之间的元素左移
+                      if (oldIdx > fromPos && oldIdx <= newPos) {
+                        newIdx = oldIdx - 1;
+                      }
+                    } else {
+                      // 向前移动：newPos 到 fromPos-1 之间的元素右移
+                      if (oldIdx >= newPos && oldIdx < fromPos) {
+                        newIdx = oldIdx + 1;
+                      }
+                    }
+
+                    newGroups[i][j] = newIdx;
+                  }
+                }
+              }
+
+              // 移除空段落
+              smartParagraphGroups = newGroups.filter(group => group.length > 0);
+            }
+          }
+
           dragSrcIdx = null;
           renderResult(lastFullText, lastSegments);
         });
 
-        resultTextEl.appendChild(span);
+        if (paragraphContainer) {
+          paragraphContainer.appendChild(span);
+        } else {
+          resultTextEl.appendChild(span);
+        }
         sentenceSpans.push(span); // 这里的 sentenceSpans 顺序与 composition 一致
+        });
+
+        // 在逐行模式下，将段落容器添加到结果区域
+        if (paragraphContainer) {
+          resultTextEl.appendChild(paragraphContainer);
+        }
       });
 
       // 2. 渲染表格 (Segments List)
@@ -1793,6 +2515,161 @@
         adminModal.style.display = 'none';
       }
     };
+
+    // ====== 主题切换功能 ======
+    const themeToggleBtn = document.getElementById('themeToggleBtn');
+
+    // 从 localStorage 读取主题设置
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme === 'light') {
+      document.documentElement.classList.add('light');
+      themeToggleBtn.textContent = '深色模式';
+    }
+
+    themeToggleBtn.addEventListener('click', () => {
+      const isLight = document.documentElement.classList.toggle('light');
+      themeToggleBtn.textContent = isLight ? '深色模式' : '浅色模式';
+      localStorage.setItem('theme', isLight ? 'light' : 'dark');
+    });
+
+    // ====== LLM 对话功能 ======
+    const chatMessages = document.getElementById('chatMessages');
+    const chatInput = document.getElementById('chatInput');
+    const sendChatBtn = document.getElementById('sendChatBtn');
+    const clearChatBtn = document.getElementById('clearChatBtn');
+
+    // 对话历史（保留最近5轮对话）
+    const MAX_HISTORY_ROUNDS = 5;
+    let chatHistory = [];
+
+    // 截断对话历史，保留最近N轮
+    function trimChatHistory() {
+      const maxMessages = MAX_HISTORY_ROUNDS * 2; // 每轮包含user和assistant两条消息
+      if (chatHistory.length > maxMessages) {
+        chatHistory = chatHistory.slice(-maxMessages);
+      }
+    }
+
+    // 自动调整输入框高度
+    chatInput.addEventListener('input', () => {
+      chatInput.style.height = 'auto';
+      chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+    });
+
+    // 回车发送（Shift+回车换行）
+    chatInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+
+    sendChatBtn.addEventListener('click', sendMessage);
+    clearChatBtn.addEventListener('click', () => {
+      chatHistory = [];
+      chatMessages.innerHTML = '';
+    });
+
+    // 添加消息到界面
+    function appendMessage(role, content, isReasoning = false) {
+      const div = document.createElement('div');
+      div.className = `chat-message ${role}${isReasoning ? ' reasoning' : ''}`;
+      div.textContent = content;
+      chatMessages.appendChild(div);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return div;
+    }
+
+    // 发送消息
+    async function sendMessage() {
+      const content = chatInput.value.trim();
+      if (!content || sendChatBtn.classList.contains('sending')) return;
+
+      // 添加用户消息
+      appendMessage('user', content);
+      chatHistory.push({ role: 'user', content });
+      chatInput.value = '';
+      chatInput.style.height = 'auto';
+
+      // 禁用发送按钮
+      sendChatBtn.classList.add('sending');
+      sendChatBtn.textContent = '发送中...';
+
+      // 创建消息占位（思考过程在上，答案在下）
+      let reasoningDiv = null;
+      let assistantDiv = null;
+      let assistantContent = '';
+      let reasoningContent = '';
+
+      try {
+        const response = await fetch('/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: chatHistory,
+            stream: true
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value);
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              const data = line.slice(6);
+              if (data === '[DONE]') continue;
+
+              try {
+                const parsed = JSON.parse(data);
+                if (parsed.reasoning) {
+                  if (!reasoningDiv) {
+                    reasoningDiv = appendMessage('assistant', '', true);
+                  }
+                  reasoningContent += parsed.reasoning;
+                  reasoningDiv.textContent = reasoningContent;
+                  chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+                if (parsed.content) {
+                  if (!assistantDiv) {
+                    assistantDiv = appendMessage('assistant', '');
+                  }
+                  assistantContent += parsed.content;
+                  assistantDiv.textContent = assistantContent;
+                  chatMessages.scrollTop = chatMessages.scrollHeight;
+                }
+              } catch (e) {
+                // 忽略解析错误
+              }
+            }
+          }
+        }
+
+        // 保存助手回复到历史
+        if (assistantContent) {
+          chatHistory.push({ role: 'assistant', content: assistantContent });
+          trimChatHistory(); // 截断历史，保留最近5轮
+        }
+
+      } catch (err) {
+        const errorDiv = assistantDiv || appendMessage('assistant', '');
+        errorDiv.textContent = `错误: ${err.message}`;
+        errorDiv.style.color = '#ff6b6b';
+      } finally {
+        sendChatBtn.classList.remove('sending');
+        sendChatBtn.textContent = '发送';
+      }
+    }
   </script>
 </body>
 </html>
