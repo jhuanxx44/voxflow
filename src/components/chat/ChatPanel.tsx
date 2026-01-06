@@ -38,6 +38,23 @@ export function ChatPanel() {
   const [isThinking, setIsThinking] = useState(false); // 是否正在思考（有reasoning但没content）
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isThinkingRef = useRef(false); // 用 ref 避免闭包问题
+  const prevASRTextRef = useRef<string>(''); // 记录上一次的 ASR 文本
+
+  /**
+   * 当 ASR 结果变化时（重新识别），清空对话历史
+   */
+  useEffect(() => {
+    // 使用 lastFullText 作为识别结果的标识（原始文本，不受编辑影响）
+    if (lastFullText && lastFullText !== prevASRTextRef.current) {
+      // ASR 结果变化了，清空对话历史
+      if (prevASRTextRef.current !== '') {
+        // 只有之前有结果时才清空（避免首次加载时清空）
+        console.log('ASR result changed, clearing chat history');
+        clearHistory();
+      }
+      prevASRTextRef.current = lastFullText;
+    }
+  }, [lastFullText, clearHistory]);
 
   /**
    * Auto-scroll to bottom when new messages arrive

@@ -19,53 +19,48 @@ export type StreamCallback = (chunk: StreamChunk) => void;
 
 /**
  * Build system message with ASR context
+ * ASR text is only included once in the system message
  */
-function buildSystemMessage(asrText: string): string {
+function buildSystemMessage(asrText: string | null): string {
   if (!asrText) {
     return '你是一个有帮助的助手。';
   }
 
-  return `你是一个有帮助的助手。
-
-以下是用户的语音识别结果（ASR转录文本），你可以基于这些内容回答用户的问题：
+  return `你是一个有帮助的助手。用户正在使用语音识别工具，以下是识别结果：
 
 <asr_transcript>
 ${asrText}
 </asr_transcript>
 
-请注意：
-- 用户可能会询问关于这段文本的问题
-- 用户可能要求你总结、分析、修改或翻译这段内容
-- 如果用户的问题与转录内容无关，正常回答即可`;
+你可以基于这段内容回答用户的问题（如总结、分析、修改、翻译等）。如果用户的问题与转录内容无关，正常回答即可。`;
 }
 
 /**
  * Send a chat message and stream the response
- * @param messages - Chat history to send
- * @param asrText - ASR recognition result text (optional)
+ * @param messages - Chat history (user/assistant messages only, no system)
+ * @param asrText - ASR recognition result text (included once in system message)
  * @param onChunk - Callback for each chunk received
  * @returns Promise that resolves when streaming completes
  */
 export async function streamChatResponse(
   messages: ChatMessage[],
-  asrText: string,
+  asrText: string | null,
   onChunk: StreamCallback
 ): Promise<void> {
-  // Build messages with system context
+  // Build system message with ASR context (ASR only appears here, once)
   const systemMessage: ChatMessage = {
     role: 'system',
     content: buildSystemMessage(asrText),
   };
 
-  // Filter out any existing system messages and add our own
-  const userMessages = messages.filter((m) => m.role !== 'system');
-  const fullMessages = [systemMessage, ...userMessages];
+  // messages should only contain user/assistant, no system messages
+  const fullMessages = [systemMessage, ...messages];
 
   // Debug: 打印 LLM 收到的完整上下文
   console.log('=== LLM Context ===');
   console.log('ASR Text Length:', asrText?.length || 0);
-  console.log('System Message:', systemMessage.content);
-  console.log('Full Messages:', JSON.stringify(fullMessages, null, 2));
+  console.log('Message Count:', messages.length, '(excluding system)');
+  console.log('Full Messages:', fullMessages.map(m => ({ role: m.role, content: m.content.slice(0, 100) + '...' })));
   console.log('===================');
 
   const response = await fetch('/chat', {
