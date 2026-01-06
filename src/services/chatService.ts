@@ -72,24 +72,73 @@ ${asrText}
 }
 
 /**
+ * Build system message for polish analysis (text correction)
+ * Returns a specialized prompt that instructs LLM to find recognition errors
+ */
+function buildPolishAnalysisPrompt(asrText: string): string {
+  return `你是一个语音识别结果润色助手。请分析以下语音识别结果中可能的识别错误。
+
+<asr_transcript>
+${asrText}
+</asr_transcript>
+
+请找出所有可能的识别错误，主要包括：
+1. **同音字/近音字错误**：如"玉玉症"应为"抑郁症"、"在坐"应为"在座"
+2. **专业术语错误**：医学、法律、技术等领域的专业词汇
+3. **常见错字**：如"既使"应为"即使"、"的地得"混淆
+
+**重要约束**：
+- 替换后的文本**字数必须与原文相同**，以保持时间戳对齐
+- 如果无法保持字数相同，请在reason中说明
+- 只列出有明确错误的词语，不要过度修改
+
+按以下格式返回：
+
+1. 先用表格列出每个替换建议
+2. 然后在 <polish_data> 标签中返回JSON格式的数据
+
+严格按照以下格式输出：
+
+根据分析，这段语音识别结果中可能存在以下识别错误：
+
+| 原文 | 建议修正 | 出现次数 | 原因 |
+|------|----------|----------|------|
+| 玉玉症 | 抑郁症 | 2 | 同音字错误 |
+
+<polish_data>
+{"replacements":[{"old":"玉玉症","new":"抑郁症","count":2,"reason":"同音字错误"}]}
+</polish_data>
+
+请在下方选择要应用的修正。
+
+注意：
+- old和new的字数应该相同
+- count必须是实际统计的出现次数
+- 如果没有发现错误，返回空数组：{"replacements":[]}`;
+}
+
+/**
  * Send a chat message and stream the response
  * @param messages - Chat history (user/assistant messages only, no system)
  * @param asrText - ASR recognition result text (included once in system message)
  * @param onChunk - Callback for each chunk received
  * @returns Promise that resolves when streaming completes
  */
-// Filler analysis marker prefix
+// Special analysis marker prefixes
 const FILLER_ANALYSIS_MARKER = '[FILLER_ANALYSIS]';
+const POLISH_ANALYSIS_MARKER = '[POLISH_ANALYSIS]';
 
 export async function streamChatResponse(
   messages: ChatMessage[],
   asrText: string | null,
   onChunk: StreamCallback
 ): Promise<void> {
-  // Check if the last user message is a filler analysis request
+  // Check if the last user message is a special analysis request
   const lastUserMessage = messages.filter((m) => m.role === 'user').pop();
   const isFillerAnalysis =
     lastUserMessage?.content.startsWith(FILLER_ANALYSIS_MARKER);
+  const isPolishAnalysis =
+    lastUserMessage?.content.startsWith(POLISH_ANALYSIS_MARKER);
 
   // Build system message based on request type
   let systemMessage: ChatMessage;
@@ -107,6 +156,22 @@ export async function streamChatResponse(
         return {
           ...m,
           content: m.content.slice(FILLER_ANALYSIS_MARKER.length).trim(),
+        };
+      }
+      return m;
+    });
+  } else if (isPolishAnalysis && asrText) {
+    // Use specialized polish analysis prompt
+    systemMessage = {
+      role: 'system',
+      content: buildPolishAnalysisPrompt(asrText),
+    };
+    // Remove the marker from the user message
+    processedMessages = messages.map((m) => {
+      if (m.role === 'user' && m.content.startsWith(POLISH_ANALYSIS_MARKER)) {
+        return {
+          ...m,
+          content: m.content.slice(POLISH_ANALYSIS_MARKER.length).trim(),
         };
       }
       return m;

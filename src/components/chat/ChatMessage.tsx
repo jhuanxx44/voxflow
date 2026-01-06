@@ -3,9 +3,10 @@
  * Supports user/assistant roles, markdown rendering, and thinking animation
  */
 
-import type { ChatMessage as ChatMessageType, FillerWord } from '@/types';
+import type { ChatMessage as ChatMessageType, FillerWord, TextReplacement } from '@/types';
 import ReactMarkdown from 'react-markdown';
 import { FillerAnalysis } from './FillerAnalysis';
+import { PolishAnalysis } from './PolishAnalysis';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -54,6 +55,32 @@ function parseFillerData(content: string): {
   }
 }
 
+/**
+ * Parse polish data from message content
+ * Extracts JSON from <polish_data> tags and returns both text and parsed replacements
+ */
+function parsePolishData(content: string): {
+  text: string;
+  replacements: TextReplacement[] | null;
+} {
+  const match = content.match(/<polish_data>([\s\S]*?)<\/polish_data>/);
+  if (!match) {
+    return { text: content, replacements: null };
+  }
+
+  try {
+    const json = JSON.parse(match[1].trim());
+    // Remove polish_data tag from display text
+    const textWithoutTag = content
+      .replace(/<polish_data>[\s\S]*?<\/polish_data>/, '')
+      .trim();
+    return { text: textWithoutTag, replacements: json.replacements || [] };
+  } catch {
+    // If JSON parsing fails, return original content
+    return { text: content, replacements: null };
+  }
+}
+
 export function ChatMessage({ message, isThinking = false }: ChatMessageProps) {
   const { role, content } = message;
 
@@ -80,8 +107,9 @@ export function ChatMessage({ message, isThinking = false }: ChatMessageProps) {
     );
   }
 
-  // 助手消息：解析口癖数据并渲染 Markdown
-  const { text: displayText, fillers } = parseFillerData(content);
+  // 助手消息：解析口癖数据和润色数据，然后渲染 Markdown
+  const { text: afterFiller, fillers } = parseFillerData(content);
+  const { text: displayText, replacements } = parsePolishData(afterFiller);
 
   return (
     <div className="self-start px-3 py-2.5 rounded-[10px] rounded-bl-[4px] max-w-[90%] break-words text-[14px] bg-[var(--bg-button)] text-[var(--text-primary)] markdown-content">
@@ -130,6 +158,9 @@ export function ChatMessage({ message, isThinking = false }: ChatMessageProps) {
         {displayText}
       </ReactMarkdown>
       {fillers && fillers.length > 0 && <FillerAnalysis fillers={fillers} />}
+      {replacements && replacements.length > 0 && (
+        <PolishAnalysis replacements={replacements} />
+      )}
     </div>
   );
 }

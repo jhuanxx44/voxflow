@@ -45,3 +45,24 @@ export interface FillerWord {
 export interface FillerAnalysisResult {
   fillers: FillerWord[];
 }
+
+/**
+ * Text replacement suggestion from LLM polish analysis
+ */
+export interface TextReplacement {
+  /** Original text to be replaced */
+  old: string;
+  /** Suggested replacement text */
+  new: string;
+  /** Number of occurrences */
+  count: number;
+  /** Reason for replacement */
+  reason: string;
+}
+
+/**
+ * Result of polish analysis from LLM
+ */
+export interface PolishAnalysisResult {
+  replacements: TextReplacement[];
+}

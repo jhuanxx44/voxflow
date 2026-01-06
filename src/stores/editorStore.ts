@@ -61,6 +61,7 @@ interface EditorState {
   setSmartParagraphGroups: (groups: number[][]) => void;
   setSmartParagraphManuallyEdited: (edited: boolean) => void;
   deleteByText: (text: string) => void;
+  replaceText: (oldText: string, newText: string) => void;
 }
 
 export const useEditorStore = create<EditorState>()(
@@ -301,6 +302,91 @@ export const useEditorStore = create<EditorState>()(
         if (state.displayMode === 'smart-paragraph') {
           state.isSmartParagraphManuallyEdited = true;
           state.smartParagraphGroups = [];
+        }
+      });
+    },
+
+    replaceText: (oldText, newText) => {
+      set((state) => {
+        // 不再规范化，直接使用原始文本进行部分匹配
+        const searchText = oldText.trim();
+        if (!searchText) {
+          console.warn('[replaceText] Empty search text, skipping');
+          return;
+        }
+
+        console.log('[replaceText] Called with:', { oldText, newText, searchText });
+        console.log('[replaceText] isCharEditMode:', state.isCharEditMode);
+
+        let hasReplaced = false;
+        let replaceCount = 0;
+
+        if (state.isCharEditMode) {
+          // 逐字模式：替换 charLevelData 中包含 oldText 的 char
+          const newCharLevelData = [...state.charLevelData];
+          for (let i = 0; i < state.charComposition.length; i++) {
+            const idx = state.charComposition[i];
+            const char = newCharLevelData[idx];
+            if (!char) continue;
+
+            // 使用 includes 进行部分匹配
+            if (char.char.includes(searchText)) {
+              const newCharText = char.char.replaceAll(searchText, newText);
+              console.log('[replaceText] Char match found:', {
+                idx,
+                original: char.char,
+                replaced: newCharText,
+              });
+              newCharLevelData[idx] = {
+                ...char,
+                char: newCharText,
+              };
+              hasReplaced = true;
+              replaceCount++;
+            }
+          }
+          if (hasReplaced) {
+            state.charLevelData = newCharLevelData;
+          }
+        } else {
+          // 逐段模式：替换 lastSegments 中包含 oldText 的 text
+          const newSegments = [...state.lastSegments];
+          console.log('[replaceText] Checking', state.composition.length, 'segments in composition');
+
+          for (let i = 0; i < state.composition.length; i++) {
+            const idx = state.composition[i];
+            const seg = newSegments[idx];
+            if (!seg) continue;
+
+            // 使用 includes 进行部分匹配
+            if (seg.text.includes(searchText)) {
+              const newSegText = seg.text.replaceAll(searchText, newText);
+              console.log('[replaceText] Segment match found:', {
+                idx,
+                original: seg.text,
+                replaced: newSegText,
+              });
+              newSegments[idx] = {
+                ...seg,
+                text: newSegText,
+              };
+              hasReplaced = true;
+              replaceCount++;
+            }
+          }
+          if (hasReplaced) {
+            state.lastSegments = newSegments;
+          }
+        }
+
+        console.log('[replaceText] Result:', { hasReplaced, replaceCount });
+
+        if (hasReplaced) {
+          state.hasEdited = true;
+          if (state.displayMode === 'smart-paragraph') {
+            state.isSmartParagraphManuallyEdited = true;
+            state.smartParagraphGroups = [];
+          }
         }
       });
     },

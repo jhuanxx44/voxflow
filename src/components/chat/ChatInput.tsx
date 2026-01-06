@@ -16,6 +16,7 @@ const QUICK_COMMANDS: QuickCommand[] = [
   { label: '概括ASR结果', message: '请概括一下这段语音识别的内容，提取主要观点和关键信息。' },
   { label: '翻译为英文', message: '请将这段语音识别的内容翻译成英文。' },
   { label: '快速删除口癖', message: '[FILLER_ANALYSIS]请分析这段语音识别结果中的口癖词' },
+  { label: '快速润色', message: '[POLISH_ANALYSIS]请分析这段语音识别结果中可能的识别错误' },
 ];
 
 interface ChatInputProps {
