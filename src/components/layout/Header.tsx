@@ -15,7 +15,7 @@ export const Header: React.FC = () => {
   return (
     <div className="flex justify-between items-center mb-5">
       <h2 className="m-0 text-[var(--text-primary)] text-2xl font-semibold">
-        基于文本的智能编辑
+        VoxFlow - 基于文本的多模态编辑器
       </h2>
 
       <button

@@ -1,7 +1,7 @@
 {
-  "name": "myasr",
+  "name": "voxflow",
   "version": "1.0.0",
-  "description": "FunASR Audio Editor",
+  "description": "VoxFlow - 基于文本的多模态编辑",
   "main": "index.js",
   "scripts": {
     "dev": "vite",
