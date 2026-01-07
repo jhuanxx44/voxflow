@@ -1,6 +1,6 @@
 /**
  * Chat Panel Component - Right-side LLM chat assistant panel
- * Sticky positioned, 380px width, card-style container
+ * Width controlled by parent container (MainLayout), card-style container
  */
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
@@ -122,7 +122,7 @@ export function ChatPanel() {
   };
 
   return (
-    <div className="w-[380px] flex-shrink-0 flex flex-col h-[calc(100vh-120px)] sticky top-6">
+    <div className="w-full h-full flex flex-col">
       <div className="flex-1 flex flex-col overflow-hidden rounded-xl bg-[var(--bg-card)] border border-[var(--border-color)] p-5 shadow-sm">
         {/* Header */}
         <div className="flex justify-between items-center pb-3 border-b border-[var(--border-color)] mb-3">
