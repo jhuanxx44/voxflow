@@ -1,0 +1,7 @@
+{
+  "enabledPlugins": {
+    "code-review@claude-plugins-official": true,
+    "codex-collab@common": true,
+    "context7@claude-plugins-official": true
+  }
+}
