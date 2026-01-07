@@ -11,21 +11,10 @@
  * - Right-click context menu integration
  */
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState } from 'react';
 import type { Segment, CharUnit } from '@/types';
-import { useUIStore } from '@/stores/uiStore';
-
-// Speaker colors for highlighting
-const SPEAKER_COLORS = [
-  '#2a5a9c',
-  '#c2410c',
-  '#059669',
-  '#7c3aed',
-  '#db2777',
-  '#ea580c',
-  '#0891b2',
-  '#4f46e5',
-];
+import { useEditorStore, getEffectiveSpeaker } from '@/stores/editorStore';
+import { getSpeakerColor } from '@/utils/constants';
 
 interface SentenceSpanProps {
   /** The segment or character data to display */
@@ -70,6 +59,7 @@ export const SentenceSpan: React.FC<SentenceSpanProps> = ({
 }) => {
   const spanRef = useRef<HTMLSpanElement>(null);
   const [isDraggedOver, setIsDraggedOver] = useState(false);
+  const speakerMerges = useEditorStore((state) => state.speakerMerges);
 
   // Get text content
   const text = 'text' in data ? data.text : (data as CharUnit).char;
@@ -77,9 +67,9 @@ export const SentenceSpan: React.FC<SentenceSpanProps> = ({
   const end = data.end || start;
   const spk = data.spk;
 
-  // Calculate speaker color
-  const speakerColor =
-    typeof spk === 'number' ? SPEAKER_COLORS[Math.abs(spk) % SPEAKER_COLORS.length] : undefined;
+  // Calculate speaker color (use effective speaker after merges)
+  const effectiveSpk = typeof spk === 'number' ? getEffectiveSpeaker(spk, speakerMerges) : undefined;
+  const speakerColor = typeof effectiveSpk === 'number' ? getSpeakerColor(effectiveSpk) : undefined;
 
   // Handle click to seek
   const handleClick = () => {

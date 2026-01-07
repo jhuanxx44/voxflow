@@ -21,6 +21,11 @@ interface EditorState {
   smartParagraphGroups: number[][];
   isSmartParagraphManuallyEdited: boolean;
 
+  // Speaker names mapping (speakerId -> custom name)
+  speakerNames: Record<number, string>;
+  // Speaker merges mapping (fromSpkId -> toSpkId)
+  speakerMerges: Record<number, number>;
+
   // Modes
   isCharEditMode: boolean;
   displayMode: DisplayMode;
@@ -62,6 +67,22 @@ interface EditorState {
   setSmartParagraphManuallyEdited: (edited: boolean) => void;
   deleteByText: (text: string) => void;
   replaceText: (oldText: string, newText: string) => void;
+  setSpeakerName: (speakerId: number, name: string) => void;
+  mergeSpeaker: (fromSpkId: number, toSpkId: number) => void;
+  getEffectiveSpeaker: (spkId: number) => number;
+}
+
+/**
+ * Get the effective speaker ID after applying merges
+ * @param spkId - Original speaker ID
+ * @param merges - Speaker merges mapping
+ * @returns The effective speaker ID (target of merge or original)
+ */
+export function getEffectiveSpeaker(
+  spkId: number,
+  merges: Record<number, number>
+): number {
+  return merges[spkId] ?? spkId;
 }
 
 export const useEditorStore = create<EditorState>()(
@@ -74,6 +95,8 @@ export const useEditorStore = create<EditorState>()(
     charComposition: [],
     smartParagraphGroups: [],
     isSmartParagraphManuallyEdited: false,
+    speakerNames: {},
+    speakerMerges: {},
     isCharEditMode: false,
     displayMode:
       (localStorage.getItem('displayMode') as DisplayMode) || 'continuous',
@@ -191,6 +214,9 @@ export const useEditorStore = create<EditorState>()(
         state.isSmartParagraphManuallyEdited = false;
         // Reset smart paragraph groups will be recalculated
         state.smartParagraphGroups = [];
+        // Reset speaker names and merges
+        state.speakerNames = {};
+        state.speakerMerges = {};
       });
     },
 
@@ -204,6 +230,8 @@ export const useEditorStore = create<EditorState>()(
         state.charComposition = [];
         state.smartParagraphGroups = [];
         state.isSmartParagraphManuallyEdited = false;
+        state.speakerNames = {};
+        state.speakerMerges = {};
         state.isCharEditMode = false;
         state.hasEdited = false;
         state.insertAfterIndex = null;
@@ -389,6 +417,44 @@ export const useEditorStore = create<EditorState>()(
           }
         }
       });
+    },
+
+    setSpeakerName: (speakerId, name) => {
+      set((state) => {
+        if (name.trim()) {
+          state.speakerNames[speakerId] = name.trim();
+        } else {
+          // Empty name removes the custom name
+          delete state.speakerNames[speakerId];
+        }
+      });
+    },
+
+    mergeSpeaker: (fromSpkId, toSpkId) => {
+      set((state) => {
+        // Update any existing merges that point to fromSpkId to point to toSpkId
+        // This keeps the mapping flat (no chains)
+        for (const key in state.speakerMerges) {
+          if (state.speakerMerges[Number(key)] === fromSpkId) {
+            state.speakerMerges[Number(key)] = toSpkId;
+          }
+        }
+        // Set the new merge
+        state.speakerMerges[fromSpkId] = toSpkId;
+        // Transfer custom name if fromSpkId has one and toSpkId doesn't
+        if (state.speakerNames[fromSpkId] && !state.speakerNames[toSpkId]) {
+          state.speakerNames[toSpkId] = state.speakerNames[fromSpkId];
+        }
+        // Remove fromSpkId's custom name
+        delete state.speakerNames[fromSpkId];
+        state.hasEdited = true;
+      });
+    },
+
+    getEffectiveSpeaker: (spkId) => {
+      // This is a getter, we need to access state differently
+      // Since immer doesn't support getters well, we'll handle this in components
+      return spkId;
     },
   }))
 );

@@ -143,6 +143,7 @@ export const useASRStore = create<ASRState>()(
         state.currentMaterial = null;
         state.audioUrl = null;
         state.mediaType = 'audio';
+        state.hotwords = '';
         state.usedHotwords = null;
       });
     },

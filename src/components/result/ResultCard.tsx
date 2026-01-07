@@ -10,8 +10,8 @@
  * - Drag and drop reordering
  */
 
-import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { useEditorStore } from '@/stores/editorStore';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { useEditorStore, getEffectiveSpeaker } from '@/stores/editorStore';
 import { useUIStore } from '@/stores/uiStore';
 import { SentenceSpan } from './SentenceSpan';
 import { ParagraphGroup } from './ParagraphGroup';
@@ -20,6 +20,7 @@ import { useDragAndDrop } from '@/hooks/useDragAndDrop';
 import { useHighlight } from '@/hooks/useHighlight';
 import { useEditedPlayback } from '@/hooks/useEditedPlayback';
 import { groupSegmentsToParagraphs } from '@/utils/paragraphGrouping';
+import { getSpeakerColor } from '@/utils/constants';
 import type { DisplayMode } from '@/types';
 
 interface ResultCardProps {
@@ -38,18 +39,46 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
     smartParagraphGroups,
     isSmartParagraphManuallyEdited,
     hasEdited,
+    speakerNames,
+    speakerMerges,
     setDisplayMode,
     toggleCharEditMode,
     resetEdits,
     setSmartParagraphGroups,
     deleteMultiplePositions,
     deleteMultipleCharPositions,
+    setSpeakerName,
+    mergeSpeaker,
   } = useEditorStore();
 
   const { showContextMenu } = useUIStore();
 
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [fillerText, setFillerText] = useState('');
+
+  // Speaker context menu state
+  const [speakerMenu, setSpeakerMenu] = useState<{
+    spkId: number;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  /**
+   * 计算说话人统计信息
+   * 返回去重后的说话人ID列表（排除已被合并的说话人）
+   */
+  const speakerStats = useMemo(() => {
+    const speakerSet = new Set<number>();
+    for (const seg of lastSegments) {
+      if (typeof seg.spk === 'number') {
+        // Get effective speaker after merges
+        const effectiveSpk = getEffectiveSpeaker(seg.spk, speakerMerges);
+        speakerSet.add(effectiveSpk);
+      }
+    }
+    // 按说话人ID排序
+    return Array.from(speakerSet).sort((a, b) => a - b);
+  }, [lastSegments, speakerMerges]);
 
   // Hooks
   const { reorderComposition } = useComposition();
@@ -167,6 +196,64 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
     },
     [showContextMenu]
   );
+
+  /**
+   * Handle right-click on speaker label to show context menu
+   */
+  const handleSpeakerContextMenu = useCallback(
+    (e: React.MouseEvent, spkId: number) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setSpeakerMenu({ spkId, x: e.clientX, y: e.clientY });
+    },
+    []
+  );
+
+  /**
+   * Close speaker context menu
+   */
+  const closeSpeakerMenu = useCallback(() => {
+    setSpeakerMenu(null);
+  }, []);
+
+  /**
+   * Handle edit speaker name from menu
+   */
+  const handleEditSpeakerName = useCallback(() => {
+    if (!speakerMenu) return;
+    const { spkId } = speakerMenu;
+    const currentName = speakerNames[spkId] || `说话人 ${spkId + 1}`;
+    const newName = window.prompt('请输入说话人名称：', currentName);
+    if (newName !== null) {
+      setSpeakerName(spkId, newName);
+    }
+    closeSpeakerMenu();
+  }, [speakerMenu, speakerNames, setSpeakerName, closeSpeakerMenu]);
+
+  /**
+   * Handle merge speaker from menu
+   */
+  const handleMergeSpeaker = useCallback(
+    (toSpkId: number) => {
+      if (!speakerMenu) return;
+      const { spkId: fromSpkId } = speakerMenu;
+      const fromName = speakerNames[fromSpkId] || `说话人 ${fromSpkId + 1}`;
+      const toName = speakerNames[toSpkId] || `说话人 ${toSpkId + 1}`;
+      if (confirm(`确定要将「${fromName}」合并到「${toName}」吗？`)) {
+        mergeSpeaker(fromSpkId, toSpkId);
+      }
+      closeSpeakerMenu();
+    },
+    [speakerMenu, speakerNames, mergeSpeaker, closeSpeakerMenu]
+  );
+
+  // Close speaker menu when clicking outside
+  useEffect(() => {
+    if (!speakerMenu) return;
+    const handleClickOutside = () => closeSpeakerMenu();
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [speakerMenu, closeSpeakerMenu]);
 
   /**
    * Handle display mode change
@@ -427,7 +514,30 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
 
   return (
     <div className="rounded-lg border border-[var(--border-input)] bg-[var(--bg-card)] p-4">
-      <h2 className="mb-4 text-lg font-semibold">识别全文</h2>
+      {/* Header with speaker stats */}
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold">识别全文</h2>
+        {speakerStats.length > 0 && (
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-[var(--text-muted)]">
+              {speakerStats.length} 位说话人:
+            </span>
+            <div className="flex items-center gap-1.5">
+              {speakerStats.map((spkId) => (
+                <span
+                  key={spkId}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-white text-xs font-medium cursor-pointer hover:opacity-80"
+                  style={{ backgroundColor: getSpeakerColor(spkId) }}
+                  onContextMenu={(e) => handleSpeakerContextMenu(e, spkId)}
+                  title="右键点击编辑名称或合并说话人"
+                >
+                  {speakerNames[spkId] || `说话人 ${spkId + 1}`}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Toolbar */}
       <div className="mb-4 flex flex-wrap gap-2">
@@ -487,6 +597,45 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
       <div className="rounded bg-[var(--bg-text-area)] p-4 text-[var(--text-primary)]">
         {renderContent()}
       </div>
+
+      {/* Speaker context menu */}
+      {speakerMenu && (
+        <div
+          className="fixed z-50 min-w-[160px] rounded-lg border border-[var(--border-input)] bg-[var(--bg-card)] py-1 shadow-lg"
+          style={{ left: speakerMenu.x, top: speakerMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            className="w-full px-4 py-2 text-left text-sm hover:bg-[var(--bg-button)] transition-colors"
+            onClick={handleEditSpeakerName}
+          >
+            ✏️ 编辑名称
+          </button>
+          {speakerStats.length > 1 && (
+            <>
+              <div className="my-1 border-t border-[var(--border-input)]" />
+              <div className="px-4 py-1 text-xs text-[var(--text-muted)]">
+                合并到:
+              </div>
+              {speakerStats
+                .filter((spkId) => spkId !== speakerMenu.spkId)
+                .map((spkId) => (
+                  <button
+                    key={spkId}
+                    className="w-full px-4 py-2 text-left text-sm hover:bg-[var(--bg-button)] transition-colors flex items-center gap-2"
+                    onClick={() => handleMergeSpeaker(spkId)}
+                  >
+                    <span
+                      className="inline-block w-3 h-3 rounded-full"
+                      style={{ backgroundColor: getSpeakerColor(spkId) }}
+                    />
+                    {speakerNames[spkId] || `说话人 ${spkId + 1}`}
+                  </button>
+                ))}
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 };
