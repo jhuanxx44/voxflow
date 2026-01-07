@@ -205,13 +205,6 @@ export async function streamChatResponse(
   // messages should only contain user/assistant, no system messages
   const fullMessages = [systemMessage, ...processedMessages];
 
-  // Debug: 打印 LLM 收到的完整上下文
-  console.log('=== LLM Context ===');
-  console.log('ASR Text Length:', asrText?.length || 0);
-  console.log('Message Count:', messages.length, '(excluding system)');
-  console.log('Full Messages:', fullMessages.map(m => ({ role: m.role, content: m.content.slice(0, 100) + '...' })));
-  console.log('===================');
-
   const response = await fetch('/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -231,28 +224,58 @@ export async function streamChatResponse(
   }
 
   const decoder = new TextDecoder();
+  let buffer = ''; // 缓冲区，处理跨 chunk 的数据
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    const chunk = decoder.decode(value);
-    const lines = chunk.split('\n');
+      // 将新数据添加到缓冲区
+      buffer += decoder.decode(value, { stream: true });
 
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6).trim();
-        if (data === '[DONE]') {
-          return;
-        }
-        try {
-          const parsed = JSON.parse(data) as StreamChunk;
-          onChunk(parsed);
-        } catch (e) {
-          // Ignore parse errors
-          console.warn('Failed to parse SSE chunk:', e);
+      // 按行分割处理
+      const lines = buffer.split('\n');
+      // 最后一行可能是不完整的，保留在缓冲区
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (trimmedLine.startsWith('data: ')) {
+          const data = trimmedLine.slice(6).trim();
+          if (data === '[DONE]') {
+            return;
+          }
+          if (data) {
+            try {
+              const parsed = JSON.parse(data) as StreamChunk;
+              onChunk(parsed);
+            } catch (e) {
+              // Ignore parse errors
+              console.warn('Failed to parse SSE chunk:', e);
+            }
+          }
         }
       }
     }
+
+    // 处理缓冲区中剩余的数据
+    if (buffer.trim()) {
+      const trimmedLine = buffer.trim();
+      if (trimmedLine.startsWith('data: ')) {
+        const data = trimmedLine.slice(6).trim();
+        if (data && data !== '[DONE]') {
+          try {
+            const parsed = JSON.parse(data) as StreamChunk;
+            onChunk(parsed);
+          } catch (e) {
+            console.warn('Failed to parse final SSE chunk:', e);
+          }
+        }
+      }
+    }
+  } finally {
+    // 确保 reader 被释放
+    reader.releaseLock();
   }
 }

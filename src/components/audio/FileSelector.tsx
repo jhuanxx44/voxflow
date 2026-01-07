@@ -1,13 +1,25 @@
 /**
  * FileSelector Component
  *
- * Audio file selector with drag-and-drop support.
+ * Media file selector with drag-and-drop support.
+ * Supports both audio and video files.
  * Shows selected file name and integrates with asrStore.
  */
 
 import React, { useRef, useState, useCallback } from 'react';
-import { useASRStore } from '@/stores/asrStore';
+import { useASRStore, MediaType } from '@/stores/asrStore';
 import { useEditorStore } from '@/stores/editorStore';
+
+// 视频文件扩展名（与后端保持一致）
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.3gp']);
+
+/**
+ * 根据文件名判断媒体类型
+ */
+function getMediaTypeFromFile(filename: string): MediaType {
+  const ext = filename.slice(filename.lastIndexOf('.')).toLowerCase();
+  return VIDEO_EXTENSIONS.has(ext) ? 'video' : 'audio';
+}
 
 interface FileSelectorProps {
   onFileSelect?: (file: File) => void;
@@ -20,7 +32,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const { currentFile, currentMaterial, setCurrentFile, setAudioUrl, clearCurrentAudio } = useASRStore();
+  const { currentFile, currentMaterial, mediaType, setCurrentFile, setAudioUrl, setMediaType, clearCurrentAudio } = useASRStore();
   const { clearAll } = useEditorStore();
 
   // Check if there's any audio source selected
@@ -29,13 +41,19 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
   const handleFileChange = useCallback(
     (file: File | null) => {
       if (file) {
-        // Validate file type
-        if (!file.type.startsWith('audio/')) {
-          alert('请选择音频文件');
+        // Validate file type - accept both audio and video
+        const isAudio = file.type.startsWith('audio/');
+        const isVideo = file.type.startsWith('video/');
+        if (!isAudio && !isVideo) {
+          alert('请选择音频或视频文件');
           return;
         }
 
-        // Create audio URL
+        // Determine media type from filename
+        const detectedMediaType = getMediaTypeFromFile(file.name);
+        setMediaType(detectedMediaType);
+
+        // Create media URL
         const url = URL.createObjectURL(file);
         setAudioUrl(url);
         setCurrentFile(file);
@@ -43,9 +61,10 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
       } else {
         setCurrentFile(null);
         setAudioUrl(null);
+        setMediaType('audio');
       }
     },
-    [setCurrentFile, setAudioUrl, onFileSelect]
+    [setCurrentFile, setAudioUrl, setMediaType, onFileSelect]
   );
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -98,12 +117,12 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
   return (
     <div className={className}>
       <div className="flex items-center gap-3">
-        {/* Hidden file input */}
+        {/* Hidden file input - accept both audio and video */}
         <input
           ref={fileInputRef}
           id="file"
           type="file"
-          accept="audio/*"
+          accept="audio/*,video/*"
           onChange={handleInputChange}
           className="hidden"
         />
@@ -126,19 +145,36 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
           `}
         >
           <div className="flex items-center gap-3">
-            <svg
-              className="w-5 h-5 text-[var(--text-secondary)]"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
-              />
-            </svg>
+            {/* Icon changes based on media type */}
+            {mediaType === 'video' ? (
+              <svg
+                className="w-5 h-5 text-[var(--text-secondary)]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+                />
+              </svg>
+            ) : (
+              <svg
+                className="w-5 h-5 text-[var(--text-secondary)]"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
+                />
+              </svg>
+            )}
 
             <div className="flex-1">
               {currentFile ? (
@@ -163,7 +199,7 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
                 <div className="text-sm text-[var(--text-secondary)]">
                   {isDragging
                     ? '松开以上传文件'
-                    : '点击选择或拖拽音频文件到此处'}
+                    : '点击选择或拖拽音频/视频文件到此处'}
                 </div>
               )}
             </div>

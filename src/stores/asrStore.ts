@@ -7,6 +7,7 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 
 export type RecognitionMode = 'basic' | 'advanced';
+export type MediaType = 'audio' | 'video';
 
 export interface ServerStatus {
   waiting: number;
@@ -18,6 +19,7 @@ interface ASRState {
   currentFile: File | null;
   currentMaterial: string | null;
   audioUrl: string | null;
+  mediaType: MediaType;
 
   // Recognition state
   isRecognizing: boolean;
@@ -35,6 +37,7 @@ interface ASRState {
   setCurrentFile: (file: File | null) => void;
   setCurrentMaterial: (name: string | null) => void;
   setAudioUrl: (url: string | null) => void;
+  setMediaType: (type: MediaType) => void;
   setIsRecognizing: (value: boolean) => void;
   setRecognitionMode: (mode: RecognitionMode) => void;
   setHotwords: (words: string) => void;
@@ -51,6 +54,7 @@ export const useASRStore = create<ASRState>()(
     currentFile: null,
     currentMaterial: null,
     audioUrl: null,
+    mediaType: 'audio',
     isRecognizing: false,
     recognitionMode: 'advanced', // 默认启用高级识别
     hotwords: '',
@@ -82,6 +86,12 @@ export const useASRStore = create<ASRState>()(
     setAudioUrl: (url) => {
       set((state) => {
         state.audioUrl = url;
+      });
+    },
+
+    setMediaType: (type) => {
+      set((state) => {
+        state.mediaType = type;
       });
     },
 
@@ -132,6 +142,7 @@ export const useASRStore = create<ASRState>()(
         state.currentFile = null;
         state.currentMaterial = null;
         state.audioUrl = null;
+        state.mediaType = 'audio';
         state.usedHotwords = null;
       });
     },

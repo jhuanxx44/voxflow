@@ -23,7 +23,7 @@ import { groupSegmentsToParagraphs } from '@/utils/paragraphGrouping';
 import type { DisplayMode } from '@/types';
 
 interface ResultCardProps {
-  audioRef: React.RefObject<HTMLAudioElement>;
+  audioRef: React.RefObject<HTMLMediaElement>;
 }
 
 export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {

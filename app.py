@@ -7,6 +7,7 @@ import json
 from datetime import datetime
 import threading
 import openai
+import subprocess
 
 app = Flask(__name__)
 CORS(app)  # 启用 CORS，支持跨域请求
@@ -104,6 +105,40 @@ if not os.path.exists(CACHE_DIR):
 # 管理员密码
 ADMIN_PASSWORD = "***REMOVED***"
 
+# 视频文件扩展名
+VIDEO_EXTENSIONS = {'.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.3gp'}
+
+def is_video_file(filename: str) -> bool:
+    """检查文件是否为视频文件"""
+    ext = os.path.splitext(filename)[1].lower()
+    return ext in VIDEO_EXTENSIONS
+
+def extract_audio_from_video(video_path: str) -> str:
+    """
+    使用 ffmpeg 从视频中提取音频（16kHz 单声道 WAV）
+
+    Args:
+        video_path: 视频文件路径
+
+    Returns:
+        提取的音频文件路径
+
+    Raises:
+        subprocess.CalledProcessError: ffmpeg 执行失败时抛出
+    """
+    audio_path = video_path.rsplit('.', 1)[0] + '_extracted.wav'
+    cmd = [
+        'ffmpeg', '-y',           # 覆盖已存在的文件
+        '-i', video_path,         # 输入视频
+        '-vn',                    # 不处理视频流
+        '-acodec', 'pcm_s16le',   # PCM 16-bit 编码
+        '-ar', '16000',           # 采样率 16kHz（FunASR 要求）
+        '-ac', '1',               # 单声道
+        audio_path
+    ]
+    subprocess.run(cmd, check=True, capture_output=True, timeout=300)
+    return audio_path
+
 # 服务器端缓存辅助函数
 def get_cache_key(material_name, model_type):
     """生成缓存键，格式: 素材名_模型类型.json"""
@@ -155,18 +190,31 @@ def index():
 
 @app.route('/asr', methods=['POST'])
 def asr():
+    extracted_audio_path = None  # 用于记录从视频提取的音频路径
     try:
         # 检查是否使用素材库文件
         material_name = request.form.get('material_name', '').strip()
 
         if material_name:
             # 使用素材库中的文件
-            audio_path = os.path.join(MATERIALS_DIR, material_name)
-            if not os.path.exists(audio_path):
+            media_path = os.path.join(MATERIALS_DIR, material_name)
+            if not os.path.exists(media_path):
                 return jsonify({"error": f"Material not found: {material_name}"}), 404
             original_filename = material_name
             # 素材文件不需要删除
             should_delete_temp = False
+
+            # 检查素材是否为视频文件
+            if is_video_file(material_name):
+                print(f"检测到视频素材，开始提取音频: {material_name}")
+                try:
+                    extracted_audio_path = extract_audio_from_video(media_path)
+                    audio_path = extracted_audio_path
+                except subprocess.CalledProcessError as e:
+                    print(f"视频音频提取失败: {e.stderr.decode() if e.stderr else str(e)}")
+                    return jsonify({"error": "视频音频提取失败，请确保视频文件包含音轨"}), 500
+            else:
+                audio_path = media_path
         else:
             # 使用上传的文件
             if 'audio' not in request.files:
@@ -176,12 +224,25 @@ def asr():
             if file.filename == '':
                 return jsonify({"error": "No audio file selected"}), 400
 
-            safe_name = secure_filename(file.filename) or "audio.wav"
-            temp_name = f"{int(datetime.now().timestamp()*1000)}_{safe_name}"
-            audio_path = os.path.join("/tmp", temp_name)
-            file.save(audio_path)
+            # 保留原始文件扩展名，用时间戳作为文件名避免冲突
+            original_ext = os.path.splitext(file.filename)[1].lower() or '.wav'
+            temp_name = f"{int(datetime.now().timestamp()*1000)}{original_ext}"
+            media_path = os.path.join("/tmp", temp_name)
+            file.save(media_path)
             original_filename = file.filename
             should_delete_temp = True
+
+            # 检查上传文件是否为视频
+            if is_video_file(file.filename):
+                print(f"检测到上传视频，开始提取音频: {file.filename}")
+                try:
+                    extracted_audio_path = extract_audio_from_video(media_path)
+                    audio_path = extracted_audio_path
+                except subprocess.CalledProcessError as e:
+                    print(f"视频音频提取失败: {e.stderr.decode() if e.stderr else str(e)}")
+                    return jsonify({"error": "视频音频提取失败，请确保视频文件包含音轨"}), 500
+            else:
+                audio_path = media_path
 
         enable_advanced = request.form.get('enable_advanced', 'false').lower() in ['true', '1', 'yes', 'on']
         model_type = "advanced" if enable_advanced else "basic"
@@ -328,10 +389,14 @@ def asr():
         print(f"Error processing request: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
-        # 只删除临时上传的文件，不删除素材库中的文件
+        # 清理临时文件
+        # 1. 删除从视频提取的音频文件
+        if extracted_audio_path and os.path.exists(extracted_audio_path):
+            os.remove(extracted_audio_path)
+        # 2. 只删除临时上传的文件，不删除素材库中的文件
         if 'should_delete_temp' in locals() and should_delete_temp:
-            if 'audio_path' in locals() and os.path.exists(audio_path):
-                os.remove(audio_path)
+            if 'media_path' in locals() and os.path.exists(media_path):
+                os.remove(media_path)
 
 @app.route('/health')
 def health():

@@ -108,7 +108,6 @@ export function ChatPanel() {
         error instanceof Error ? error.message : 'Unknown error';
       updateLastMessage(`错误: ${errorMessage}`);
     } finally {
-      console.log('Chat completed, resetting states');
       setIsStreaming(false);
       setIsThinking(false);
       isThinkingRef.current = false;
