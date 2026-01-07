@@ -21,6 +21,11 @@ interface EditorState {
   smartParagraphGroups: number[][];
   isSmartParagraphManuallyEdited: boolean;
 
+  // Speaker names mapping (speakerId -> custom name)
+  speakerNames: Record<number, string>;
+  // Speaker merges mapping (fromSpkId -> toSpkId)
+  speakerMerges: Record<number, number>;
+
   // Modes
   isCharEditMode: boolean;
   displayMode: DisplayMode;
@@ -44,6 +49,8 @@ interface EditorState {
   ) => void;
   deleteAtPosition: (index: number) => void;
   deleteCharAtPosition: (index: number) => void;
+  deleteMultiplePositions: (indices: number[]) => void;
+  deleteMultipleCharPositions: (indices: number[]) => void;
   reorderComposition: (fromIndex: number, toIndex: number) => void;
   setDisplayMode: (mode: DisplayMode) => void;
   toggleCharEditMode: () => void;
@@ -58,6 +65,24 @@ interface EditorState {
   updateCharComposition: (charComposition: number[]) => void;
   setSmartParagraphGroups: (groups: number[][]) => void;
   setSmartParagraphManuallyEdited: (edited: boolean) => void;
+  deleteByText: (text: string) => void;
+  replaceText: (oldText: string, newText: string) => void;
+  setSpeakerName: (speakerId: number, name: string) => void;
+  mergeSpeaker: (fromSpkId: number, toSpkId: number) => void;
+  getEffectiveSpeaker: (spkId: number) => number;
+}
+
+/**
+ * Get the effective speaker ID after applying merges
+ * @param spkId - Original speaker ID
+ * @param merges - Speaker merges mapping
+ * @returns The effective speaker ID (target of merge or original)
+ */
+export function getEffectiveSpeaker(
+  spkId: number,
+  merges: Record<number, number>
+): number {
+  return merges[spkId] ?? spkId;
 }
 
 export const useEditorStore = create<EditorState>()(
@@ -70,6 +95,8 @@ export const useEditorStore = create<EditorState>()(
     charComposition: [],
     smartParagraphGroups: [],
     isSmartParagraphManuallyEdited: false,
+    speakerNames: {},
+    speakerMerges: {},
     isCharEditMode: false,
     displayMode:
       (localStorage.getItem('displayMode') as DisplayMode) || 'continuous',
@@ -110,6 +137,28 @@ export const useEditorStore = create<EditorState>()(
         state.charComposition = state.charComposition.filter(
           (_, i) => i !== index
         );
+        state.hasEdited = true;
+      });
+    },
+
+    deleteMultiplePositions: (indices) => {
+      set((state) => {
+        // 创建要删除的索引集合
+        const toDelete = new Set(indices);
+        state.composition = state.composition.filter((_, i) => !toDelete.has(i));
+        state.hasEdited = true;
+        if (state.displayMode === 'smart-paragraph') {
+          state.isSmartParagraphManuallyEdited = true;
+          // 重新计算段落分组
+          state.smartParagraphGroups = [];
+        }
+      });
+    },
+
+    deleteMultipleCharPositions: (indices) => {
+      set((state) => {
+        const toDelete = new Set(indices);
+        state.charComposition = state.charComposition.filter((_, i) => !toDelete.has(i));
         state.hasEdited = true;
       });
     },
@@ -165,6 +214,9 @@ export const useEditorStore = create<EditorState>()(
         state.isSmartParagraphManuallyEdited = false;
         // Reset smart paragraph groups will be recalculated
         state.smartParagraphGroups = [];
+        // Reset speaker names and merges
+        state.speakerNames = {};
+        state.speakerMerges = {};
       });
     },
 
@@ -178,6 +230,8 @@ export const useEditorStore = create<EditorState>()(
         state.charComposition = [];
         state.smartParagraphGroups = [];
         state.isSmartParagraphManuallyEdited = false;
+        state.speakerNames = {};
+        state.speakerMerges = {};
         state.isCharEditMode = false;
         state.hasEdited = false;
         state.insertAfterIndex = null;
@@ -229,6 +283,178 @@ export const useEditorStore = create<EditorState>()(
       set((state) => {
         state.isSmartParagraphManuallyEdited = edited;
       });
+    },
+
+    deleteByText: (text) => {
+      set((state) => {
+        // 去除末尾标点进行匹配
+        const normalizedText = text
+          .replace(/[。，、！？；：""''（）【】《》,.!?;:()[\]<>]+$/g, '')
+          .trim();
+
+        if (state.isCharEditMode) {
+          const toDelete: number[] = [];
+          for (let i = 0; i < state.charComposition.length; i++) {
+            const idx = state.charComposition[i];
+            const char = state.charLevelData[idx];
+            const charText = char?.char
+              ?.replace(/[。，、！？；：""''（）【】《》,.!?;:()[\]<>]+$/g, '')
+              .trim();
+            if (charText === normalizedText) {
+              toDelete.push(i);
+            }
+          }
+          const toDeleteSet = new Set(toDelete);
+          state.charComposition = state.charComposition.filter(
+            (_, i) => !toDeleteSet.has(i)
+          );
+        } else {
+          const toDelete: number[] = [];
+          for (let i = 0; i < state.composition.length; i++) {
+            const idx = state.composition[i];
+            const seg = state.lastSegments[idx];
+            const segText = seg?.text
+              ?.replace(/[。，、！？；：""''（）【】《》,.!?;:()[\]<>]+$/g, '')
+              .trim();
+            if (segText === normalizedText) {
+              toDelete.push(i);
+            }
+          }
+          const toDeleteSet = new Set(toDelete);
+          state.composition = state.composition.filter(
+            (_, i) => !toDeleteSet.has(i)
+          );
+        }
+
+        state.hasEdited = true;
+        if (state.displayMode === 'smart-paragraph') {
+          state.isSmartParagraphManuallyEdited = true;
+          state.smartParagraphGroups = [];
+        }
+      });
+    },
+
+    replaceText: (oldText, newText) => {
+      set((state) => {
+        // 不再规范化，直接使用原始文本进行部分匹配
+        const searchText = oldText.trim();
+        if (!searchText) {
+          console.warn('[replaceText] Empty search text, skipping');
+          return;
+        }
+
+        console.log('[replaceText] Called with:', { oldText, newText, searchText });
+        console.log('[replaceText] isCharEditMode:', state.isCharEditMode);
+
+        let hasReplaced = false;
+        let replaceCount = 0;
+
+        if (state.isCharEditMode) {
+          // 逐字模式：替换 charLevelData 中包含 oldText 的 char
+          const newCharLevelData = [...state.charLevelData];
+          for (let i = 0; i < state.charComposition.length; i++) {
+            const idx = state.charComposition[i];
+            const char = newCharLevelData[idx];
+            if (!char) continue;
+
+            // 使用 includes 进行部分匹配
+            if (char.char.includes(searchText)) {
+              const newCharText = char.char.replaceAll(searchText, newText);
+              console.log('[replaceText] Char match found:', {
+                idx,
+                original: char.char,
+                replaced: newCharText,
+              });
+              newCharLevelData[idx] = {
+                ...char,
+                char: newCharText,
+              };
+              hasReplaced = true;
+              replaceCount++;
+            }
+          }
+          if (hasReplaced) {
+            state.charLevelData = newCharLevelData;
+          }
+        } else {
+          // 逐段模式：替换 lastSegments 中包含 oldText 的 text
+          const newSegments = [...state.lastSegments];
+          console.log('[replaceText] Checking', state.composition.length, 'segments in composition');
+
+          for (let i = 0; i < state.composition.length; i++) {
+            const idx = state.composition[i];
+            const seg = newSegments[idx];
+            if (!seg) continue;
+
+            // 使用 includes 进行部分匹配
+            if (seg.text.includes(searchText)) {
+              const newSegText = seg.text.replaceAll(searchText, newText);
+              console.log('[replaceText] Segment match found:', {
+                idx,
+                original: seg.text,
+                replaced: newSegText,
+              });
+              newSegments[idx] = {
+                ...seg,
+                text: newSegText,
+              };
+              hasReplaced = true;
+              replaceCount++;
+            }
+          }
+          if (hasReplaced) {
+            state.lastSegments = newSegments;
+          }
+        }
+
+        console.log('[replaceText] Result:', { hasReplaced, replaceCount });
+
+        if (hasReplaced) {
+          state.hasEdited = true;
+          if (state.displayMode === 'smart-paragraph') {
+            state.isSmartParagraphManuallyEdited = true;
+            state.smartParagraphGroups = [];
+          }
+        }
+      });
+    },
+
+    setSpeakerName: (speakerId, name) => {
+      set((state) => {
+        if (name.trim()) {
+          state.speakerNames[speakerId] = name.trim();
+        } else {
+          // Empty name removes the custom name
+          delete state.speakerNames[speakerId];
+        }
+      });
+    },
+
+    mergeSpeaker: (fromSpkId, toSpkId) => {
+      set((state) => {
+        // Update any existing merges that point to fromSpkId to point to toSpkId
+        // This keeps the mapping flat (no chains)
+        for (const key in state.speakerMerges) {
+          if (state.speakerMerges[Number(key)] === fromSpkId) {
+            state.speakerMerges[Number(key)] = toSpkId;
+          }
+        }
+        // Set the new merge
+        state.speakerMerges[fromSpkId] = toSpkId;
+        // Transfer custom name if fromSpkId has one and toSpkId doesn't
+        if (state.speakerNames[fromSpkId] && !state.speakerNames[toSpkId]) {
+          state.speakerNames[toSpkId] = state.speakerNames[fromSpkId];
+        }
+        // Remove fromSpkId's custom name
+        delete state.speakerNames[fromSpkId];
+        state.hasEdited = true;
+      });
+    },
+
+    getEffectiveSpeaker: (spkId) => {
+      // This is a getter, we need to access state differently
+      // Since immer doesn't support getters well, we'll handle this in components
+      return spkId;
     },
   }))
 );

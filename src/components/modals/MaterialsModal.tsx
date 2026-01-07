@@ -8,6 +8,7 @@
  * - Download button for each material
  * - Refresh button to reload list
  * - Loading states and error handling
+ * - Supports both audio and video files
  */
 
 import React, { useState, useEffect } from 'react';
@@ -15,7 +16,7 @@ import { Modal } from '@/components/common/Modal';
 import { Button } from '@/components/common/Button';
 import { LoadingSpinner } from '@/components/common/LoadingSpinner';
 import { useUIStore } from '@/stores/uiStore';
-import { useASRStore } from '@/stores/asrStore';
+import { useASRStore, MediaType } from '@/stores/asrStore';
 import type { Material } from '@/types/materials';
 import {
   getMaterials,
@@ -23,11 +24,23 @@ import {
   formatFileSize
 } from '@/services/materialsService';
 
+// 视频文件扩展名（与后端保持一致）
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.mkv', '.avi', '.mov', '.wmv', '.flv', '.webm', '.m4v', '.3gp']);
+
+/**
+ * 根据文件名判断媒体类型
+ */
+function getMediaTypeFromFilename(filename: string): MediaType {
+  const ext = filename.slice(filename.lastIndexOf('.')).toLowerCase();
+  return VIDEO_EXTENSIONS.has(ext) ? 'video' : 'audio';
+}
+
 export const MaterialsModal: React.FC = () => {
   const materialsModalOpen = useUIStore(state => state.materialsModalOpen);
   const setMaterialsModalOpen = useUIStore(state => state.setMaterialsModalOpen);
   const setCurrentMaterial = useASRStore(state => state.setCurrentMaterial);
   const setAudioUrl = useASRStore(state => state.setAudioUrl);
+  const setMediaType = useASRStore(state => state.setMediaType);
 
   const [materials, setMaterials] = useState<Material[]>([]);
   const [loading, setLoading] = useState(false);
@@ -63,10 +76,14 @@ export const MaterialsModal: React.FC = () => {
    * Handles material selection
    */
   const handleSelectMaterial = (material: Material) => {
+    // Determine media type from filename
+    const detectedMediaType = getMediaTypeFromFilename(material.name);
+    setMediaType(detectedMediaType);
+
     // Set the current material in ASR store
     setCurrentMaterial(material.name);
 
-    // Set audio URL for preview
+    // Set media URL for preview
     setAudioUrl(material.url);
 
     // Highlight the selected material
@@ -159,6 +176,19 @@ export const MaterialsModal: React.FC = () => {
                 }
               `}
             >
+              {/* Media type icon */}
+              <div className="mr-3 text-[var(--text-secondary)]">
+                {getMediaTypeFromFilename(material.name) === 'video' ? (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                  </svg>
+                ) : (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                  </svg>
+                )}
+              </div>
+
               {/* Material info */}
               <div className="flex-1 min-w-0">
                 <div className="text-[var(--text-primary)] font-medium truncate mb-1">
@@ -189,7 +219,7 @@ export const MaterialsModal: React.FC = () => {
       {!loading && !error && materials.length > 0 && (
         <div className="mt-4 pt-4 border-t border-[var(--border-color)]">
           <p className="text-[var(--text-muted)] text-xs text-center">
-            点击素材进行选择，选择后可进行语音识别
+            点击素材进行选择。支持音频和视频，视频将自动提取音频进行识别
           </p>
         </div>
       )}

@@ -15,7 +15,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { MainLayout } from './components/layout/MainLayout';
 import { Header } from './components/layout/Header';
 import { Card } from './components/layout/Card';
-import { AudioPlayer, AudioPlayerWithRef } from './components/audio/AudioPlayer';
+import { MediaPlayerWithRef } from './components/media/MediaPlayer';
 import { FileSelector } from './components/audio/FileSelector';
 import { RecognitionSettings } from './components/audio/RecognitionSettings';
 import { ResultCard } from './components/result/ResultCard';
@@ -34,10 +34,12 @@ import { useServerStatus } from './hooks/useServerStatus';
 import { useComposition } from './hooks/useComposition';
 
 function App() {
-  const audioRef = useRef<HTMLAudioElement>(null);
+  // Use HTMLMediaElement to support both audio and video
+  const mediaRef = useRef<HTMLMediaElement>(null);
 
   // Stores
   const { isRecognizing, currentFile, currentMaterial } = useASRStore();
+  const hasAudioSource = currentFile !== null || currentMaterial !== null;
   const { lastSegments } = useEditorStore();
 
   // Debug: log lastSegments
@@ -117,43 +119,57 @@ function App() {
         {/* Header */}
         <Header />
 
-        {/* Audio Section */}
-        <Card title="音频文件" className="mb-4">
-          {/* File Selector */}
-          <FileSelector className="mb-4" />
-
-          {/* Audio Player */}
-          <AudioPlayerWithRef ref={audioRef} className="mb-4" />
-
-          {/* Recognition Settings */}
-          <RecognitionSettings
-            onRecognize={handleRecognize}
-            isRecognizing={isRecognizing}
-          />
-
-          {/* Quick actions */}
-          <div className="mt-4 pt-4 border-t border-[var(--border-color)] flex gap-2 flex-wrap">
-            <Button
-              variant="secondary"
-              size="sm"
+        {/* Media Section */}
+        <Card title="媒体文件" className="mb-4">
+          {/* Materials Library Button - Above File Selector */}
+          <div className="flex items-center gap-3 mb-4">
+            <button
               onClick={() => setMaterialsModalOpen(true)}
+              className={`
+                flex-1 px-4 py-3 rounded-lg font-medium
+                transition-all duration-300
+                flex items-center justify-center gap-2
+                ${
+                  hasAudioSource
+                    ? 'bg-[var(--bg-button)] text-[var(--text-primary)] border border-[var(--border-input)] hover:bg-[var(--hover-bg)]'
+                    : 'bg-gradient-to-r from-[#667eea] to-[#764ba2] text-white hover:shadow-lg hover:scale-[1.02]'
+                }
+              `}
             >
-              素材库
-            </Button>
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+              从素材库选择
+            </button>
             <Button
               variant="secondary"
-              size="sm"
+              size="md"
               onClick={() => setAdminModalOpen(true)}
             >
               管理员
             </Button>
           </div>
+
+          {/* File Selector */}
+          <div className="mb-4">
+            <FileSelector />
+          </div>
+
+          {/* Media Player - renders video or audio based on mediaType */}
+          <MediaPlayerWithRef ref={mediaRef} className="mb-4" />
+
+          {/* Recognition Settings */}
+          <RecognitionSettings
+            onRecognize={handleRecognize}
+            isRecognizing={isRecognizing}
+            hasAudioSource={hasAudioSource}
+          />
         </Card>
 
         {/* Recognition Result Section */}
         {lastSegments.length > 0 && (
           <>
-            <ResultCard audioRef={audioRef} />
+            <ResultCard audioRef={mediaRef} />
 
             {/* Debug Controls */}
             <div className="mt-4 flex gap-2">
@@ -206,9 +222,9 @@ function App() {
                   d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"
                 />
               </svg>
-              <p className="text-lg mb-2">请选择音频文件并开始识别</p>
+              <p className="text-lg mb-2">请选择音频/视频文件并开始识别</p>
               <p className="text-sm">
-                支持拖拽上传或从素材库选择
+                支持拖拽上传或从素材库选择，视频将自动提取音频进行识别
               </p>
             </div>
           </Card>

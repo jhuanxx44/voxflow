@@ -21,7 +21,7 @@ import { useEditorStore } from '@/stores/editorStore';
 const CONTINUOUS_THRESHOLD = 0.15;
 
 interface UseEditedPlaybackOptions {
-  audioRef: React.RefObject<HTMLAudioElement>;
+  audioRef: React.RefObject<HTMLMediaElement>;
   onHighlight?: () => void;
 }
 

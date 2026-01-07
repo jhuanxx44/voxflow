@@ -1,18 +1,46 @@
 /**
  * Chat Input Component - Textarea with send button and loading state
  * Shift+Enter for newline, Enter to send
+ * Includes quick command bubbles above the input
  */
 
 import { useState, useRef, useEffect, KeyboardEvent } from 'react';
 
+interface QuickCommand {
+  label: string;
+  message: string;
+}
+
+// 快捷命令列表 - 有ASR结果时显示
+const QUICK_COMMANDS: QuickCommand[] = [
+  { label: '概括ASR结果', message: '请概括一下这段语音识别的内容，提取主要观点和关键信息。' },
+  { label: '快速删除口癖', message: '[FILLER_ANALYSIS]请分析这段语音识别结果中的口癖词' },
+  { label: '快速润色', message: '[POLISH_ANALYSIS]请分析这段语音识别结果中可能的识别错误' },
+  { label: '播客快速粗剪beta', message: '[PODCAST_ROUGH_CUT]请对这段播客内容进行结构分析和粗剪建议' },
+];
+
+// 无ASR结果时显示的命令
+const NO_ASR_COMMANDS: QuickCommand[] = [
+  { label: '快速教程', message: '请简要介绍一下这个语音识别编辑器系统是如何工作的？包括上传音频/视频、识别、编辑等主要功能。' },
+];
+
 interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
+  hasASRResult?: boolean; // 是否有 ASR 结果
 }
 
-export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
+export function ChatInput({ onSend, disabled = false, hasASRResult = false }: ChatInputProps) {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  /**
+   * Handle quick command click
+   */
+  const handleQuickCommand = (command: QuickCommand) => {
+    if (disabled) return;
+    onSend(command.message);
+  };
 
   /**
    * Auto-adjust textarea height based on content
@@ -44,8 +72,15 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
   /**
    * Handle keyboard events
    * Enter: send, Shift+Enter: newline
+   * Note: Check isComposing to avoid triggering send during IME composition
    */
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // 检查是否正在使用输入法组合（如中文拼音输入）
+    // isComposing 为 true 时，回车键应该用于确认输入法的选择，而不是发送消息
+    if (e.nativeEvent.isComposing) {
+      return;
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -53,8 +88,55 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
   };
 
   return (
-    <div className="flex gap-2 pt-3 border-t border-[var(--border-color)] mt-auto">
-      <textarea
+    <div className="pt-3 border-t border-[var(--border-color)] mt-auto">
+      {/* Quick command bubbles */}
+      <div className="flex flex-wrap gap-2 mb-2">
+        {hasASRResult ? (
+          // 有ASR结果时显示的命令
+          QUICK_COMMANDS.map((cmd, index) => (
+            <button
+              key={index}
+              onClick={() => handleQuickCommand(cmd)}
+              disabled={disabled}
+              className="
+                px-3 py-1.5 text-[12px]
+                rounded-full
+                bg-[var(--bg-chip)] text-[var(--text-secondary)]
+                border border-[var(--border-color)]
+                transition-all duration-200
+                hover:bg-[var(--highlight-color)] hover:text-white hover:border-[var(--highlight-color)]
+                disabled:opacity-50 disabled:cursor-not-allowed
+              "
+            >
+              {cmd.label}
+            </button>
+          ))
+        ) : (
+          // 无ASR结果时显示快速教程
+          NO_ASR_COMMANDS.map((cmd, index) => (
+            <button
+              key={index}
+              onClick={() => handleQuickCommand(cmd)}
+              disabled={disabled}
+              className="
+                px-3 py-1.5 text-[12px]
+                rounded-full
+                bg-[var(--bg-chip)] text-[var(--text-secondary)]
+                border border-[var(--border-color)]
+                transition-all duration-200
+                hover:bg-[var(--highlight-color)] hover:text-white hover:border-[var(--highlight-color)]
+                disabled:opacity-50 disabled:cursor-not-allowed
+              "
+            >
+              {cmd.label}
+            </button>
+          ))
+        )}
+      </div>
+
+      {/* Input area */}
+      <div className="flex gap-2">
+        <textarea
         ref={textareaRef}
         value={value}
         onChange={(e) => setValue(e.target.value)}
@@ -89,6 +171,7 @@ export function ChatInput({ onSend, disabled = false }: ChatInputProps) {
       >
         {disabled ? '发送中...' : '发送'}
       </button>
+      </div>
     </div>
   );
 }
