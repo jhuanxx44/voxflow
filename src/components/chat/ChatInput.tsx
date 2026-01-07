@@ -21,7 +21,7 @@ const QUICK_COMMANDS: QuickCommand[] = [
 
 // 无ASR结果时显示的命令
 const NO_ASR_COMMANDS: QuickCommand[] = [
-  { label: '快速教程', message: '请简要介绍一下这个语音识别编辑器系统是如何工作的？包括上传音频、识别、编辑等主要功能。' },
+  { label: '快速教程', message: '请简要介绍一下这个语音识别编辑器系统是如何工作的？包括上传音频/视频、识别、编辑等主要功能。' },
 ];
 
 interface ChatInputProps {
