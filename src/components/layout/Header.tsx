@@ -5,7 +5,7 @@ import { useTheme } from '../../hooks/useTheme';
  * 页面头部组件
  *
  * 功能：
- * - 显示应用标题："基于文本的音频编辑"
+ * - 显示应用标题："基于文本的智能编辑"
  * - 提供主题切换按钮（日/月图标）
  * - 使用 useTheme Hook 管理主题状态
  */
@@ -15,7 +15,7 @@ export const Header: React.FC = () => {
   return (
     <div className="flex justify-between items-center mb-5">
       <h2 className="m-0 text-[var(--text-primary)] text-2xl font-semibold">
-        基于文本的音频编辑
+        基于文本的智能编辑
       </h2>
 
       <button

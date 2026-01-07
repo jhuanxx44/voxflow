@@ -11,12 +11,17 @@ interface QuickCommand {
   message: string;
 }
 
-// 快捷命令列表
+// 快捷命令列表 - 有ASR结果时显示
 const QUICK_COMMANDS: QuickCommand[] = [
   { label: '概括ASR结果', message: '请概括一下这段语音识别的内容，提取主要观点和关键信息。' },
   // { label: '翻译为英文', message: '请将这段语音识别的内容翻译成英文。' },
   { label: '快速删除口癖', message: '[FILLER_ANALYSIS]请分析这段语音识别结果中的口癖词' },
   { label: '快速润色', message: '[POLISH_ANALYSIS]请分析这段语音识别结果中可能的识别错误' },
+];
+
+// 无ASR结果时显示的命令
+const NO_ASR_COMMANDS: QuickCommand[] = [
+  { label: '快速教程', message: '请简要介绍一下这个语音识别编辑器系统是如何工作的？包括上传音频、识别、编辑等主要功能。' },
 ];
 
 interface ChatInputProps {
@@ -85,9 +90,10 @@ export function ChatInput({ onSend, disabled = false, hasASRResult = false }: Ch
   return (
     <div className="pt-3 border-t border-[var(--border-color)] mt-auto">
       {/* Quick command bubbles */}
-      {hasASRResult && (
-        <div className="flex flex-wrap gap-2 mb-2">
-          {QUICK_COMMANDS.map((cmd, index) => (
+      <div className="flex flex-wrap gap-2 mb-2">
+        {hasASRResult ? (
+          // 有ASR结果时显示的命令
+          QUICK_COMMANDS.map((cmd, index) => (
             <button
               key={index}
               onClick={() => handleQuickCommand(cmd)}
@@ -104,9 +110,29 @@ export function ChatInput({ onSend, disabled = false, hasASRResult = false }: Ch
             >
               {cmd.label}
             </button>
-          ))}
-        </div>
-      )}
+          ))
+        ) : (
+          // 无ASR结果时显示快速教程
+          NO_ASR_COMMANDS.map((cmd, index) => (
+            <button
+              key={index}
+              onClick={() => handleQuickCommand(cmd)}
+              disabled={disabled}
+              className="
+                px-3 py-1.5 text-[12px]
+                rounded-full
+                bg-[var(--bg-chip)] text-[var(--text-secondary)]
+                border border-[var(--border-color)]
+                transition-all duration-200
+                hover:bg-[var(--highlight-color)] hover:text-white hover:border-[var(--highlight-color)]
+                disabled:opacity-50 disabled:cursor-not-allowed
+              "
+            >
+              {cmd.label}
+            </button>
+          ))
+        )}
+      </div>
 
       {/* Input area */}
       <div className="flex gap-2">
