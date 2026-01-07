@@ -36,7 +36,7 @@ export function ChatPanel() {
   }, [lastSegments, composition, charComposition, isCharEditMode, charLevelData]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isThinking, setIsThinking] = useState(false); // 是否正在思考（有reasoning但没content）
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null); // 消息容器 ref
   const isThinkingRef = useRef(false); // 用 ref 避免闭包问题
   const prevASRTextRef = useRef<string>(''); // 记录上一次的 ASR 文本
 
@@ -58,9 +58,13 @@ export function ChatPanel() {
 
   /**
    * Auto-scroll to bottom when new messages arrive
+   * 只滚动对话框容器，不影响整个页面
    */
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [messages]);
 
   /**
@@ -145,7 +149,10 @@ export function ChatPanel() {
         </div>
 
         {/* Messages area */}
-        <div className="flex-1 overflow-y-auto py-2 flex flex-col gap-3">
+        <div
+          ref={messagesContainerRef}
+          className="flex-1 overflow-y-auto py-2 flex flex-col gap-3"
+        >
           {messages.map((message, index) => (
             <ChatMessage
               key={index}
@@ -153,7 +160,6 @@ export function ChatPanel() {
               isThinking={isThinking && index === messages.length - 1}
             />
           ))}
-          <div ref={messagesEndRef} />
         </div>
 
         {/* Input area */}
