@@ -1,272 +1,220 @@
-# Store Architecture Overview
+# Store 架构概览
 
-## Store Hierarchy
+## Store 层级
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        Application State                         │
+│                         应用状态                                 │
 └─────────────────────────────────────────────────────────────────┘
                                │
         ┌──────────────────────┼──────────────────────┐
         │                      │                      │
 ┌───────▼────────┐    ┌────────▼────────┐    ┌──────▼──────┐
 │  editorStore   │    │    asrStore     │    │   uiStore   │
+│   (编辑器)     │    │    (识别)       │    │    (UI)     │
 └────────────────┘    └─────────────────┘    └─────────────┘
 ```
 
-## Store Responsibilities
+## Store 职责
 
-### editorStore (Main Editor Logic)
+### editorStore（编辑器核心逻辑）
+
 ```
 ┌────────────────────────────────────────────────────┐
 │              editorStore                           │
 ├────────────────────────────────────────────────────┤
-│ Recognition Results                                │
-│  • lastFullText                                    │
-│  • lastSegments[]                                  │
-│  • charLevelData[]                                 │
+│ 识别结果                                           │
+│  • lastFullText         原始识别文本               │
+│  • lastSegments[]       段落数组                   │
+│  • charLevelData[]      逐字数据                   │
 ├────────────────────────────────────────────────────┤
-│ Composition (Critical for Editing)                 │
-│  • composition[]        (segment indices)          │
-│  • charComposition[]    (character indices)        │
-│  • smartParagraphGroups[][] (paragraph groupings)  │
+│ Composition（编辑核心）                            │
+│  • composition[]        段落索引数组               │
+│  • charComposition[]    字符索引数组               │
 ├────────────────────────────────────────────────────┤
-│ Display & Edit Modes                               │
-│  • displayMode          (continuous/line/smart)    │
-│  • isCharEditMode       (char-level editing)       │
-│  • hasEdited            (edit tracking)            │
+│ 智能分段                                           │
+│  • smartParagraphGroups[][]                        │
+│  • isSmartParagraphManuallyEdited                  │
 ├────────────────────────────────────────────────────┤
-│ Playback State                                     │
-│  • editedPlaying                                   │
-│  • editedPlayPos                                   │
+│ 说话人管理                                         │
+│  • speakerNames         说话人名称映射             │
+│  • speakerMerges        说话人合并映射             │
 ├────────────────────────────────────────────────────┤
-│ Actions                                            │
-│  • setRecognitionResult()                          │
-│  • deleteAtPosition()                              │
-│  • reorderComposition()                            │
-│  • resetEdits()                                    │
-│  • toggleCharEditMode()                            │
+│ 模式                                               │
+│  • isCharEditMode       是否逐字编辑               │
+│  • displayMode          显示模式                   │
+├────────────────────────────────────────────────────┤
+│ 编辑状态                                           │
+│  • hasEdited            是否已编辑                 │
+│  • insertAfterIndex     插入位置                   │
+│  • dragSrcIdx           拖拽源索引                 │
+├────────────────────────────────────────────────────┤
+│ 播放状态                                           │
+│  • editedPlaying        编辑后播放中               │
+│  • editedPlayPos        播放位置                   │
 └────────────────────────────────────────────────────┘
 ```
 
-### asrStore (Recognition Management)
+### asrStore（ASR 识别状态）
+
 ```
 ┌────────────────────────────────────────────────────┐
-│              asrStore                              │
+│                asrStore                            │
 ├────────────────────────────────────────────────────┤
-│ Audio Source                                       │
-│  • currentFile          (File | null)              │
-│  • currentMaterial      (string | null)            │
-│  • audioUrl             (for playback)             │
+│ 文件状态                                           │
+│  • currentFile          上传的文件                 │
+│  • currentMaterial      素材库选择                 │
+│  • audioUrl             播放 URL                   │
+│  • mediaType            媒体类型 (audio/video)     │
 ├────────────────────────────────────────────────────┤
-│ Recognition Settings                               │
-│  • isRecognizing        (status)                   │
-│  • recognitionMode      (basic/advanced)           │
-│  • hotwords             (user input)               │
-│  • usedHotwords         (last used)                │
+│ 识别状态                                           │
+│  • isRecognizing        是否识别中                 │
+│  • recognitionMode      识别模式 (basic/advanced)  │
+│  • hotwords             热词配置                   │
+│  • usedHotwords         上次使用的热词             │
 ├────────────────────────────────────────────────────┤
-│ Server State                                       │
-│  • serverStatus         { waiting, processing }    │
-│  • cacheEnabled                                    │
+│ 服务器状态                                         │
+│  • serverStatus         {waiting, processing}      │
 ├────────────────────────────────────────────────────┤
-│ Actions                                            │
-│  • setCurrentFile()                                │
-│  • setCurrentMaterial()                            │
-│  • setRecognitionMode()                            │
-│  • setHotwords()                                   │
-│  • clearCurrentAudio()                             │
+│ 缓存                                               │
+│  • cacheEnabled         是否启用缓存               │
 └────────────────────────────────────────────────────┘
 ```
 
-### uiStore (UI State)
+### uiStore（UI 状态）
+
 ```
 ┌────────────────────────────────────────────────────┐
-│              uiStore                               │
+│                 uiStore                            │
 ├────────────────────────────────────────────────────┤
-│ Theme                                              │
-│  • theme                (dark/light)               │
+│ 主题                                               │
+│  • theme                dark/light                 │
 ├────────────────────────────────────────────────────┤
-│ Modals                                             │
-│  • materialsModalOpen                              │
-│  • adminModalOpen                                  │
-├────────────────────────────────────────────────────┤
-│ Context Menu                                       │
-│  • contextMenu          { x, y, targetIndex }      │
-├────────────────────────────────────────────────────┤
-│ Visibility                                         │
-│  • segmentsVisible                                 │
-│  • debugVisible                                    │
-├────────────────────────────────────────────────────┤
-│ Actions                                            │
-│  • toggleTheme()                                   │
-│  • setMaterialsModalOpen()                         │
-│  • showContextMenu()                               │
-│  • hideContextMenu()                               │
+│ 右键菜单                                           │
+│  • contextMenu          {visible, x, y, index}     │
 └────────────────────────────────────────────────────┘
 ```
 
-## Data Flow
+## 数据流
 
-### Recognition Flow
-```
-User Action → asrStore → API Call → editorStore
-                │                       │
-                ├─ setIsRecognizing()   ├─ setRecognitionResult()
-                ├─ setUsedHotwords()    ├─ Reset composition arrays
-                └─ setAudioUrl()        └─ Clear edit state
-```
-
-### Editing Flow
-```
-User Edit → editorStore
-              │
-              ├─ deleteAtPosition()    → Update composition[]
-              ├─ reorderComposition()  → Reorder composition[]
-              └─ Set hasEdited = true
-```
-
-### Theme Flow
-```
-User Toggle → uiStore.toggleTheme()
-                 │
-                 ├─ Update state.theme
-                 ├─ Save to localStorage
-                 └─ Update body.className
-```
-
-## State Persistence
+### ASR 识别流程
 
 ```
-┌──────────────────┐
-│   localStorage   │
-├──────────────────┤
-│ • theme          │ ← uiStore
-│ • displayMode    │ ← editorStore
-└──────────────────┘
+用户上传文件/选择素材
+        │
+        ▼
+┌───────────────┐
+│   asrStore    │
+│ setCurrentFile│
+│ setMediaType  │
+└───────┬───────┘
+        │
+        ▼
+┌───────────────┐
+│  asrService   │
+│ recognizeASR  │
+└───────┬───────┘
+        │
+        ▼
+┌───────────────┐
+│ editorStore   │
+│setRecognition │
+│    Result     │
+└───────────────┘
 ```
 
-## Component Access Pattern
+### 说话人合并流程
 
-### Single Store
+```
+用户右键点击说话人标签
+        │
+        ▼
+ResultCard 显示说话人菜单
+        │
+        ▼
+用户选择「合并到: 说话人X」
+        │
+        ▼
+┌───────────────┐
+│ editorStore   │
+│ mergeSpeaker  │──► 更新 speakerMerges
+└───────┬───────┘
+        │
+        ▼
+SentenceSpan 使用 getEffectiveSpeaker()
+计算显示颜色
+```
+
+### 编辑流程
+
+```
+用户执行编辑操作（删除/排序等）
+        │
+        ▼
+┌───────────────┐
+│ editorStore   │
+│   Actions:    │
+│ • deleteAtPosition    │
+│ • reorderComposition  │
+│ • deleteByText        │
+│ • replaceText         │
+└───────┬───────┘
+        │
+        ▼
+composition/charComposition 更新
+hasEdited = true
+        │
+        ▼
+组件重新渲染
+```
+
+## 核心概念
+
+### Composition 数组
+
+`composition` 和 `charComposition` 数组是编辑功能的**核心**：
+
+- 它们存储的是指向 `lastSegments` 或 `charLevelData` 的**索引**
+- 重排序 = 改变 composition 中的索引顺序
+- 删除 = 从 composition 中移除索引
+- 原始数据**永不修改**，只改变索引映射
+
+示例：
+```
+原始 segments: ["A", "B", "C", "D"]
+初始 composition: [0, 1, 2, 3]
+
+删除 "B" 后: [0, 2, 3]
+重排序后: [0, 3, 2]
+
+显示顺序: ["A", "D", "C"]
+```
+
+### 说话人合并
+
+`speakerMerges` 是一个扁平映射（无链式引用）：
+
 ```typescript
-function MyComponent() {
-  const displayMode = useEditorStore(state => state.displayMode);
-  const setDisplayMode = useEditorStore(state => state.setDisplayMode);
+// 将说话人 2 合并到说话人 0
+speakerMerges = { 2: 0 }
 
-  // Use state and actions...
-}
+// getEffectiveSpeaker(2, merges) 返回 0
+// 所有 spk=2 的片段现在显示说话人 0 的颜色
 ```
 
-### Multiple Stores
+### 辅助函数
+
 ```typescript
-function MyComponent() {
-  const { composition, lastSegments } = useEditorStore();
-  const { isRecognizing } = useASRStore();
-  const { theme } = useUIStore();
+// 获取合并后的有效说话人
+import { getEffectiveSpeaker } from '@/stores/editorStore';
 
-  // Use state from multiple stores...
-}
+const effectiveSpk = getEffectiveSpeaker(originalSpk, speakerMerges);
+const color = getSpeakerColor(effectiveSpk);
 ```
 
-### Derived State
-```typescript
-function MyComponent() {
-  const { composition, lastSegments } = useEditorStore();
+## 最佳实践
 
-  // Derive display segments
-  const displaySegments = composition.map(i => lastSegments[i]);
-
-  return (
-    <div>
-      {displaySegments.map(segment => (
-        <div key={segment.start}>{segment.text}</div>
-      ))}
-    </div>
-  );
-}
-```
-
-## Key Design Decisions
-
-### 1. Separation of Concerns
-- **editorStore**: Editing logic and content
-- **asrStore**: Recognition settings and status
-- **uiStore**: Pure UI state (no business logic)
-
-### 2. Composition Arrays
-The `composition` and `charComposition` arrays are critical:
-- Store **indices** not actual data
-- Enable non-destructive editing
-- Allow easy reordering and deletion
-- Preserve original data in `lastSegments` and `charLevelData`
-
-### 3. Immer Middleware
-All stores use `immer` middleware:
-- Write "mutating" code that's actually immutable
-- Simpler update logic
-- Better performance for nested updates
-
-### 4. LocalStorage Integration
-- `displayMode` persisted for UX continuity
-- `theme` persisted for user preference
-- Other state is session-based
-
-### 5. Mutual Exclusivity
-In `asrStore`, file and material are mutually exclusive:
-```typescript
-setCurrentFile: (file) => {
-  state.currentFile = file;
-  if (file) state.currentMaterial = null; // Clear material
-}
-```
-
-## Testing Strategy
-
-### Unit Testing Stores
-```typescript
-import { useEditorStore } from '@/stores';
-
-describe('editorStore', () => {
-  beforeEach(() => {
-    // Reset store state
-    useEditorStore.setState({
-      composition: [],
-      lastSegments: [],
-      hasEdited: false,
-    });
-  });
-
-  it('should delete segment at position', () => {
-    const store = useEditorStore.getState();
-    store.setRecognitionResult('text', mockSegments);
-    store.deleteAtPosition(0);
-
-    expect(store.composition).toHaveLength(mockSegments.length - 1);
-    expect(store.hasEdited).toBe(true);
-  });
-});
-```
-
-### Integration Testing
-```typescript
-import { renderHook, act } from '@testing-library/react';
-import { useEditorStore, useASRStore } from '@/stores';
-
-it('should update editor when recognition completes', () => {
-  const { result: asrResult } = renderHook(() => useASRStore());
-  const { result: editorResult } = renderHook(() => useEditorStore());
-
-  act(() => {
-    asrResult.current.setIsRecognizing(true);
-  });
-
-  // Simulate recognition complete
-  act(() => {
-    editorResult.current.setRecognitionResult('text', mockSegments);
-    asrResult.current.setIsRecognizing(false);
-  });
-
-  expect(editorResult.current.lastSegments).toEqual(mockSegments);
-  expect(asrResult.current.isRecognizing).toBe(false);
-});
-```
+1. **永不修改原始数据** - 始终使用 composition 数组
+2. **使用选择器** - 只订阅需要的状态切片，避免不必要的重渲染
+3. **批量更新** - 使用 immer 处理复杂状态变更
+4. **正确重置** - `resetEdits()` 重置 composition，`clearAll()` 清空所有数据
