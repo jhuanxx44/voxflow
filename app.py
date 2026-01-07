@@ -584,18 +584,24 @@ def chat():
         if stream:
             # 流式响应
             def generate():
-                response = llm_client.chat.completions.create(
-                    model="deepseek-r1",
-                    messages=messages,
-                    stream=True
-                )
-                for chunk in response:
-                    if chunk.choices[0].delta.content:
-                        yield f"data: {json.dumps({'content': chunk.choices[0].delta.content}, ensure_ascii=False)}\n\n"
-                    # 如果有 reasoning_content（思考过程），也可以返回
-                    if hasattr(chunk.choices[0].delta, 'reasoning_content') and chunk.choices[0].delta.reasoning_content:
-                        yield f"data: {json.dumps({'reasoning': chunk.choices[0].delta.reasoning_content}, ensure_ascii=False)}\n\n"
-                yield "data: [DONE]\n\n"
+                try:
+                    response = llm_client.chat.completions.create(
+                        model="deepseek-r1",
+                        messages=messages,
+                        stream=True
+                    )
+                    for chunk in response:
+                        if chunk.choices[0].delta.content:
+                            yield f"data: {json.dumps({'content': chunk.choices[0].delta.content}, ensure_ascii=False)}\n\n"
+                        # 如果有 reasoning_content（思考过程），也可以返回
+                        if hasattr(chunk.choices[0].delta, 'reasoning_content') and chunk.choices[0].delta.reasoning_content:
+                            yield f"data: {json.dumps({'reasoning': chunk.choices[0].delta.reasoning_content}, ensure_ascii=False)}\n\n"
+                except Exception as e:
+                    print(f"Stream error: {str(e)}")
+                    yield f"data: {json.dumps({'content': f'[错误: {str(e)}]'}, ensure_ascii=False)}\n\n"
+                finally:
+                    # 确保总是发送 [DONE] 信号
+                    yield "data: [DONE]\n\n"
 
             return Response(generate(), mimetype='text/event-stream')
         else:

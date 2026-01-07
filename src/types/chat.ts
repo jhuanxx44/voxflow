@@ -106,27 +106,27 @@ export interface StructureIssue {
 }
 
 /**
- * 删除建议类型
+ * 修改建议优先级
  */
-export type DeletionType = 'verbose' | 'repetitive' | 'filler' | 'off-topic';
+export type SuggestionPriority = 'high' | 'medium' | 'low';
 
 /**
- * 删除优先级
+ * 修改建议动作类型
  */
-export type DeletionPriority = 'high' | 'medium' | 'low';
+export type SuggestionAction = 'delete' | 'regenerate';
 
 /**
- * 删除建议项
+ * 修改建议项
  */
-export interface DeletionSuggestion {
-  /** 要删除的文本（用于精确匹配） */
+export interface EditSuggestion {
+  /** 要修改的文本（用于精确匹配） */
   text: string;
-  /** 删除原因 */
+  /** 修改原因 */
   reason: string;
-  /** 删除类型 */
-  type: DeletionType;
+  /** 建议动作：delete(删除) | regenerate(TTS重新生成) */
+  action: SuggestionAction;
   /** 建议优先级 */
-  priority: DeletionPriority;
+  priority: SuggestionPriority;
 }
 
 /**
@@ -137,6 +137,14 @@ export interface PodcastRoughCutResult {
   structure: ParagraphStructure[];
   /** 结构问题 */
   issues: StructureIssue[];
-  /** 删除建议 */
-  deletions: DeletionSuggestion[];
+  /** 修改建议 */
+  suggestions: EditSuggestion[];
 }
+
+// 兼容旧类型（保持向后兼容）
+/** @deprecated 使用 SuggestionPriority */
+export type DeletionPriority = SuggestionPriority;
+/** @deprecated 使用 EditSuggestion */
+export type DeletionSuggestion = EditSuggestion;
+/** @deprecated 使用 SuggestionAction */
+export type DeletionType = 'verbose' | 'repetitive' | 'filler' | 'off-topic';

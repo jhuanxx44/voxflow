@@ -88,29 +88,113 @@ function parsePolishData(content: string): {
 }
 
 /**
+ * 尝试修复常见的 JSON 格式问题
+ */
+function tryFixJson(rawJson: string): string {
+  let fixed = rawJson;
+
+  // 1. 移除可能的 markdown 代码块包裹
+  fixed = fixed.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '');
+
+  // 2. 修复尾部逗号问题: },] 或 ,]
+  fixed = fixed.replace(/,(\s*[}\]])/g, '$1');
+
+  // 3. 修复缺少逗号的问题（对象之间）: }{ -> },{
+  fixed = fixed.replace(/\}(\s*)\{/g, '},$1{');
+
+  return fixed.trim();
+}
+
+/**
  * Parse podcast rough cut data from message content
- * Extracts JSON from <rough_cut_data> tags and returns both text and parsed result
+ * Supports both tagged format (<rough_cut_data>JSON</rough_cut_data>) and plain JSON
  */
 function parsePodcastRoughCutData(content: string): {
   text: string;
   roughCutData: PodcastRoughCutResult | null;
 } {
-  const match = content.match(/<rough_cut_data>([\s\S]*?)<\/rough_cut_data>/);
-  if (!match) {
-    return { text: content, roughCutData: null };
+  let rawJson: string;
+  let textWithoutJson: string;
+
+  // 方式1：尝试匹配标签格式
+  const tagMatch = content.match(/<rough_cut_data>\s*([\s\S]*?)\s*<\/rough_cut_data>/);
+  if (tagMatch) {
+    rawJson = tagMatch[1].trim();
+    textWithoutJson = content
+      .replace(/<rough_cut_data>\s*[\s\S]*?\s*<\/rough_cut_data>/, '')
+      .trim();
+  } else {
+    // 方式2：检查是否有不完整的标签（流式输出中）
+    if (content.includes('<rough_cut_data>') && !content.includes('</rough_cut_data>')) {
+      console.log('[PodcastRoughCut] 标签不完整，等待流式输出完成');
+      return { text: content, roughCutData: null };
+    }
+
+    // 方式3：尝试直接解析纯 JSON（内容以 { 开头，以 } 结尾）
+    const trimmedContent = content.trim();
+    if (trimmedContent.startsWith('{') && trimmedContent.endsWith('}')) {
+      rawJson = trimmedContent;
+      textWithoutJson = '';
+      console.log('[PodcastRoughCut] 检测到纯 JSON 格式');
+    } else {
+      // 方式4：尝试从内容中提取 JSON 对象
+      const jsonMatch = content.match(/(\{[\s\S]*"structure"[\s\S]*"suggestions"[\s\S]*\})/);
+      if (jsonMatch) {
+        rawJson = jsonMatch[1];
+        textWithoutJson = content.replace(jsonMatch[1], '').trim();
+        console.log('[PodcastRoughCut] 从内容中提取到 JSON');
+      } else {
+        return { text: content, roughCutData: null };
+      }
+    }
   }
 
+  // 尝试解析 JSON（先直接解析，失败后尝试修复）
+  let json: any;
   try {
-    const json = JSON.parse(match[1].trim()) as PodcastRoughCutResult;
-    // Remove rough_cut_data tag from display text
-    const textWithoutTag = content
-      .replace(/<rough_cut_data>[\s\S]*?<\/rough_cut_data>/, '')
-      .trim();
-    return { text: textWithoutTag, roughCutData: json };
-  } catch {
-    // If JSON parsing fails, return original content
-    return { text: content, roughCutData: null };
+    json = JSON.parse(rawJson);
+  } catch (firstError) {
+    const fixedJson = tryFixJson(rawJson);
+    try {
+      json = JSON.parse(fixedJson);
+      console.log('[PodcastRoughCut] JSON 修复后解析成功');
+    } catch (secondError) {
+      console.error('[PodcastRoughCut] JSON 解析失败:', firstError);
+      console.error('[PodcastRoughCut] 原始内容:', rawJson.slice(0, 500));
+      return { text: content, roughCutData: null };
+    }
   }
+
+  // 兼容各种格式，为所有字段提供默认值
+  // 支持新格式 (suggestions) 和旧格式 (deletions) 的兼容
+  const suggestionsData = json.suggestions || json.deletions || [];
+
+  const result: PodcastRoughCutResult = {
+    structure: (json.structure || []).map((s: any, i: number) => ({
+      index: s.index ?? i + 1,
+      theme: s.theme || '未命名段落',
+      timeRange: s.timeRange,
+    })),
+    issues: (json.issues || []).map((iss: any) => ({
+      type: iss.type || 'verbose',
+      description: iss.description || '',
+      location: iss.location || '',
+    })),
+    suggestions: suggestionsData.map((s: any) => ({
+      text: s.text || '',
+      reason: s.reason || '',
+      action: s.action || (s.type ? 'delete' : 'delete'), // 旧格式兼容：有 type 字段的默认为 delete
+      priority: s.priority || 'medium',
+    })),
+  };
+
+  console.log('[PodcastRoughCut] 解析成功:', {
+    structureCount: result.structure.length,
+    issuesCount: result.issues.length,
+    suggestionsCount: result.suggestions.length,
+  });
+
+  return { text: textWithoutJson, roughCutData: result };
 }
 
 export function ChatMessage({ message, isThinking = false }: ChatMessageProps) {

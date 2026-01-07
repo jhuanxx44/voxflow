@@ -1,14 +1,14 @@
 /**
  * PodcastRoughCutAnalysis Component - Renders podcast rough cut analysis results
- * with structure overview, issues list, and deletion suggestions with checkboxes
+ * with structure overview, issues list, and edit suggestions with action buttons
  */
 
 import { useState } from 'react';
 import type {
   PodcastRoughCutResult,
-  DeletionSuggestion,
-  StructureIssue,
-  DeletionPriority,
+  EditSuggestion,
+  SuggestionPriority,
+  SuggestionAction,
 } from '@/types';
 import { useEditorStore } from '@/stores/editorStore';
 
@@ -35,24 +35,36 @@ const ISSUE_TYPE_LABELS: Record<string, string> = {
 };
 
 /** 优先级颜色映射 */
-const PRIORITY_COLORS: Record<DeletionPriority, string> = {
+const PRIORITY_COLORS: Record<SuggestionPriority, string> = {
   high: 'text-red-400',
   medium: 'text-yellow-400',
   low: 'text-green-400',
 };
 
 /** 优先级图标映射 */
-const PRIORITY_ICONS: Record<DeletionPriority, string> = {
+const PRIORITY_ICONS: Record<SuggestionPriority, string> = {
   high: '🔴',
   medium: '🟡',
   low: '🟢',
 };
 
 /** 优先级标签映射 */
-const PRIORITY_LABELS: Record<DeletionPriority, string> = {
+const PRIORITY_LABELS: Record<SuggestionPriority, string> = {
   high: '强烈建议',
   medium: '建议',
   low: '可选',
+};
+
+/** 动作图标映射 */
+const ACTION_ICONS: Record<SuggestionAction, string> = {
+  delete: '🗑️',
+  regenerate: '🔄',
+};
+
+/** 动作标签映射 */
+const ACTION_LABELS: Record<SuggestionAction, string> = {
+  delete: '删除',
+  regenerate: 'TTS重生成',
 };
 
 /**
@@ -96,22 +108,22 @@ function CollapsibleSection({
 }
 
 export function PodcastRoughCutAnalysis({ data }: PodcastRoughCutAnalysisProps) {
-  const { structure, issues, deletions } = data;
+  const { structure, issues, suggestions } = data;
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [deletedItems, setDeletedItems] = useState<Set<string>>(new Set());
-  const [priorityFilter, setPriorityFilter] = useState<DeletionPriority | 'all'>('all');
+  const [processedItems, setProcessedItems] = useState<Set<string>>(new Set());
+  const [priorityFilter, setPriorityFilter] = useState<SuggestionPriority | 'all'>('all');
   const deleteByText = useEditorStore((s) => s.deleteByText);
 
-  // Filter out already deleted items
-  const remainingDeletions = deletions.filter((d) => !deletedItems.has(d.text));
+  // Filter out already processed items
+  const remainingSuggestions = suggestions.filter((s) => !processedItems.has(s.text));
 
   // Apply priority filter
-  const filteredDeletions = priorityFilter === 'all'
-    ? remainingDeletions
-    : remainingDeletions.filter((d) => d.priority === priorityFilter);
+  const filteredSuggestions = priorityFilter === 'all'
+    ? remainingSuggestions
+    : remainingSuggestions.filter((s) => s.priority === priorityFilter);
 
   /**
-   * Toggle selection of a deletion suggestion
+   * Toggle selection of a suggestion
    */
   const handleToggle = (text: string) => {
     const newSelected = new Set(selected);
@@ -124,19 +136,17 @@ export function PodcastRoughCutAnalysis({ data }: PodcastRoughCutAnalysisProps) 
   };
 
   /**
-   * Select all filtered deletions
+   * Select all filtered suggestions
    */
   const handleSelectAll = () => {
-    const filteredTexts = filteredDeletions.map((d) => d.text);
+    const filteredTexts = filteredSuggestions.map((s) => s.text);
     const allSelected = filteredTexts.every((t) => selected.has(t));
 
     if (allSelected) {
-      // Deselect all filtered items
       const newSelected = new Set(selected);
       filteredTexts.forEach((t) => newSelected.delete(t));
       setSelected(newSelected);
     } else {
-      // Select all filtered items
       setSelected(new Set([...selected, ...filteredTexts]));
     }
   };
@@ -145,34 +155,56 @@ export function PodcastRoughCutAnalysis({ data }: PodcastRoughCutAnalysisProps) 
    * Select only high priority items
    */
   const handleSelectHighPriority = () => {
-    const highPriorityTexts = remainingDeletions
-      .filter((d) => d.priority === 'high')
-      .map((d) => d.text);
+    const highPriorityTexts = remainingSuggestions
+      .filter((s) => s.priority === 'high')
+      .map((s) => s.text);
     setSelected(new Set(highPriorityTexts));
   };
 
   /**
-   * Delete all selected items
+   * Get selected suggestions
+   */
+  const getSelectedSuggestions = () => {
+    return suggestions.filter((s) => selected.has(s.text));
+  };
+
+  /**
+   * Execute delete action
    */
   const handleDelete = () => {
-    if (selected.size === 0) return;
-    if (!confirm(`确定要删除选中的 ${selected.size} 项内容吗？\n\n这些句子将从识别结果中移除。`)) return;
+    const toDelete = getSelectedSuggestions().filter((s) => s.action === 'delete');
+    if (toDelete.length === 0) return;
+    if (!confirm(`确定要删除选中的 ${toDelete.length} 项内容吗？\n\n这些句子将从识别结果中移除。`)) return;
 
-    // Delete each selected item
-    Array.from(selected).forEach((text) => {
-      deleteByText(text);
+    toDelete.forEach((item) => {
+      deleteByText(item.text);
     });
 
-    // Mark items as deleted and clear selection
-    setDeletedItems(new Set([...deletedItems, ...selected]));
-    setSelected(new Set());
+    setProcessedItems(new Set([...processedItems, ...toDelete.map((s) => s.text)]));
+    setSelected(new Set([...selected].filter((t) => !toDelete.some((s) => s.text === t))));
+  };
+
+  /**
+   * Execute TTS regenerate action (placeholder)
+   */
+  const handleRegenerate = () => {
+    const toRegenerate = getSelectedSuggestions().filter((s) => s.action === 'regenerate');
+    if (toRegenerate.length === 0) return;
+
+    alert('TTS重生成功能暂未实现，敬请期待！');
   };
 
   // Count items by priority
   const priorityCounts = {
-    high: remainingDeletions.filter((d) => d.priority === 'high').length,
-    medium: remainingDeletions.filter((d) => d.priority === 'medium').length,
-    low: remainingDeletions.filter((d) => d.priority === 'low').length,
+    high: remainingSuggestions.filter((s) => s.priority === 'high').length,
+    medium: remainingSuggestions.filter((s) => s.priority === 'medium').length,
+    low: remainingSuggestions.filter((s) => s.priority === 'low').length,
+  };
+
+  // Count selected items by action type
+  const selectedByAction = {
+    delete: getSelectedSuggestions().filter((s) => s.action === 'delete').length,
+    regenerate: getSelectedSuggestions().filter((s) => s.action === 'regenerate').length,
   };
 
   return (
@@ -235,16 +267,16 @@ export function PodcastRoughCutAnalysis({ data }: PodcastRoughCutAnalysisProps) 
         </CollapsibleSection>
       )}
 
-      {/* Deletion Suggestions */}
-      {deletions.length > 0 && (
+      {/* Edit Suggestions */}
+      {suggestions.length > 0 && (
         <div className="border border-[var(--border-color)] rounded-lg overflow-hidden">
           <div className="p-2.5 bg-[var(--bg-button)]">
             <div className="flex items-center justify-between">
               <span className="flex items-center gap-2 text-sm font-medium">
-                <span>🗑️</span>
-                <span>删除建议</span>
+                <span>✏️</span>
+                <span>修改建议</span>
                 <span className="text-[var(--text-muted)]">
-                  ({remainingDeletions.length})
+                  ({remainingSuggestions.length})
                 </span>
               </span>
             </div>
@@ -259,7 +291,7 @@ export function PodcastRoughCutAnalysis({ data }: PodcastRoughCutAnalysisProps) 
                     : 'bg-transparent text-[var(--text-muted)] border-[var(--border-color)] hover:border-[var(--highlight-color)]'
                 }`}
               >
-                全部 ({remainingDeletions.length})
+                全部 ({remainingSuggestions.length})
               </button>
               {priorityCounts.high > 0 && (
                 <button
@@ -305,7 +337,7 @@ export function PodcastRoughCutAnalysis({ data }: PodcastRoughCutAnalysisProps) 
                 onClick={handleSelectAll}
                 className="text-xs text-[var(--highlight-color)] hover:underline"
               >
-                {filteredDeletions.every((d) => selected.has(d.text)) && filteredDeletions.length > 0
+                {filteredSuggestions.every((s) => selected.has(s.text)) && filteredSuggestions.length > 0
                   ? '取消全选'
                   : '全选当前'}
               </button>
@@ -320,67 +352,85 @@ export function PodcastRoughCutAnalysis({ data }: PodcastRoughCutAnalysisProps) 
             </div>
           </div>
 
-          {/* Deletion list */}
-          {remainingDeletions.length > 0 ? (
+          {/* Suggestions list */}
+          {remainingSuggestions.length > 0 ? (
             <div className="p-2.5 bg-[var(--bg-text-area)] space-y-2">
-              {filteredDeletions.map((deletion, idx) => (
+              {filteredSuggestions.map((suggestion, idx) => (
                 <label
                   key={idx}
                   className="flex items-start gap-2 cursor-pointer hover:bg-[var(--bg-button)] p-2 rounded transition-colors"
                 >
                   <input
                     type="checkbox"
-                    checked={selected.has(deletion.text)}
-                    onChange={() => handleToggle(deletion.text)}
+                    checked={selected.has(suggestion.text)}
+                    onChange={() => handleToggle(suggestion.text)}
                     className="w-4 h-4 mt-0.5 accent-[var(--highlight-color)]"
                   />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
-                      <span>{PRIORITY_ICONS[deletion.priority]}</span>
-                      <span className="text-sm break-all">"{deletion.text}"</span>
+                      <span>{PRIORITY_ICONS[suggestion.priority]}</span>
+                      <span className="text-sm break-all">"{suggestion.text}"</span>
                     </div>
-                    <div className="flex items-center gap-2 mt-1 text-xs">
-                      <span className={PRIORITY_COLORS[deletion.priority]}>
-                        {PRIORITY_LABELS[deletion.priority]}
+                    <div className="flex items-center gap-2 mt-1 text-xs flex-wrap">
+                      <span className={PRIORITY_COLORS[suggestion.priority]}>
+                        {PRIORITY_LABELS[suggestion.priority]}
                       </span>
                       <span className="text-[var(--text-muted)]">·</span>
-                      <span className="text-[var(--text-muted)]">
-                        {ISSUE_TYPE_ICONS[deletion.type] || '📌'} {ISSUE_TYPE_LABELS[deletion.type] || deletion.type}
+                      <span className={suggestion.action === 'regenerate' ? 'text-blue-400' : 'text-[var(--text-muted)]'}>
+                        {ACTION_ICONS[suggestion.action]} {ACTION_LABELS[suggestion.action]}
                       </span>
                       <span className="text-[var(--text-muted)]">·</span>
                       <span className="text-[var(--text-secondary)]">
-                        {deletion.reason}
+                        {suggestion.reason}
                       </span>
                     </div>
                   </div>
                 </label>
               ))}
 
-              {/* Delete button */}
-              <button
-                onClick={handleDelete}
-                disabled={selected.size === 0}
-                className="
-                  mt-2 w-full py-2 rounded-lg text-sm font-medium
-                  bg-red-500/20 text-red-400 border border-red-500/30
-                  hover:bg-red-500 hover:text-white hover:border-red-500
-                  disabled:opacity-50 disabled:cursor-not-allowed
-                  transition-all duration-200
-                "
-              >
-                确认删除选中的 {selected.size} 项
-              </button>
+              {/* Action buttons */}
+              <div className="flex gap-2 mt-2">
+                {/* Delete button */}
+                <button
+                  onClick={handleDelete}
+                  disabled={selectedByAction.delete === 0}
+                  className="
+                    flex-1 py-2 rounded-lg text-sm font-medium
+                    bg-red-500/20 text-red-400 border border-red-500/30
+                    hover:bg-red-500 hover:text-white hover:border-red-500
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                    transition-all duration-200
+                  "
+                >
+                  🗑️ 删除 ({selectedByAction.delete})
+                </button>
+
+                {/* TTS Regenerate button */}
+                <button
+                  onClick={handleRegenerate}
+                  disabled={selectedByAction.regenerate === 0}
+                  className="
+                    flex-1 py-2 rounded-lg text-sm font-medium
+                    bg-blue-500/20 text-blue-400 border border-blue-500/30
+                    hover:bg-blue-500 hover:text-white hover:border-blue-500
+                    disabled:opacity-50 disabled:cursor-not-allowed
+                    transition-all duration-200
+                  "
+                >
+                  🔄 TTS重生成 ({selectedByAction.regenerate})
+                </button>
+              </div>
             </div>
           ) : (
             <div className="p-3 bg-green-500/10 border-t border-green-500/30 text-green-400 text-sm text-center">
-              ✓ 已完成所有删除
+              ✓ 已完成所有修改
             </div>
           )}
         </div>
       )}
 
       {/* Empty state */}
-      {structure.length === 0 && issues.length === 0 && deletions.length === 0 && (
+      {structure.length === 0 && issues.length === 0 && suggestions.length === 0 && (
         <div className="p-3 rounded-lg bg-[var(--bg-text-area)] border border-[var(--border-color)] text-[var(--text-muted)] text-sm text-center">
           未发现需要处理的内容
         </div>

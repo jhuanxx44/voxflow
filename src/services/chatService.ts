@@ -137,62 +137,31 @@ ${asrText}
 
 /**
  * Build system message for podcast rough cut analysis
- * Returns a specialized prompt for podcast structure analysis and deletion suggestions
+ * Returns a specialized prompt for podcast structure analysis and edit suggestions
  */
 function buildPodcastRoughCutPrompt(asrText: string): string {
-  return `你是一个播客内容编辑专家。请分析以下播客语音识别结果，帮助用户进行快速粗剪。
+  return `你是一个播客内容编辑专家。请分析以下播客语音识别结果，给出修改建议。
 
 <asr_transcript>
 ${asrText}
 </asr_transcript>
 
-请按以下步骤分析：
+**任务**：分析内容并给出修改建议（可以是删除或TTS重新生成）。
 
-## 第一步：段落结构总结
-列出这段播客的主要段落和主题。
+**关键约束**：
+- suggestions 中的 text 必须是原文中**连续存在的完整片段**，能够精确匹配
+- 宁可少改也不要误改重要内容
+- **只输出JSON，不要输出任何其他文字**
 
-## 第二步：结构评价
-指出内容上的问题：
-- **啰嗦**：重复表达相同意思的地方
-- **不清楚**：表达模糊、逻辑跳跃的地方
-- **跑题**：偏离主题的内容
-- **填充词过多**：口癖、语气词堆积的地方
+直接输出以下格式的JSON（一行）：
+{"structure":[{"index":1,"theme":"主题"}],"issues":[{"type":"verbose","description":"描述","location":"位置"}],"suggestions":[{"text":"原文片段","reason":"原因","action":"delete","priority":"high"}]}
 
-## 第三步：删除建议
-列出建议删除的具体句子，并说明原因。
-
-**重要约束**：
-- 删除建议的 text 必须是原文中**完整的句子**，能够精确匹配
-- 每个建议都要有明确的删除理由
-- 优先删除对内容理解无影响的冗余部分
-- 保守删除，宁可少删也不要误删重要内容
-
-最后，在 <rough_cut_data> 标签中返回 JSON 格式数据：
-
-<rough_cut_data>
-{
-  "structure": [
-    {"index": 1, "theme": "开场介绍", "timeRange": "00:00-01:30"},
-    {"index": 2, "theme": "主题讨论", "timeRange": "01:30-10:00"}
-  ],
-  "issues": [
-    {"type": "verbose", "description": "重复解释了同一个概念", "location": "第2段开头"},
-    {"type": "unclear", "description": "突然跳转话题，缺少过渡", "location": "第3段中间"}
-  ],
-  "deletions": [
-    {"text": "就是那个什么来着就是", "reason": "口癖堆积", "type": "filler", "priority": "high"},
-    {"text": "我再说一遍刚才的意思就是", "reason": "重复表达", "type": "repetitive", "priority": "medium"}
-  ]
-}
-</rough_cut_data>
-
-注意：
-- structure 按时间顺序列出
-- issues 只列出明显的问题
-- deletions 中的 text 必须能在原文中精确匹配完整句子
-- type 可选值：verbose（啰嗦）、repetitive（重复）、filler（填充词）、off-topic（跑题）
-- priority 可选值：high（强烈建议删除）、medium（建议删除）、low（可选删除）
-- 如果没有发现问题，相应数组可以为空`;
+字段说明：
+- structure: 段落结构，index从1开始
+- issues.type: verbose|unclear|repetitive|off-topic|filler
+- suggestions.action: delete(删除)|regenerate(TTS重新生成，用于表达不清或读错的部分)
+- suggestions.priority: high|medium|low
+- 如果某项为空，使用空数组 []`;
 }
 
 // Special analysis marker prefixes

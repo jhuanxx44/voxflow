@@ -131,7 +131,7 @@ export function ChatPanel() {
         {/* Header */}
         <div className="flex justify-between items-center pb-3 border-b border-[var(--border-color)] mb-3">
           <span className="text-[var(--text-primary)] font-medium text-[15px]">
-            LLM 助手
+            Vox Copilot
           </span>
           <button
             onClick={handleClearChat}
