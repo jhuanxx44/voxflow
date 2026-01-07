@@ -10,7 +10,7 @@ interface MainLayoutProps {
  *
  * 两栏布局：
  * - 左侧：主内容区域（flex-1）
- * - 右侧：对话框面板（固定宽度 380px）
+ * - 右侧：对话框面板（固定宽度 456px）
  *
  * 布局特性：
  * - 最大宽度 1600px，居中显示
@@ -26,7 +26,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, chatPanel }) =
 
         {/* 右侧对话框面板 */}
         {chatPanel && (
-          <div className="w-[380px] flex-shrink-0 sticky top-6 h-[calc(100vh-120px)]">
+          <div className="w-[456px] flex-shrink-0 sticky top-6 h-[calc(100vh-120px)]">
             {chatPanel}
           </div>
         )}

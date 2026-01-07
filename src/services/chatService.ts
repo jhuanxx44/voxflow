@@ -135,9 +135,70 @@ ${asrText}
 - 如果没有发现错误，返回空数组：{"replacements":[]}`;
 }
 
+/**
+ * Build system message for podcast rough cut analysis
+ * Returns a specialized prompt for podcast structure analysis and deletion suggestions
+ */
+function buildPodcastRoughCutPrompt(asrText: string): string {
+  return `你是一个播客内容编辑专家。请分析以下播客语音识别结果，帮助用户进行快速粗剪。
+
+<asr_transcript>
+${asrText}
+</asr_transcript>
+
+请按以下步骤分析：
+
+## 第一步：段落结构总结
+列出这段播客的主要段落和主题。
+
+## 第二步：结构评价
+指出内容上的问题：
+- **啰嗦**：重复表达相同意思的地方
+- **不清楚**：表达模糊、逻辑跳跃的地方
+- **跑题**：偏离主题的内容
+- **填充词过多**：口癖、语气词堆积的地方
+
+## 第三步：删除建议
+列出建议删除的具体句子，并说明原因。
+
+**重要约束**：
+- 删除建议的 text 必须是原文中**完整的句子**，能够精确匹配
+- 每个建议都要有明确的删除理由
+- 优先删除对内容理解无影响的冗余部分
+- 保守删除，宁可少删也不要误删重要内容
+
+最后，在 <rough_cut_data> 标签中返回 JSON 格式数据：
+
+<rough_cut_data>
+{
+  "structure": [
+    {"index": 1, "theme": "开场介绍", "timeRange": "00:00-01:30"},
+    {"index": 2, "theme": "主题讨论", "timeRange": "01:30-10:00"}
+  ],
+  "issues": [
+    {"type": "verbose", "description": "重复解释了同一个概念", "location": "第2段开头"},
+    {"type": "unclear", "description": "突然跳转话题，缺少过渡", "location": "第3段中间"}
+  ],
+  "deletions": [
+    {"text": "就是那个什么来着就是", "reason": "口癖堆积", "type": "filler", "priority": "high"},
+    {"text": "我再说一遍刚才的意思就是", "reason": "重复表达", "type": "repetitive", "priority": "medium"}
+  ]
+}
+</rough_cut_data>
+
+注意：
+- structure 按时间顺序列出
+- issues 只列出明显的问题
+- deletions 中的 text 必须能在原文中精确匹配完整句子
+- type 可选值：verbose（啰嗦）、repetitive（重复）、filler（填充词）、off-topic（跑题）
+- priority 可选值：high（强烈建议删除）、medium（建议删除）、low（可选删除）
+- 如果没有发现问题，相应数组可以为空`;
+}
+
 // Special analysis marker prefixes
 const FILLER_ANALYSIS_MARKER = '[FILLER_ANALYSIS]';
 const POLISH_ANALYSIS_MARKER = '[POLISH_ANALYSIS]';
+const PODCAST_ROUGH_CUT_MARKER = '[PODCAST_ROUGH_CUT]';
 
 // Stream timeout: if no data received for 60 seconds, abort
 const STREAM_TIMEOUT_MS = 60000;
@@ -160,6 +221,8 @@ export async function streamChatResponse(
     lastUserMessage?.content.startsWith(FILLER_ANALYSIS_MARKER);
   const isPolishAnalysis =
     lastUserMessage?.content.startsWith(POLISH_ANALYSIS_MARKER);
+  const isPodcastRoughCut =
+    lastUserMessage?.content.startsWith(PODCAST_ROUGH_CUT_MARKER);
 
   // Build system message based on request type
   let systemMessage: ChatMessage;
@@ -193,6 +256,25 @@ export async function streamChatResponse(
         return {
           ...m,
           content: m.content.slice(POLISH_ANALYSIS_MARKER.length).trim(),
+        };
+      }
+      return m;
+    });
+  } else if (isPodcastRoughCut && asrText) {
+    // Use specialized podcast rough cut analysis prompt
+    systemMessage = {
+      role: 'system',
+      content: buildPodcastRoughCutPrompt(asrText),
+    };
+    // Remove the marker from the user message
+    processedMessages = messages.map((m) => {
+      if (
+        m.role === 'user' &&
+        m.content.startsWith(PODCAST_ROUGH_CUT_MARKER)
+      ) {
+        return {
+          ...m,
+          content: m.content.slice(PODCAST_ROUGH_CUT_MARKER.length).trim(),
         };
       }
       return m;

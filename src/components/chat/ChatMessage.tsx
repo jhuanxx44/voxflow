@@ -3,10 +3,16 @@
  * Supports user/assistant roles, markdown rendering, and thinking animation
  */
 
-import type { ChatMessage as ChatMessageType, FillerWord, TextReplacement } from '@/types';
+import type {
+  ChatMessage as ChatMessageType,
+  FillerWord,
+  TextReplacement,
+  PodcastRoughCutResult,
+} from '@/types';
 import ReactMarkdown from 'react-markdown';
 import { FillerAnalysis } from './FillerAnalysis';
 import { PolishAnalysis } from './PolishAnalysis';
+import { PodcastRoughCutAnalysis } from './PodcastRoughCutAnalysis';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -81,6 +87,32 @@ function parsePolishData(content: string): {
   }
 }
 
+/**
+ * Parse podcast rough cut data from message content
+ * Extracts JSON from <rough_cut_data> tags and returns both text and parsed result
+ */
+function parsePodcastRoughCutData(content: string): {
+  text: string;
+  roughCutData: PodcastRoughCutResult | null;
+} {
+  const match = content.match(/<rough_cut_data>([\s\S]*?)<\/rough_cut_data>/);
+  if (!match) {
+    return { text: content, roughCutData: null };
+  }
+
+  try {
+    const json = JSON.parse(match[1].trim()) as PodcastRoughCutResult;
+    // Remove rough_cut_data tag from display text
+    const textWithoutTag = content
+      .replace(/<rough_cut_data>[\s\S]*?<\/rough_cut_data>/, '')
+      .trim();
+    return { text: textWithoutTag, roughCutData: json };
+  } catch {
+    // If JSON parsing fails, return original content
+    return { text: content, roughCutData: null };
+  }
+}
+
 export function ChatMessage({ message, isThinking = false }: ChatMessageProps) {
   const { role, content } = message;
 
@@ -107,9 +139,10 @@ export function ChatMessage({ message, isThinking = false }: ChatMessageProps) {
     );
   }
 
-  // 助手消息：解析口癖数据和润色数据，然后渲染 Markdown
+  // 助手消息：解析口癖数据、润色数据和播客粗剪数据，然后渲染 Markdown
   const { text: afterFiller, fillers } = parseFillerData(content);
-  const { text: displayText, replacements } = parsePolishData(afterFiller);
+  const { text: afterPolish, replacements } = parsePolishData(afterFiller);
+  const { text: displayText, roughCutData } = parsePodcastRoughCutData(afterPolish);
 
   return (
     <div className="self-start px-3 py-2.5 rounded-[10px] rounded-bl-[4px] max-w-[90%] break-words text-[14px] bg-[var(--bg-button)] text-[var(--text-primary)] markdown-content">
@@ -161,6 +194,7 @@ export function ChatMessage({ message, isThinking = false }: ChatMessageProps) {
       {replacements && replacements.length > 0 && (
         <PolishAnalysis replacements={replacements} />
       )}
+      {roughCutData && <PodcastRoughCutAnalysis data={roughCutData} />}
     </div>
   );
 }

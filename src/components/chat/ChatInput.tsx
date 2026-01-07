@@ -14,9 +14,9 @@ interface QuickCommand {
 // 快捷命令列表 - 有ASR结果时显示
 const QUICK_COMMANDS: QuickCommand[] = [
   { label: '概括ASR结果', message: '请概括一下这段语音识别的内容，提取主要观点和关键信息。' },
-  // { label: '翻译为英文', message: '请将这段语音识别的内容翻译成英文。' },
   { label: '快速删除口癖', message: '[FILLER_ANALYSIS]请分析这段语音识别结果中的口癖词' },
   { label: '快速润色', message: '[POLISH_ANALYSIS]请分析这段语音识别结果中可能的识别错误' },
+  { label: '播客快速粗剪beta', message: '[PODCAST_ROUGH_CUT]请对这段播客内容进行结构分析和粗剪建议' },
 ];
 
 // 无ASR结果时显示的命令
