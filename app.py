@@ -121,12 +121,16 @@ def extract_audio_from_video(video_path: str) -> str:
         video_path: 视频文件路径
 
     Returns:
-        提取的音频文件路径
+        提取的音频文件路径（始终在 /tmp 目录下）
 
     Raises:
         subprocess.CalledProcessError: ffmpeg 执行失败时抛出
     """
-    audio_path = video_path.rsplit('.', 1)[0] + '_extracted.wav'
+    # 始终将提取的音频放在 /tmp 目录，避免污染素材库
+    video_basename = os.path.basename(video_path)
+    audio_filename = f"{int(datetime.now().timestamp()*1000)}_{video_basename.rsplit('.', 1)[0]}_extracted.wav"
+    audio_path = os.path.join("/tmp", audio_filename)
+
     cmd = [
         'ffmpeg', '-y',           # 覆盖已存在的文件
         '-i', video_path,         # 输入视频
