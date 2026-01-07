@@ -135,6 +135,13 @@ ${asrText}
 - 如果没有发现错误，返回空数组：{"replacements":[]}`;
 }
 
+// Special analysis marker prefixes
+const FILLER_ANALYSIS_MARKER = '[FILLER_ANALYSIS]';
+const POLISH_ANALYSIS_MARKER = '[POLISH_ANALYSIS]';
+
+// Stream timeout: if no data received for 60 seconds, abort
+const STREAM_TIMEOUT_MS = 60000;
+
 /**
  * Send a chat message and stream the response
  * @param messages - Chat history (user/assistant messages only, no system)
@@ -142,10 +149,6 @@ ${asrText}
  * @param onChunk - Callback for each chunk received
  * @returns Promise that resolves when streaming completes
  */
-// Special analysis marker prefixes
-const FILLER_ANALYSIS_MARKER = '[FILLER_ANALYSIS]';
-const POLISH_ANALYSIS_MARKER = '[POLISH_ANALYSIS]';
-
 export async function streamChatResponse(
   messages: ChatMessage[],
   asrText: string | null,
@@ -205,6 +208,19 @@ export async function streamChatResponse(
   // messages should only contain user/assistant, no system messages
   const fullMessages = [systemMessage, ...processedMessages];
 
+  // Log the context being sent to LLM for debugging
+  console.log('[Chat] Sending to LLM:', {
+    messageCount: fullMessages.length,
+    messages: fullMessages.map((m) => ({
+      role: m.role,
+      contentPreview:
+        m.content.length > 200
+          ? m.content.slice(0, 200) + '...'
+          : m.content,
+      contentLength: m.content.length,
+    })),
+  });
+
   const response = await fetch('/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -226,10 +242,80 @@ export async function streamChatResponse(
   const decoder = new TextDecoder();
   let buffer = ''; // 缓冲区，处理跨 chunk 的数据
 
+  /**
+   * Process a single line from the SSE stream
+   * @returns true if [DONE] signal received, false otherwise
+   */
+  const processLine = (line: string): boolean => {
+    const trimmedLine = line.trim();
+    if (!trimmedLine.startsWith('data: ')) {
+      return false;
+    }
+
+    const data = trimmedLine.slice(6).trim();
+    if (data === '[DONE]') {
+      return true; // Signal completion
+    }
+
+    if (data) {
+      try {
+        const parsed = JSON.parse(data) as StreamChunk;
+        onChunk(parsed);
+      } catch (e) {
+        console.warn('Failed to parse SSE chunk:', e);
+      }
+    }
+    return false;
+  };
+
+  /**
+   * Create a timeout promise that rejects after STREAM_TIMEOUT_MS
+   * Returns both the promise and a cancel function
+   */
+  const createTimeout = () => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    const promise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(
+        () => reject(new Error('Stream timeout: no data received')),
+        STREAM_TIMEOUT_MS
+      );
+    });
+    const cancel = () => clearTimeout(timeoutId);
+    return { promise, cancel };
+  };
+
   try {
     while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+      // Add timeout to prevent hanging indefinitely
+      const timeout = createTimeout();
+
+      let result: ReadableStreamReadResult<Uint8Array>;
+      try {
+        // Race between read and timeout
+        result = await Promise.race([reader.read(), timeout.promise]);
+        timeout.cancel(); // Clear timeout on successful read
+      } catch (timeoutError) {
+        // Timeout occurred - stream is likely stuck, complete gracefully
+        console.warn('Stream timeout, completing gracefully');
+        return;
+      }
+
+      const { done, value } = result;
+
+      if (done) {
+        // Stream ended - process any remaining buffer before completing
+        if (buffer.trim()) {
+          // Buffer might contain multiple lines separated by \n
+          const remainingLines = buffer.split('\n');
+          for (const line of remainingLines) {
+            if (processLine(line)) {
+              return; // [DONE] received
+            }
+          }
+        }
+        // Stream ended normally (done=true), complete the function
+        return;
+      }
 
       // 将新数据添加到缓冲区
       buffer += decoder.decode(value, { stream: true });
@@ -240,37 +326,8 @@ export async function streamChatResponse(
       buffer = lines.pop() || '';
 
       for (const line of lines) {
-        const trimmedLine = line.trim();
-        if (trimmedLine.startsWith('data: ')) {
-          const data = trimmedLine.slice(6).trim();
-          if (data === '[DONE]') {
-            return;
-          }
-          if (data) {
-            try {
-              const parsed = JSON.parse(data) as StreamChunk;
-              onChunk(parsed);
-            } catch (e) {
-              // Ignore parse errors
-              console.warn('Failed to parse SSE chunk:', e);
-            }
-          }
-        }
-      }
-    }
-
-    // 处理缓冲区中剩余的数据
-    if (buffer.trim()) {
-      const trimmedLine = buffer.trim();
-      if (trimmedLine.startsWith('data: ')) {
-        const data = trimmedLine.slice(6).trim();
-        if (data && data !== '[DONE]') {
-          try {
-            const parsed = JSON.parse(data) as StreamChunk;
-            onChunk(parsed);
-          } catch (e) {
-            console.warn('Failed to parse final SSE chunk:', e);
-          }
+        if (processLine(line)) {
+          return; // [DONE] received
         }
       }
     }
