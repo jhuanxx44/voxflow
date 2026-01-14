@@ -638,5 +638,4 @@ if __name__ == '__main__':
     print("  - GET  /materials : List materials")
     print("  - POST /admin/upload : Upload material (admin)")
     print("\n并发模式: 多线程 (使用锁保护模型调用)")
-    print("Access the service at: http://localhost:8080")
     app.run(host='0.0.0.0', port=8082, debug=False, threaded=True)
