@@ -561,9 +561,18 @@ def admin_delete(filename):
 LLM_API_KEY = "***REMOVED***"
 LLM_BASE_URL = "http://llmapi.bilibili.co/v1"
 
+# 图像生成使用不同的 API key（bsk- 前缀有图像模型权限）
+IMAGE_API_KEY = "***REMOVED***"
+
 llm_client = openai.OpenAI(
     base_url=LLM_BASE_URL,
     api_key=LLM_API_KEY,
+)
+
+# 图像生成客户端
+image_client = openai.OpenAI(
+    base_url=LLM_BASE_URL,
+    api_key=IMAGE_API_KEY,
 )
 
 @app.route('/chat', methods=['POST'])
@@ -620,6 +629,109 @@ def chat():
 
     except Exception as e:
         print(f"Chat error: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+# ====== 封面生成接口 ======
+
+# 封面风格提示词映射
+COVER_STYLE_PROMPTS = {
+    '日式动画': 'Japanese Anime style, cel shaded, vibrant colors, Studio Ghibli inspired, high quality, 2D animation',
+    '3D 动画': '3D Animation style, Pixar style, Disney style, cgsociety, 3d render, unreal engine 5, cute, vibrant, high detail',
+    '像素风格': 'Pixel art style, 16-bit, retro game style, sprite art, nostalgic',
+    '吉卜力': 'Studio Ghibli style, watercolor background, hand drawn animation, hayao miyazaki style, scenic, beautiful, dreamy',
+    '美式漫画': 'American Comic Book style, marvel style, dc style, bold lines, dynamic shading, comic strip, heroic'
+}
+
+@app.route('/generate-cover', methods=['POST'])
+def generate_cover():
+    """生成视频封面图片 (使用 nano-banana-pro，需要 bsk- API key)"""
+    try:
+        data = request.get_json()
+        prompt = data.get('prompt', '')
+        style = data.get('style', '日式动画')
+
+        if not prompt:
+            return jsonify({"error": "No prompt provided"}), 400
+
+        # 获取风格提示词
+        style_prompt = COVER_STYLE_PROMPTS.get(style, COVER_STYLE_PROMPTS['日式动画'])
+
+        # 构建最终提示词
+        final_prompt = f"{style_prompt}. Scene: {prompt}"
+
+        system_prompt = "You are a professional image generation assistant. Please strictly follow the user requirements to generate the image. You only need to generate the image, and do not return any other content. IMPORTANT: Do not include any text, titles, or speech bubbles in the image."
+
+        print(f"[Cover] Generating cover with style: {style}")
+        print(f"[Cover] Prompt: {final_prompt[:200]}...")
+
+        # 使用 image_client（bsk- API key）调用 nano-banana-pro
+        response = image_client.chat.completions.create(
+            model="nano-banana-pro",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": final_prompt}
+            ],
+            extra_body={
+                "generationConfig": {
+                    "imageConfig": {
+                        "aspectRatio": "16:9",  # B站封面比例
+                        "imageSize": "1K",
+                    }
+                }
+            }
+        )
+
+        # 从响应中提取图片 URL
+        choice = response.choices[0]
+        message = choice.message
+
+        image_url = None
+
+        # 打印响应结构以便调试
+        print(f"[Cover] Response message type: {type(message)}")
+        print(f"[Cover] Message attributes: {dir(message)}")
+
+        # 尝试不同的响应格式
+        # 格式1: message.images 是列表，元素是字典
+        if hasattr(message, 'images') and message.images:
+            print(f"[Cover] Found images: {message.images}")
+            img = message.images[0]
+            if isinstance(img, dict):
+                image_url = img.get('image_url', {}).get('url') or img.get('url')
+            elif hasattr(img, 'image_url'):
+                image_url = img.image_url.url if hasattr(img.image_url, 'url') else img.image_url.get('url')
+
+        # 格式2: message.model_extra.images
+        if not image_url and hasattr(message, 'model_extra') and message.model_extra:
+            print(f"[Cover] Checking model_extra: {message.model_extra}")
+            images = message.model_extra.get('images', [])
+            if images:
+                img = images[0]
+                if isinstance(img, dict):
+                    image_url = img.get('image_url', {}).get('url') or img.get('url')
+
+        # 格式3: 直接在 message 上的其他属性
+        if not image_url and hasattr(message, 'content') and message.content:
+            # 有时图片 URL 直接在 content 中
+            content = message.content
+            if isinstance(content, str) and (content.startswith('http') or content.startswith('data:image')):
+                image_url = content
+                print(f"[Cover] Found URL in content")
+
+        if not image_url:
+            print(f"[Cover] No image in response. Full message: {message}")
+            return jsonify({"error": "No image generated"}), 500
+
+        print(f"[Cover] Image generated successfully")
+
+        return jsonify({
+            "image_url": image_url,
+            "prompt": final_prompt,
+            "style": style
+        })
+
+    except Exception as e:
+        print(f"[Cover] Generation error: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/<path:filename>')
