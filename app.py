@@ -4,6 +4,7 @@ from funasr import AutoModel
 from werkzeug.utils import secure_filename
 import os
 import json
+import uuid
 from datetime import datetime
 import threading
 import openai
@@ -102,6 +103,28 @@ CACHE_DIR = os.path.expanduser("~/funasr_server/cache")
 if not os.path.exists(CACHE_DIR):
     os.makedirs(CACHE_DIR)
 
+# 导出文件临时目录
+EXPORT_TEMP_DIR = os.path.expanduser("~/funasr_server/exports")
+if not os.path.exists(EXPORT_TEMP_DIR):
+    os.makedirs(EXPORT_TEMP_DIR)
+
+# 上传文件临时存储目录（用于导出功能）
+UPLOADS_TEMP_DIR = os.path.expanduser("~/funasr_server/uploads_temp")
+if not os.path.exists(UPLOADS_TEMP_DIR):
+    os.makedirs(UPLOADS_TEMP_DIR)
+
+# 导出任务存储（用于大文件下载链接）
+export_tasks = {}
+
+# 上传文件存储（file_id -> 文件信息）
+uploaded_files = {}
+
+# 上传文件保留时间（8小时）
+UPLOAD_FILE_TTL = 8 * 3600
+
+# 导出并发控制（最多同时 3 个导出任务）
+export_semaphore = threading.Semaphore(3)
+
 # 管理员密码
 ADMIN_PASSWORD = "***REMOVED***"
 
@@ -177,6 +200,99 @@ def save_to_cache(material_name, model_type, result):
         print(f"结果已保存到缓存: {cache_key}")
     except Exception as e:
         print(f"保存缓存失败: {str(e)}")
+
+
+# ====== 媒体导出辅助函数 ======
+
+def cleanup_old_exports():
+    """清理超过 1 小时的导出文件"""
+    import time
+    cutoff = time.time() - 3600
+    try:
+        for filename in os.listdir(EXPORT_TEMP_DIR):
+            filepath = os.path.join(EXPORT_TEMP_DIR, filename)
+            if os.path.isfile(filepath) and os.path.getmtime(filepath) < cutoff:
+                os.remove(filepath)
+                print(f"[Export] Cleaned up old export: {filename}")
+    except Exception as e:
+        print(f"[Export] Cleanup error: {str(e)}")
+
+
+def cleanup_old_uploads():
+    """清理超过 8 小时的上传文件"""
+    import time
+    cutoff = time.time() - UPLOAD_FILE_TTL
+
+    # 清理内存中的记录和对应文件
+    expired_ids = []
+    for file_id, info in uploaded_files.items():
+        if info['created_at'] < cutoff:
+            expired_ids.append(file_id)
+            if os.path.exists(info['path']):
+                os.remove(info['path'])
+                print(f"[Upload] Cleaned up expired file: {info['filename']}")
+
+    for file_id in expired_ids:
+        del uploaded_files[file_id]
+
+    # 清理目录中可能遗漏的文件
+    try:
+        for filename in os.listdir(UPLOADS_TEMP_DIR):
+            filepath = os.path.join(UPLOADS_TEMP_DIR, filename)
+            if os.path.isfile(filepath) and os.path.getmtime(filepath) < cutoff:
+                os.remove(filepath)
+                print(f"[Upload] Cleaned up orphan file: {filename}")
+    except Exception as e:
+        print(f"[Upload] Cleanup error: {str(e)}")
+
+
+def build_ffmpeg_concat_filter(segments, has_video=True):
+    """
+    构建 FFmpeg filter_complex 字符串，用于精确切割和拼接音视频
+
+    Args:
+        segments: 片段列表 [{"start": ms, "end": ms}, ...]
+        has_video: 是否包含视频流
+
+    Returns:
+        (filter_complex 字符串, map 参数列表)
+    """
+    filters = []
+    video_labels = []
+    audio_labels = []
+
+    for i, seg in enumerate(segments):
+        start_sec = seg['start'] / 1000
+        end_sec = seg['end'] / 1000
+
+        if has_video:
+            # 视频流切割
+            filters.append(
+                f"[0:v]trim=start={start_sec}:end={end_sec},setpts=PTS-STARTPTS[v{i}]"
+            )
+            video_labels.append(f"[v{i}]")
+
+        # 音频流切割
+        filters.append(
+            f"[0:a]atrim=start={start_sec}:end={end_sec},asetpts=PTS-STARTPTS[a{i}]"
+        )
+        audio_labels.append(f"[a{i}]")
+
+    # 拼接
+    n = len(segments)
+    if has_video:
+        # concat 需要交错的输入顺序: [v0][a0][v1][a1]...
+        concat_inputs = ''.join(f"[v{i}][a{i}]" for i in range(n))
+        filters.append(f"{concat_inputs}concat=n={n}:v=1:a=1[outv][outa]")
+        maps = ['-map', '[outv]', '-map', '[outa]']
+    else:
+        # 纯音频
+        concat_inputs = ''.join(audio_labels)
+        filters.append(f"{concat_inputs}concat=n={n}:v=0:a=1[outa]")
+        maps = ['-map', '[outa]']
+
+    return ';'.join(filters), maps
+
 
 @app.route('/')
 def index():
@@ -387,6 +503,38 @@ def asr():
         if material_name and not hotwords and response_data:
             save_to_cache(material_name, model_type, response_data)
 
+        # 如果是上传文件，保留到临时目录用于后续导出
+        file_id = None
+        if 'should_delete_temp' in locals() and should_delete_temp:
+            if 'media_path' in locals() and os.path.exists(media_path):
+                import time
+                # 清理过期的上传文件
+                cleanup_old_uploads()
+
+                # 生成 file_id
+                file_id = str(uuid.uuid4())[:12]
+                # 移动到临时存储目录
+                dest_filename = f"{file_id}_{original_filename}"
+                dest_path = os.path.join(UPLOADS_TEMP_DIR, dest_filename)
+
+                import shutil
+                shutil.move(media_path, dest_path)
+
+                # 记录文件信息
+                uploaded_files[file_id] = {
+                    'path': dest_path,
+                    'filename': original_filename,
+                    'created_at': time.time()
+                }
+                print(f"[Upload] Saved file for export: {original_filename} -> {file_id}")
+
+                # 标记文件已移动，不需要在 finally 中删除
+                should_delete_temp = False
+
+        # 添加 file_id 到响应（如果有）
+        if response_data and file_id:
+            response_data["uploaded_file_id"] = file_id
+
         return jsonify(response_data)
 
     except Exception as e:
@@ -397,7 +545,7 @@ def asr():
         # 1. 删除从视频提取的音频文件
         if extracted_audio_path and os.path.exists(extracted_audio_path):
             os.remove(extracted_audio_path)
-        # 2. 只删除临时上传的文件，不删除素材库中的文件
+        # 2. 只在文件未被保留的情况下删除
         if 'should_delete_temp' in locals() and should_delete_temp:
             if 'media_path' in locals() and os.path.exists(media_path):
                 os.remove(media_path)
@@ -410,6 +558,229 @@ def health():
 def server_status():
     """获取服务器当前状态"""
     return jsonify(request_counter.get_status())
+
+
+# ====== 媒体导出接口 ======
+
+@app.route('/export-media', methods=['POST'])
+def export_media():
+    """
+    导出编辑后的媒体文件
+
+    请求体 JSON:
+    {
+        "segments": [{"start": 1000, "end": 3500, "text": "..."}],
+        "source": {"type": "material", "name": "example.mp4"},
+        "output_format": "mp4" | "mp3" | "wav"
+    }
+    """
+    # 尝试获取信号量（最多等待 30 秒）
+    acquired = export_semaphore.acquire(timeout=30)
+    if not acquired:
+        return jsonify({
+            "error": "服务器繁忙，请稍后重试",
+            "retry_after": 30
+        }), 503
+
+    try:
+        # 清理旧的导出文件
+        cleanup_old_exports()
+
+        data = request.get_json()
+
+        # 验证参数
+        segments = data.get('segments', [])
+        source = data.get('source', {})
+        output_format = data.get('output_format', 'mp4')
+
+        if not segments:
+            return jsonify({"error": "No segments provided"}), 400
+
+        if output_format not in ['mp4', 'mp3', 'wav']:
+            return jsonify({"error": f"Unsupported output format: {output_format}"}), 400
+
+        # 获取源文件路径
+        source_type = source.get('type')
+        source_name = source.get('name')
+        source_file_id = source.get('file_id')
+
+        if source_type == 'material':
+            input_path = os.path.join(MATERIALS_DIR, source_name)
+            if not os.path.exists(input_path):
+                return jsonify({"error": f"Material not found: {source_name}"}), 404
+        elif source_type == 'upload' and source_file_id:
+            # 上传文件：通过 file_id 找到临时保存的文件
+            file_info = uploaded_files.get(source_file_id)
+            if not file_info:
+                return jsonify({"error": "Uploaded file not found or expired. Please re-upload and recognize again."}), 404
+            input_path = file_info['path']
+            if not os.path.exists(input_path):
+                del uploaded_files[source_file_id]
+                return jsonify({"error": "Uploaded file no longer exists. Please re-upload and recognize again."}), 404
+            # 使用原始文件名
+            source_name = file_info['filename']
+        else:
+            return jsonify({"error": "Invalid source. Provide material name or upload file_id."}), 400
+
+        # 检测是否为视频文件，以及输出格式是否需要视频流
+        is_video = is_video_file(source_name)
+        has_video = is_video and output_format == 'mp4'
+
+        # 生成输出文件名
+        task_id = str(uuid.uuid4())[:8]
+        base_name = os.path.splitext(source_name)[0]
+        output_filename = f"{base_name}_edited_{task_id}.{output_format}"
+        output_path = os.path.join(EXPORT_TEMP_DIR, output_filename)
+
+        # 构建 FFmpeg 命令
+        filter_complex, maps = build_ffmpeg_concat_filter(segments, has_video)
+
+        # FFmpeg 编码参数
+        if output_format == 'mp4':
+            encode_params = [
+                '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+                '-c:a', 'aac', '-b:a', '128k'
+            ]
+        elif output_format == 'mp3':
+            encode_params = ['-c:a', 'libmp3lame', '-b:a', '192k']
+        elif output_format == 'wav':
+            encode_params = ['-c:a', 'pcm_s16le', '-ar', '44100']
+        else:
+            encode_params = []
+
+        # 构建完整命令
+        cmd = [
+            'ffmpeg', '-y',
+            '-i', input_path,
+            '-filter_complex', filter_complex,
+            *maps,
+            *encode_params,
+            output_path
+        ]
+
+        print(f"[Export] Running FFmpeg command...")
+        print(f"[Export] Input: {input_path}")
+        print(f"[Export] Output: {output_path}")
+        print(f"[Export] Segments count: {len(segments)}")
+
+        # 执行 FFmpeg（设置超时为 600 秒）
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            timeout=600
+        )
+
+        if result.returncode != 0:
+            error_msg = result.stderr.decode('utf-8', errors='ignore')
+            print(f"[Export] FFmpeg error: {error_msg}")
+            return jsonify({"error": f"FFmpeg processing failed: {error_msg[:500]}"}), 500
+
+        # 检查输出文件
+        if not os.path.exists(output_path):
+            return jsonify({"error": "Output file was not created"}), 500
+
+        # 获取文件大小
+        file_size = os.path.getsize(output_path)
+        print(f"[Export] Success! Output file size: {file_size} bytes")
+
+        # 小文件（<50MB）直接返回
+        if file_size < 50 * 1024 * 1024:
+            # 确定 MIME 类型
+            if output_format == 'mp4':
+                mimetype = 'video/mp4'
+            elif output_format == 'mp3':
+                mimetype = 'audio/mpeg'
+            elif output_format == 'wav':
+                mimetype = 'audio/wav'
+            else:
+                mimetype = 'application/octet-stream'
+
+            response = send_file(
+                output_path,
+                mimetype=mimetype,
+                as_attachment=True,
+                download_name=output_filename
+            )
+
+            # 设置回调在响应完成后删除文件
+            @response.call_on_close
+            def cleanup():
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+                    print(f"[Export] Cleaned up: {output_filename}")
+
+            return response
+        else:
+            # 大文件：存储并返回下载链接
+            import time
+            export_tasks[task_id] = {
+                'path': output_path,
+                'filename': output_filename,
+                'created_at': time.time(),
+                'has_video': has_video,
+                'format': output_format
+            }
+
+            return jsonify({
+                "status": "ready",
+                "download_url": f"/export-download/{task_id}",
+                "filename": output_filename,
+                "size": file_size,
+                "expires_in": 3600
+            })
+
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "Export timeout (>10 minutes). Please try with fewer segments."}), 504
+    except Exception as e:
+        print(f"[Export] Error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        export_semaphore.release()
+
+
+@app.route('/export-download/<task_id>', methods=['GET'])
+def export_download(task_id):
+    """下载已导出的大文件"""
+    import time
+
+    task = export_tasks.get(task_id)
+
+    if not task:
+        return jsonify({"error": "Export not found or expired"}), 404
+
+    output_path = task['path']
+
+    if not os.path.exists(output_path):
+        del export_tasks[task_id]
+        return jsonify({"error": "Export file no longer exists"}), 404
+
+    # 检查是否过期（1小时）
+    if time.time() - task['created_at'] > 3600:
+        if os.path.exists(output_path):
+            os.remove(output_path)
+        del export_tasks[task_id]
+        return jsonify({"error": "Export expired"}), 410
+
+    # 确定 MIME 类型
+    fmt = task['format']
+    if fmt == 'mp4':
+        mimetype = 'video/mp4'
+    elif fmt == 'mp3':
+        mimetype = 'audio/mpeg'
+    elif fmt == 'wav':
+        mimetype = 'audio/wav'
+    else:
+        mimetype = 'application/octet-stream'
+
+    return send_file(
+        output_path,
+        mimetype=mimetype,
+        as_attachment=True,
+        download_name=task['filename']
+    )
+
 
 # ====== 素材库相关接口 ======
 

@@ -13,12 +13,14 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { useEditorStore, getEffectiveSpeaker } from '@/stores/editorStore';
 import { useUIStore } from '@/stores/uiStore';
+import { useASRStore } from '@/stores/asrStore';
 import { SentenceSpan } from './SentenceSpan';
 import { ParagraphGroup } from './ParagraphGroup';
 import { useComposition } from '@/hooks/useComposition';
 import { useDragAndDrop } from '@/hooks/useDragAndDrop';
 import { useHighlight } from '@/hooks/useHighlight';
 import { useEditedPlayback } from '@/hooks/useEditedPlayback';
+import { useExport } from '@/hooks/useExport';
 import { groupSegmentsToParagraphs } from '@/utils/paragraphGrouping';
 import { getSpeakerColor } from '@/utils/constants';
 import type { DisplayMode } from '@/types';
@@ -52,6 +54,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
   } = useEditorStore();
 
   const { showContextMenu } = useUIStore();
+  const mediaType = useASRStore((state) => state.mediaType);
 
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [fillerText, setFillerText] = useState('');
@@ -62,6 +65,10 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
     x: number;
     y: number;
   } | null>(null);
+
+  // Export menu state
+  const [showExportMenu, setShowExportMenu] = useState(false);
+  const { isExporting, exportProgress, canExport, exportAs } = useExport();
 
   /**
    * 计算说话人统计信息
@@ -573,6 +580,84 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
         >
           复制全文
         </button>
+
+        {/* Export dropdown - prominent button */}
+        <div className="relative inline-block ml-auto">
+          <button
+            onClick={() => setShowExportMenu(!showExportMenu)}
+            disabled={!canExport || isExporting}
+            className="rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 text-sm font-medium shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-400"
+          >
+            {isExporting ? exportProgress : '导出 ▼'}
+          </button>
+
+          {showExportMenu && (
+            <>
+              {/* Backdrop to close menu */}
+              <div
+                className="fixed inset-0 z-40"
+                onClick={() => setShowExportMenu(false)}
+              />
+              {/* Menu */}
+              <div className="absolute right-0 top-full z-50 mt-1 min-w-[140px] rounded-lg border border-[var(--border-input)] bg-[var(--bg-card)] py-1 shadow-lg">
+                <div className="border-b border-[var(--border-input)] px-3 py-1 text-xs text-[var(--text-muted)]">
+                  媒体文件
+                </div>
+                {mediaType === 'video' && (
+                  <button
+                    className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-button)]"
+                    onClick={() => {
+                      exportAs('mp4');
+                      setShowExportMenu(false);
+                    }}
+                  >
+                    MP4 视频
+                  </button>
+                )}
+                <button
+                  className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-button)]"
+                  onClick={() => {
+                    exportAs('mp3');
+                    setShowExportMenu(false);
+                  }}
+                >
+                  MP3 音频
+                </button>
+                <button
+                  className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-button)]"
+                  onClick={() => {
+                    exportAs('wav');
+                    setShowExportMenu(false);
+                  }}
+                >
+                  WAV 音频
+                </button>
+
+                <div className="border-b border-t border-[var(--border-input)] px-3 py-1 text-xs text-[var(--text-muted)]">
+                  字幕文件
+                </div>
+                <button
+                  className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-button)]"
+                  onClick={() => {
+                    exportAs('srt');
+                    setShowExportMenu(false);
+                  }}
+                >
+                  SRT 字幕
+                </button>
+                <button
+                  className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-button)]"
+                  onClick={() => {
+                    exportAs('vtt');
+                    setShowExportMenu(false);
+                  }}
+                >
+                  VTT 字幕
+                </button>
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Filler word deletion - separate row */}

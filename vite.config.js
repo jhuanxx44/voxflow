@@ -20,7 +20,9 @@ export default defineConfig({
       '/admin': 'http://localhost:8082',
       '/health': 'http://localhost:8082',
       '/server-status': 'http://localhost:8082',
-      '/generate-cover': 'http://localhost:8082'
+      '/generate-cover': 'http://localhost:8082',
+      '/export-media': 'http://localhost:8082',
+      '/export-download': 'http://localhost:8082'
     }
   },
   build: {
