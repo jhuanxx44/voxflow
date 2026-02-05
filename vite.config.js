@@ -11,7 +11,7 @@ export default defineConfig({
   },
   server: {
     host: true,
-    port: 3000,
+    port: 3001,
     open: true,
     proxy: {
       '/asr': 'http://localhost:8082',
@@ -19,7 +19,10 @@ export default defineConfig({
       '/materials': 'http://localhost:8082',
       '/admin': 'http://localhost:8082',
       '/health': 'http://localhost:8082',
-      '/server-status': 'http://localhost:8082'
+      '/server-status': 'http://localhost:8082',
+      '/generate-cover': 'http://localhost:8082',
+      '/export-media': 'http://localhost:8082',
+      '/export-download': 'http://localhost:8082'
     }
   },
   build: {

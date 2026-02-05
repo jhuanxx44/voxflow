@@ -8,11 +8,13 @@ import type {
   FillerWord,
   TextReplacement,
   PodcastRoughCutResult,
+  CoverPromptData,
 } from '@/types';
 import ReactMarkdown from 'react-markdown';
 import { FillerAnalysis } from './FillerAnalysis';
 import { PolishAnalysis } from './PolishAnalysis';
 import { PodcastRoughCutAnalysis } from './PodcastRoughCutAnalysis';
+import { CoverGeneration } from './CoverGeneration';
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -197,6 +199,39 @@ function parsePodcastRoughCutData(content: string): {
   return { text: textWithoutJson, roughCutData: result };
 }
 
+/**
+ * Parse cover prompt data from message content
+ * Extracts JSON from <cover_prompt_data> tags and returns both text and parsed data
+ */
+function parseCoverPromptData(content: string): {
+  text: string;
+  coverPromptData: CoverPromptData | null;
+} {
+  const match = content.match(/<cover_prompt_data>([\s\S]*?)<\/cover_prompt_data>/);
+  if (!match) {
+    return { text: content, coverPromptData: null };
+  }
+
+  try {
+    const json = JSON.parse(match[1].trim());
+    // Remove cover_prompt_data tag from display text
+    const textWithoutTag = content
+      .replace(/<cover_prompt_data>[\s\S]*?<\/cover_prompt_data>/, '')
+      .trim();
+    return {
+      text: textWithoutTag,
+      coverPromptData: {
+        summary: json.summary || '',
+        prompt: json.prompt || '',
+        keywords: json.keywords || [],
+      },
+    };
+  } catch {
+    // If JSON parsing fails, return original content
+    return { text: content, coverPromptData: null };
+  }
+}
+
 export function ChatMessage({ message, isThinking = false }: ChatMessageProps) {
   const { role, content } = message;
 
@@ -223,10 +258,11 @@ export function ChatMessage({ message, isThinking = false }: ChatMessageProps) {
     );
   }
 
-  // 助手消息：解析口癖数据、润色数据和播客粗剪数据，然后渲染 Markdown
+  // 助手消息：解析口癖数据、润色数据、封面数据和播客粗剪数据，然后渲染 Markdown
   const { text: afterFiller, fillers } = parseFillerData(content);
   const { text: afterPolish, replacements } = parsePolishData(afterFiller);
-  const { text: displayText, roughCutData } = parsePodcastRoughCutData(afterPolish);
+  const { text: afterCover, coverPromptData } = parseCoverPromptData(afterPolish);
+  const { text: displayText, roughCutData } = parsePodcastRoughCutData(afterCover);
 
   return (
     <div className="self-start px-3 py-2.5 rounded-[10px] rounded-bl-[4px] max-w-[90%] break-words text-[14px] bg-[var(--bg-button)] text-[var(--text-primary)] markdown-content">
@@ -277,6 +313,9 @@ export function ChatMessage({ message, isThinking = false }: ChatMessageProps) {
       {fillers && fillers.length > 0 && <FillerAnalysis fillers={fillers} />}
       {replacements && replacements.length > 0 && (
         <PolishAnalysis replacements={replacements} />
+      )}
+      {coverPromptData && coverPromptData.prompt && (
+        <CoverGeneration promptData={coverPromptData} />
       )}
       {roughCutData && <PodcastRoughCutAnalysis data={roughCutData} />}
     </div>

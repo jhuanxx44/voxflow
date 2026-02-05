@@ -148,3 +148,29 @@ export type DeletionPriority = SuggestionPriority;
 export type DeletionSuggestion = EditSuggestion;
 /** @deprecated 使用 SuggestionAction */
 export type DeletionType = 'verbose' | 'repetitive' | 'filler' | 'off-topic';
+
+// ============================================
+// Cover Generation Types
+// ============================================
+
+/**
+ * 封面风格选项
+ */
+export type CoverStyle =
+  | '日式动画'
+  | '3D 动画'
+  | '像素风格'
+  | '吉卜力'
+  | '美式漫画';
+
+/**
+ * 封面生成提示词数据（LLM 返回）
+ */
+export interface CoverPromptData {
+  /** 内容概括（中文） */
+  summary: string;
+  /** 图像生成提示词（英文） */
+  prompt: string;
+  /** 视觉关键词 */
+  keywords: string[];
+}

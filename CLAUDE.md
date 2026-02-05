@@ -79,11 +79,14 @@ python app.py
 |------|------|------|
 | `/asr` | POST | 语音识别（支持音频/视频上传，视频自动提取音频） |
 | `/chat` | POST | LLM 对话（SSE 流式响应） |
+| `/generate-cover` | POST | 生成视频封面（调用 nano-banana-pro） |
 | `/materials` | GET | 获取素材库列表 |
 | `/materials/<filename>` | GET | 下载素材文件 |
 | `/admin/upload` | POST | 上传素材（需密码） |
 | `/admin/delete/<filename>` | DELETE | 删除素材（需密码） |
 | `/server-status` | GET | 服务器状态（排队/处理中） |
+| `/export-media` | POST | 导出编辑后的音视频（FFmpeg 精确切割拼接） |
+| `/export-download/<task_id>` | GET | 下载大文件导出结果 |
 
 ### ASR 请求流程
 
@@ -114,6 +117,7 @@ python app.py
 
 - **快速删除口癖**: AI 分析填充词并批量删除
 - **快速润色**: AI 识别同音字错误并提供修正建议
+- **生成封面**: AI 生成 B 站视频封面（调用 nano-banana-pro 图像模型）
 - **概括总结**: 对识别内容进行总结
 - **自由对话**: 支持任意问答
 
@@ -123,6 +127,7 @@ python app.py
 - 视频音频提取输出到 `/tmp` 目录，避免污染素材库
 - LLM 对话使用 SSE 流式响应，前端有 60 秒超时保护
 - 管理员密码硬编码在 `app.py` 中（`ADMIN_PASSWORD`）
+- **新增后端 API 时，必须同时更新 `vite.config.js` 的 proxy 配置**，否则开发模式下前端请求会返回 404（Vite 开发服务器不认识未配置的路由）
 
 ## 延伸阅读
 
