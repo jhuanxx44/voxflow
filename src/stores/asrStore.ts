@@ -18,6 +18,7 @@ interface ASRState {
   // File state
   currentFile: File | null;
   currentMaterial: string | null;
+  uploadedFileId: string | null; // 上传文件的 ID，用于导出
   audioUrl: string | null;
   mediaType: MediaType;
 
@@ -36,6 +37,7 @@ interface ASRState {
   // Actions
   setCurrentFile: (file: File | null) => void;
   setCurrentMaterial: (name: string | null) => void;
+  setUploadedFileId: (id: string | null) => void;
   setAudioUrl: (url: string | null) => void;
   setMediaType: (type: MediaType) => void;
   setIsRecognizing: (value: boolean) => void;
@@ -53,6 +55,7 @@ export const useASRStore = create<ASRState>()(
     // Initial state
     currentFile: null,
     currentMaterial: null,
+    uploadedFileId: null,
     audioUrl: null,
     mediaType: 'audio',
     isRecognizing: false,
@@ -66,9 +69,10 @@ export const useASRStore = create<ASRState>()(
     setCurrentFile: (file) => {
       set((state) => {
         state.currentFile = file;
-        // Clear material when file is set
+        // Clear material and uploadedFileId when file is set
         if (file) {
           state.currentMaterial = null;
+          state.uploadedFileId = null;
         }
       });
     },
@@ -76,10 +80,17 @@ export const useASRStore = create<ASRState>()(
     setCurrentMaterial: (name) => {
       set((state) => {
         state.currentMaterial = name;
-        // Clear file when material is set
+        // Clear file and uploadedFileId when material is set
         if (name) {
           state.currentFile = null;
+          state.uploadedFileId = null;
         }
+      });
+    },
+
+    setUploadedFileId: (id) => {
+      set((state) => {
+        state.uploadedFileId = id;
       });
     },
 
@@ -141,6 +152,7 @@ export const useASRStore = create<ASRState>()(
       set((state) => {
         state.currentFile = null;
         state.currentMaterial = null;
+        state.uploadedFileId = null;
         state.audioUrl = null;
         state.mediaType = 'audio';
         state.hotwords = '';

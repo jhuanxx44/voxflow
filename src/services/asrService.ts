@@ -17,6 +17,7 @@ export interface RecognizeOptions {
 
 export interface RecognizeResponse extends ASRResult {
   hotwords_used?: string | null;
+  uploaded_file_id?: string; // 上传文件的 ID，用于导出
 }
 
 /**

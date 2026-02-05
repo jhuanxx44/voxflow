@@ -136,6 +136,48 @@ ${asrText}
 }
 
 /**
+ * Build system message for cover generation
+ * Returns a specialized prompt that instructs LLM to generate image prompts for B-station video covers
+ */
+function buildCoverGenerationPrompt(asrText: string): string {
+  return `你是一个视频封面设计专家。请根据以下语音识别内容，生成一个适合B站视频封面的图像提示词。
+
+<asr_transcript>
+${asrText}
+</asr_transcript>
+
+**任务**：
+1. 理解内容的核心主题
+2. 提取3-5个可视觉化的关键词
+3. 生成一个详细的英文图像描述提示词
+
+**B站封面设计原则**：
+- 视觉冲击力强，色彩鲜艳饱和
+- 主题明确，一眼能看懂内容类型
+- 适合16:9比例，画面简洁
+- 可以有留白空间用于添加文字标题
+- 人物/主体居中或三分法构图
+- 避免过于复杂的场景
+
+**输出格式**：
+先用中文简要说明设计思路（2-3句话），然后按以下格式返回数据：
+
+<cover_prompt_data>
+{
+  "summary": "视频内容的一句话概括（中文，15字以内）",
+  "prompt": "Detailed English prompt for image generation, including: main subject, background setting, lighting style, color scheme, composition hints. Make it vivid and specific for AI image generation. 50-120 words. Do NOT include any text or titles in the image description.",
+  "keywords": ["关键词1", "关键词2", "关键词3"]
+}
+</cover_prompt_data>
+
+**重要约束**：
+- prompt 必须是英文
+- prompt 应描述具体视觉元素，而非抽象概念
+- 不要在 prompt 中包含文字/标题（用户后期添加）
+- JSON 格式必须正确，可被直接解析`;
+}
+
+/**
  * Build system message for podcast rough cut analysis
  * Returns a specialized prompt for podcast structure analysis and edit suggestions
  */
@@ -167,6 +209,7 @@ ${asrText}
 // Special analysis marker prefixes
 const FILLER_ANALYSIS_MARKER = '[FILLER_ANALYSIS]';
 const POLISH_ANALYSIS_MARKER = '[POLISH_ANALYSIS]';
+const COVER_GENERATION_MARKER = '[COVER_GENERATION]';
 const PODCAST_ROUGH_CUT_MARKER = '[PODCAST_ROUGH_CUT]';
 
 // Stream timeout: if no data received for 60 seconds, abort
@@ -190,6 +233,8 @@ export async function streamChatResponse(
     lastUserMessage?.content.startsWith(FILLER_ANALYSIS_MARKER);
   const isPolishAnalysis =
     lastUserMessage?.content.startsWith(POLISH_ANALYSIS_MARKER);
+  const isCoverGeneration =
+    lastUserMessage?.content.startsWith(COVER_GENERATION_MARKER);
   const isPodcastRoughCut =
     lastUserMessage?.content.startsWith(PODCAST_ROUGH_CUT_MARKER);
 
@@ -225,6 +270,22 @@ export async function streamChatResponse(
         return {
           ...m,
           content: m.content.slice(POLISH_ANALYSIS_MARKER.length).trim(),
+        };
+      }
+      return m;
+    });
+  } else if (isCoverGeneration && asrText) {
+    // Use specialized cover generation prompt
+    systemMessage = {
+      role: 'system',
+      content: buildCoverGenerationPrompt(asrText),
+    };
+    // Remove the marker from the user message
+    processedMessages = messages.map((m) => {
+      if (m.role === 'user' && m.content.startsWith(COVER_GENERATION_MARKER)) {
+        return {
+          ...m,
+          content: m.content.slice(COVER_GENERATION_MARKER.length).trim(),
         };
       }
       return m;

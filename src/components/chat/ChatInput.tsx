@@ -16,6 +16,7 @@ const QUICK_COMMANDS: QuickCommand[] = [
   { label: '概括ASR结果', message: '请概括一下这段语音识别的内容，提取主要观点和关键信息。' },
   { label: '快速删除口癖', message: '[FILLER_ANALYSIS]请分析这段语音识别结果中的口癖词' },
   { label: '快速润色', message: '[POLISH_ANALYSIS]请分析这段语音识别结果中可能的识别错误' },
+  { label: '生成封面', message: '[COVER_GENERATION]请根据这段语音识别结果生成一个适合B站视频封面的提示词' },
   { label: '播客快速粗剪beta', message: '[PODCAST_ROUGH_CUT]请对这段播客内容进行结构分析和粗剪建议' },
 ];
 

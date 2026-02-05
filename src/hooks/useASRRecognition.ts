@@ -29,6 +29,7 @@ export const useASRRecognition = (options: UseASRRecognitionOptions = {}) => {
     cacheEnabled,
     setIsRecognizing,
     setUsedHotwords,
+    setUploadedFileId,
   } = useASRStore();
 
   const { setRecognitionResult } = useEditorStore();
@@ -114,6 +115,11 @@ export const useASRRecognition = (options: UseASRRecognitionOptions = {}) => {
       // Update used hotwords
       setUsedHotwords(result.hotwords_used || null);
 
+      // Save uploaded file ID for export (if present)
+      if (result.uploaded_file_id) {
+        setUploadedFileId(result.uploaded_file_id);
+      }
+
       // Trigger callback
       options.onSuccess?.();
     } catch (err) {
@@ -144,6 +150,7 @@ export const useASRRecognition = (options: UseASRRecognitionOptions = {}) => {
     cacheEnabled,
     setIsRecognizing,
     setUsedHotwords,
+    setUploadedFileId,
     setRecognitionResult,
     getFromCache,
     saveToCache,
