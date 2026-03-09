@@ -225,6 +225,43 @@ body {
   }
 }
 
+/* TTS 重生成标识 */
+.sentence.tts-regenerated {
+  text-decoration: underline;
+  text-decoration-color: #3b82f6;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+}
+
+.sentence.tts-regenerated:hover {
+  text-decoration-color: #60a5fa;
+}
+
+/* TTS 生成中脉冲动画 */
+.sentence.tts-generating {
+  animation: ttsPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes ttsPulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+/* 内联编辑容器 */
+.inline-edit-container {
+  display: block;
+}
+
+.text-area.continuous .inline-edit-container {
+  display: inline-block;
+  vertical-align: top;
+  min-width: 200px;
+}
+
 /* 高亮识别按钮 */
 .highlight-btn {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);

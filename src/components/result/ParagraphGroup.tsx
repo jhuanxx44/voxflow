@@ -22,7 +22,7 @@ interface ParagraphGroupProps {
   /** Currently active (highlighted) index */
   activeIndex: number | null;
   /** Callback when span is clicked (seek audio) */
-  onSeek: (time: number, renderIndex: number) => void;
+  onSeek: (time: number, renderIndex: number, originalIndex?: number) => void;
   /** Callback for drag start */
   onDragStart: (index: number) => void;
   /** Callback for drag over */
@@ -32,7 +32,11 @@ interface ParagraphGroupProps {
   /** Callback for drop */
   onDrop: (index: number) => void;
   /** Callback for right-click context menu */
-  onContextMenu: (e: React.MouseEvent, index: number) => void;
+  onContextMenu: (e: React.MouseEvent, index: number, originalIndex?: number) => void;
+  /** TTS audio map for segments (originalIndex → has TTS audio) */
+  ttsAudioMap?: Record<number, string>;
+  /** TTS generating map for segments (originalIndex → is generating) */
+  ttsGeneratingMap?: Record<number, boolean>;
 }
 
 export const ParagraphGroup: React.FC<ParagraphGroupProps> = ({
@@ -46,6 +50,8 @@ export const ParagraphGroup: React.FC<ParagraphGroupProps> = ({
   onDragLeave,
   onDrop,
   onContextMenu,
+  ttsAudioMap,
+  ttsGeneratingMap,
 }) => {
   return (
     <div className="paragraph">
@@ -62,6 +68,8 @@ export const ParagraphGroup: React.FC<ParagraphGroupProps> = ({
           onDragLeave={onDragLeave}
           onDrop={onDrop}
           onContextMenu={onContextMenu}
+          hasTTSAudio={!!(ttsAudioMap && ttsAudioMap[originalIndices[index]])}
+          isTTSGenerating={!!(ttsGeneratingMap && ttsGeneratingMap[originalIndices[index]])}
         />
       ))}
     </div>
