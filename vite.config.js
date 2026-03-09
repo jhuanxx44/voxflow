@@ -22,7 +22,8 @@ export default defineConfig({
       '/server-status': 'http://localhost:8082',
       '/generate-cover': 'http://localhost:8082',
       '/export-media': 'http://localhost:8082',
-      '/export-download': 'http://localhost:8082'
+      '/export-download': 'http://localhost:8082',
+      '/tts': 'http://localhost:8082'
     }
   },
   build: {

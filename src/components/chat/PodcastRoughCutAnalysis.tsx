@@ -11,6 +11,7 @@ import type {
   SuggestionAction,
 } from '@/types';
 import { useEditorStore } from '@/stores/editorStore';
+import { useTTSRegenerate } from '@/hooks/useTTSRegenerate';
 
 interface PodcastRoughCutAnalysisProps {
   data: PodcastRoughCutResult;
@@ -113,6 +114,8 @@ export function PodcastRoughCutAnalysis({ data }: PodcastRoughCutAnalysisProps) 
   const [processedItems, setProcessedItems] = useState<Set<string>>(new Set());
   const [priorityFilter, setPriorityFilter] = useState<SuggestionPriority | 'all'>('all');
   const deleteByText = useEditorStore((s) => s.deleteByText);
+  const { regenerateByText, isRegenerating, progress: ttsProgress } = useTTSRegenerate();
+  const [regenerateError, setRegenerateError] = useState<string | null>(null);
 
   // Filter out already processed items
   const remainingSuggestions = suggestions.filter((s) => !processedItems.has(s.text));
@@ -185,13 +188,29 @@ export function PodcastRoughCutAnalysis({ data }: PodcastRoughCutAnalysisProps) 
   };
 
   /**
-   * Execute TTS regenerate action (placeholder)
+   * Execute TTS regenerate action with voice cloning
    */
-  const handleRegenerate = () => {
+  const handleRegenerate = async () => {
     const toRegenerate = getSelectedSuggestions().filter((s) => s.action === 'regenerate');
     if (toRegenerate.length === 0) return;
 
-    alert('TTS重生成功能暂未实现，敬请期待！');
+    if (!confirm(`确定要对选中的 ${toRegenerate.length} 项内容进行 TTS 重生成吗？\n\n将使用原始说话人声音进行语音克隆。`)) return;
+
+    setRegenerateError(null);
+
+    try {
+      for (let i = 0; i < toRegenerate.length; i++) {
+        await regenerateByText(toRegenerate[i].text);
+      }
+
+      // Mark as processed and clear selection
+      setProcessedItems(new Set([...processedItems, ...toRegenerate.map((s) => s.text)]));
+      setSelected(new Set([...selected].filter((t) => !toRegenerate.some((s) => s.text === t))));
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      setRegenerateError(msg);
+      console.error('[TTS Regenerate]', msg);
+    }
   };
 
   // Count items by priority
@@ -408,7 +427,7 @@ export function PodcastRoughCutAnalysis({ data }: PodcastRoughCutAnalysisProps) 
                 {/* TTS Regenerate button */}
                 <button
                   onClick={handleRegenerate}
-                  disabled={selectedByAction.regenerate === 0}
+                  disabled={selectedByAction.regenerate === 0 || isRegenerating}
                   className="
                     flex-1 py-2 rounded-lg text-sm font-medium
                     bg-blue-500/20 text-blue-400 border border-blue-500/30
@@ -417,9 +436,19 @@ export function PodcastRoughCutAnalysis({ data }: PodcastRoughCutAnalysisProps) 
                     transition-all duration-200
                   "
                 >
-                  🔄 TTS重生成 ({selectedByAction.regenerate})
+                  {isRegenerating
+                    ? ttsProgress || '生成中...'
+                    : `🔄 TTS重生成 (${selectedByAction.regenerate})`
+                  }
                 </button>
               </div>
+
+              {/* TTS error message */}
+              {regenerateError && (
+                <div className="mt-2 p-2 rounded bg-red-500/10 border border-red-500/30 text-red-400 text-xs">
+                  {regenerateError}
+                </div>
+              )}
             </div>
           ) : (
             <div className="p-3 bg-green-500/10 border-t border-green-500/30 text-green-400 text-sm text-center">

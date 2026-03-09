@@ -27,7 +27,7 @@ interface UIState {
   setTheme: (theme: Theme) => void;
   setMaterialsModalOpen: (open: boolean) => void;
   setAdminModalOpen: (open: boolean) => void;
-  showContextMenu: (x: number, y: number, targetIndex: number) => void;
+  showContextMenu: (x: number, y: number, targetIndex: number, originalIndex?: number) => void;
   hideContextMenu: () => void;
   toggleSegmentsVisible: () => void;
   toggleDebugVisible: () => void;
@@ -81,13 +81,14 @@ export const useUIStore = create<UIState>()(
       });
     },
 
-    showContextMenu: (x, y, targetIndex) => {
+    showContextMenu: (x, y, targetIndex, originalIndex?) => {
       set((state) => {
         state.contextMenu = {
           visible: true,
           x,
           y,
           targetIndex,
+          targetOriginalIndex: originalIndex,
         };
       });
     },

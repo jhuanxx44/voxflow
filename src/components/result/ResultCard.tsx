@@ -21,6 +21,7 @@ import { useDragAndDrop } from '@/hooks/useDragAndDrop';
 import { useHighlight } from '@/hooks/useHighlight';
 import { useEditedPlayback } from '@/hooks/useEditedPlayback';
 import { useExport } from '@/hooks/useExport';
+import { useTTSRegenerate } from '@/hooks/useTTSRegenerate';
 import { groupSegmentsToParagraphs } from '@/utils/paragraphGrouping';
 import { getSpeakerColor } from '@/utils/constants';
 import type { DisplayMode } from '@/types';
@@ -46,12 +47,22 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
     setDisplayMode,
     toggleCharEditMode,
     resetEdits,
+    undo,
+    redo,
     setSmartParagraphGroups,
     deleteMultiplePositions,
     deleteMultipleCharPositions,
     setSpeakerName,
     mergeSpeaker,
+    ttsAudioMap,
+    ttsGeneratingMap,
+    inlineEditIndex,
+    setInlineEditIndex,
   } = useEditorStore();
+
+  // Subscribe to stack lengths for button disabled state
+  const canUndo = useEditorStore((s) => s._undoStack.length > 0);
+  const canRedo = useEditorStore((s) => s._redoStack.length > 0);
 
   const { showContextMenu } = useUIStore();
   const mediaType = useASRStore((state) => state.mediaType);
@@ -69,6 +80,10 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
   // Export menu state
   const [showExportMenu, setShowExportMenu] = useState(false);
   const { isExporting, exportProgress, canExport, exportAs } = useExport();
+
+  // TTS
+  const ttsAudioRef = useRef<HTMLAudioElement>(null);
+  const { regenerateByIndex } = useTTSRegenerate();
 
   /**
    * 计算说话人统计信息
@@ -94,6 +109,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
   });
   const { startEditedPlayback, stopEditedPlayback, isPlaying } = useEditedPlayback({
     audioRef,
+    ttsAudioRef,
     onHighlight: () => {
       const index = findActiveIndex();
       setActiveIndex(index);
@@ -162,10 +178,18 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
   /**
    * Handle seek to specific time or start edited playback
    * If content has been edited (reordered/deleted), use edited playback
+   * If segment has TTS audio, play the TTS audio instead
    */
   const handleSeek = useCallback(
-    (time: number, renderIndex?: number) => {
+    (time: number, renderIndex?: number, originalIndex?: number) => {
       if (!audioRef.current) return;
+
+      // Check if this segment has TTS audio
+      if (originalIndex !== undefined && ttsAudioMap[originalIndex] && ttsAudioRef.current) {
+        ttsAudioRef.current.src = ttsAudioMap[originalIndex];
+        ttsAudioRef.current.play().catch(() => {});
+        return;
+      }
 
       // If edited and we have a valid render index, use edited playback
       if (hasEdited && renderIndex !== undefined && renderIndex >= 0) {
@@ -180,7 +204,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
       }
       highlightNow();
     },
-    [audioRef, highlightNow, hasEdited, startEditedPlayback]
+    [audioRef, highlightNow, hasEdited, startEditedPlayback, ttsAudioMap]
   );
 
   /**
@@ -194,15 +218,38 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
   );
 
   /**
-   * Handle context menu
+   * Handle context menu — pass both render index and original index
    */
   const handleContextMenu = useCallback(
-    (e: React.MouseEvent, index: number) => {
+    (e: React.MouseEvent, index: number, originalIndex?: number) => {
       e.preventDefault();
-      showContextMenu(e.clientX, e.clientY, index);
+      showContextMenu(e.clientX, e.clientY, index, originalIndex);
     },
     [showContextMenu]
   );
+
+  /**
+   * Handle inline edit confirm — update text and regenerate TTS
+   */
+  const handleInlineEditConfirm = useCallback(
+    async (newText: string, originalIndex: number) => {
+      setInlineEditIndex(null);
+      try {
+        await regenerateByIndex(originalIndex, newText);
+      } catch (error) {
+        console.error('[TTS] Inline edit regeneration failed:', error);
+        alert(`TTS 重生成失败: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+    [setInlineEditIndex, regenerateByIndex]
+  );
+
+  /**
+   * Handle inline edit cancel
+   */
+  const handleInlineEditCancel = useCallback(() => {
+    setInlineEditIndex(null);
+  }, [setInlineEditIndex]);
 
   /**
    * Handle right-click on speaker label to show context menu
@@ -470,6 +517,8 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
               onDragLeave={handleDragLeave}
               onDrop={(toIndex) => handleDrop(toIndex, stopEditedPlayback)}
               onContextMenu={handleContextMenu}
+              ttsAudioMap={ttsAudioMap}
+              ttsGeneratingMap={ttsGeneratingMap}
             />
           ))}
         </div>
@@ -491,6 +540,11 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
               onDragLeave={handleDragLeave}
               onDrop={(toIndex) => handleDrop(toIndex, stopEditedPlayback)}
               onContextMenu={handleContextMenu}
+              isInlineEditing={inlineEditIndex === idx}
+              onInlineEditConfirm={handleInlineEditConfirm}
+              onInlineEditCancel={handleInlineEditCancel}
+              hasTTSAudio={!!ttsAudioMap[activeComposition[idx]]}
+              isTTSGenerating={!!ttsGeneratingMap[activeComposition[idx]]}
             />
           ))}
         </div>
@@ -512,6 +566,11 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
               onDragLeave={handleDragLeave}
               onDrop={(toIndex) => handleDrop(toIndex, stopEditedPlayback)}
               onContextMenu={handleContextMenu}
+              isInlineEditing={inlineEditIndex === idx}
+              onInlineEditConfirm={handleInlineEditConfirm}
+              onInlineEditCancel={handleInlineEditCancel}
+              hasTTSAudio={!!ttsAudioMap[activeComposition[idx]]}
+              isTTSGenerating={!!ttsGeneratingMap[activeComposition[idx]]}
             />
           ))}
         </div>
@@ -566,6 +625,23 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
             {isCharEditMode ? '段落编辑' : '逐字编辑'}
           </button>
         )}
+
+        <button
+          onClick={undo}
+          disabled={!canUndo}
+          className="rounded border border-[var(--border-input)] bg-[var(--bg-button)] px-2 py-1 text-sm disabled:opacity-30 disabled:cursor-not-allowed"
+          title="撤回 (Ctrl+Z)"
+        >
+          ↶
+        </button>
+        <button
+          onClick={redo}
+          disabled={!canRedo}
+          className="rounded border border-[var(--border-input)] bg-[var(--bg-button)] px-2 py-1 text-sm disabled:opacity-30 disabled:cursor-not-allowed"
+          title="重做 (Ctrl+Shift+Z)"
+        >
+          ↷
+        </button>
 
         <button
           onClick={resetEdits}
@@ -682,6 +758,9 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
       <div className="rounded bg-[var(--bg-text-area)] p-4 text-[var(--text-primary)]">
         {renderContent()}
       </div>
+
+      {/* Hidden TTS audio element */}
+      <audio ref={ttsAudioRef} className="hidden" />
 
       {/* Speaker context menu */}
       {speakerMenu && (

@@ -12,3 +12,6 @@ export {
   deleteMaterial,
   formatFileSize
 } from './materialsService';
+
+export { generateTTS } from './ttsService';
+export type { TTSOptions, TTSResult, TTSSource } from './ttsService';
