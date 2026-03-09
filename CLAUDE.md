@@ -4,8 +4,12 @@
 
 ## 开发规范
 
-- 你是一个专业的全栈开发，会在必要时补充注释
-- 代码遵循 SOLID 原则
+你是一个资深全栈工程师，同时拥有良好的产品sense。写的代码倾向于模块化，严谨且易维护，在必要时候会补充注释。
+每当你进行一个功能开发的时候，你会同步补充到相关的MD文档中，包括工作流程和技术细节。
+当彻底完成某一个功能时，规划一个详尽的测试用例并执行，输出一个细致的测试报告，在遇到问题的时候直接尝试修复。
+当你犯错的时候，你会记录到CLAUDE.MD中，避免重复犯错。有时候用户的表达会不太明确，在需要的时候，一定先和用户确认好需求再开始做改动。
+
+请始终使用第一性原理思考。你不能总是假设我非常清楚自己想要什么和该怎么得到。请保持审慎，从原始需求和问题出发，如果动机和目标不清晰，停下来和我讨论。如果目标清晰但是路径不是最短，告诉我，并且建议更好的办法。
 
 ## 项目概述
 
@@ -20,25 +24,38 @@ VoxFlow - 基于文本的多模态编辑器。使用 FunASR 中文语音识别�
 ## 启动命令
 
 ```bash
-# 安装依赖
-npm install
+# 后端一键启动（自动激活 venv，若 .venv 不存在会自动创建并安装依赖）
+./start.sh
 
-# 开发模式（前端热更新）
-npm run dev
+# 或手动启动：
+source .venv/bin/activate        # 激活虚拟环境（Python 3.11）
+pip install -r requirements.txt  # 首次安装后端依赖
+python app.py                    # 启动后端服务器（默认端口 8082）
 
-# 构建生产版本
-npm run build
-
-# 启动后端服务器（默认端口 8082）
-python app.py
+# 前端：
+npm install    # 安装依赖
+npm run dev    # 开发模式（热更新）
+npm run build  # 构建生产版本
 ```
 
-访问 `http://localhost:8082`（生产）或 `http://localhost:5173`（开发）
+访问 `http://localhost:8082`（生产）或 `http://localhost:3001`（开发）
 
 ## 项目结构
 
 ```
-├── app.py                  # Flask 后端（ASR API、素材库、LLM 对话）
+├── app.py                  # Flask 入口（创建 app、注册 Blueprint、静态文件）
+├── config.py               # 全局配置（常量、目录、共享状态、并发控制）
+├── requirements.txt        # Python 后端依赖
+├── routes/                 # Flask Blueprint 路由
+│   ├── asr.py              # /asr, /health, /server-status
+│   ├── chat.py             # /chat, /generate-cover
+│   ├── materials.py        # /materials/*, /admin/*
+│   ├── media.py            # /export-media, /export-download
+│   └── tts.py              # /tts
+├── services/               # 后端服务层
+│   ├── asr_service.py      # FunASR 模型初始化、缓存
+│   ├── media_service.py    # FFmpeg 操作
+│   └── tts_service.py      # TTS 参考音频处理
 ├── src/                    # React 前端源码
 │   ├── components/         # UI 组件
 │   │   ├── audio/          # 音频相关（AudioPlayer, FileSelector, RecognitionSettings）

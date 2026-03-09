@@ -1,0 +1,22 @@
+# VoxFlow - 基于文本的多模态编辑器
+# Python 3.11 required (funasr/torch compatibility)
+
+# === Web 框架 ===
+flask==3.1.2
+flask-cors==6.0.1
+
+# === AI/ML ===
+funasr==1.2.7
+torch==2.9.1
+torchaudio==2.9.1
+openai==2.14.0
+
+# === funasr 核心依赖 ===
+modelscope>=1.32.0
+soundfile>=0.12.1
+librosa>=0.10.2
+sentencepiece>=0.2.1
+
+# === 工具 ===
+requests>=2.32.0
+gunicorn>=24.1.1
