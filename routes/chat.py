@@ -5,17 +5,16 @@ import json
 import openai
 from flask import Blueprint, request, jsonify, Response
 
-from config import LLM_API_KEY, LLM_BASE_URL, IMAGE_API_KEY
+from config import LLM_BASE_URL, IMAGE_API_KEY
+from utils.llm import get_client
 
 chat_bp = Blueprint('chat', __name__)
 
-# 模块级初始化 LLM 客户端
-llm_client = openai.OpenAI(
-    base_url=LLM_BASE_URL,
-    api_key=LLM_API_KEY,
-)
+# Gemini LLM 客户端（延迟初始化单例）
+def _get_llm():
+    return get_client()
 
-# 图像生成客户端
+# 图像生成客户端（封面生成仍用 OpenAI SDK + nano-banana-pro）
 image_client = openai.OpenAI(
     base_url=LLM_BASE_URL,
     api_key=IMAGE_API_KEY,
@@ -46,19 +45,16 @@ def chat():
         if not any(m.get('role') == 'system' for m in messages):
             messages.insert(0, {"role": "system", "content": "你是一个有帮助的助手。"})
 
+        llm = _get_llm()
+
         if stream:
             def generate():
                 try:
-                    response = llm_client.chat.completions.create(
-                        model="deepseek-r1",
-                        messages=messages,
-                        stream=True
-                    )
-                    for chunk in response:
-                        if chunk.choices[0].delta.content:
-                            yield f"data: {json.dumps({'content': chunk.choices[0].delta.content}, ensure_ascii=False)}\n\n"
-                        if hasattr(chunk.choices[0].delta, 'reasoning_content') and chunk.choices[0].delta.reasoning_content:
-                            yield f"data: {json.dumps({'reasoning': chunk.choices[0].delta.reasoning_content}, ensure_ascii=False)}\n\n"
+                    for chunk in llm.chat_stream(messages):
+                        if chunk["type"] == "text":
+                            yield f"data: {json.dumps({'content': chunk['content']}, ensure_ascii=False)}\n\n"
+                        elif chunk["type"] == "thinking":
+                            yield f"data: {json.dumps({'reasoning': chunk['content']}, ensure_ascii=False)}\n\n"
                 except Exception as e:
                     print(f"Stream error: {str(e)}")
                     yield f"data: {json.dumps({'content': f'[错误: {str(e)}]'}, ensure_ascii=False)}\n\n"
@@ -67,16 +63,8 @@ def chat():
 
             return Response(generate(), mimetype='text/event-stream')
         else:
-            response = llm_client.chat.completions.create(
-                model="deepseek-r1",
-                messages=messages
-            )
-            result = {
-                "content": response.choices[0].message.content,
-            }
-            if hasattr(response.choices[0].message, 'reasoning_content'):
-                result["reasoning"] = response.choices[0].message.reasoning_content
-            return jsonify(result)
+            result_text = llm.chat(messages)
+            return jsonify({"content": result_text})
 
     except Exception as e:
         print(f"Chat error: {str(e)}")

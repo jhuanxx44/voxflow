@@ -3,6 +3,9 @@
 """
 import os
 import threading
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ====== 目录配置 ======
 
@@ -34,8 +37,9 @@ TTS_UPLOAD_ENABLED = True
 
 # ====== LLM 配置 ======
 
-LLM_API_KEY = "***REMOVED***"
-LLM_BASE_URL = "http://llmapi.bilibili.co/v1"
+LLM_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+LLM_BASE_URL = os.environ.get("OPENAI_BASE_URL", "http://llmapi.bilibili.co/v1")
+LLM_MODEL = os.environ.get("OPENAI_MODEL", "gemini-3.1-pro")
 IMAGE_API_KEY = "***REMOVED***"
 
 # ====== 共享可变状态 ======
