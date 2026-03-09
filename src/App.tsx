@@ -40,7 +40,7 @@ function App() {
   // Stores
   const { isRecognizing, currentFile, currentMaterial } = useASRStore();
   const hasAudioSource = currentFile !== null || currentMaterial !== null;
-  const { lastSegments } = useEditorStore();
+  const { lastSegments, isCharEditMode, setInlineEditIndex } = useEditorStore();
 
   // Debug: log lastSegments
   useEffect(() => {
@@ -83,6 +83,24 @@ function App() {
     }
   }, []);
 
+  // Global undo/redo keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (!mod) return;
+
+      if (e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        useEditorStore.getState().undo();
+      } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
+        e.preventDefault();
+        useEditorStore.getState().redo();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   /**
    * Handle recognition button click
    */
@@ -100,7 +118,7 @@ function App() {
   const getContextMenuItems = useCallback(() => {
     if (contextMenu === null) return [];
 
-    return [
+    const items = [
       {
         label: '删除此句',
         onClick: () => {
@@ -109,7 +127,20 @@ function App() {
         danger: true,
       },
     ];
-  }, [contextMenu, deleteAtPosition]);
+
+    // "编辑并重生成 (TTS)" — only in segment edit mode (not char edit mode)
+    if (!isCharEditMode) {
+      items.push({
+        label: '编辑并重生成 (TTS)',
+        onClick: () => {
+          setInlineEditIndex(contextMenu.targetIndex);
+        },
+        danger: false,
+      });
+    }
+
+    return items;
+  }, [contextMenu, deleteAtPosition, isCharEditMode, setInlineEditIndex]);
 
   return (
     <div className="min-h-screen bg-[var(--bg-body)] text-[var(--text-primary)]">

@@ -7,6 +7,19 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import type { Segment, CharUnit, DisplayMode } from '@/types';
 
+/** Fields tracked by undo/redo history */
+interface UndoableState {
+  composition: number[];
+  charComposition: number[];
+  lastSegments: Segment[];
+  charLevelData: CharUnit[];
+  smartParagraphGroups: number[][];
+  isSmartParagraphManuallyEdited: boolean;
+  speakerNames: Record<number, string>;
+  speakerMerges: Record<number, number>;
+  hasEdited: boolean;
+}
+
 interface EditorState {
   // Recognition results
   lastFullText: string;
@@ -41,6 +54,17 @@ interface EditorState {
   // Drag state
   dragSrcIdx: number | null;
 
+  // TTS regeneration state
+  ttsAudioMap: Record<number, string>;      // segmentIndex → blob URL
+  ttsDurationMap: Record<number, number>;    // segmentIndex → duration ms
+  ttsGeneratingMap: Record<number, boolean>; // segmentIndex → generating?
+  inlineEditIndex: number | null;            // 当前内联编辑的 renderIndex
+
+  // Undo/Redo history (dual-stack)
+  _undoStack: UndoableState[];
+  _redoStack: UndoableState[];
+  _maxHistory: number;
+
   // Actions
   setRecognitionResult: (
     fullText: string,
@@ -70,6 +94,20 @@ interface EditorState {
   setSpeakerName: (speakerId: number, name: string) => void;
   mergeSpeaker: (fromSpkId: number, toSpkId: number) => void;
   getEffectiveSpeaker: (spkId: number) => number;
+
+  // Undo/Redo actions
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+
+  // TTS actions
+  setTTSAudio: (segmentIndex: number, blobUrl: string, durationMs?: number) => void;
+  removeTTSAudio: (segmentIndex: number) => void;
+  clearAllTTSAudio: () => void;
+  setTTSGenerating: (segmentIndex: number, generating: boolean) => void;
+  setInlineEditIndex: (index: number | null) => void;
+  replaceSegmentTextByIndex: (segmentIndex: number, newText: string) => void;
 }
 
 /**
@@ -85,8 +123,48 @@ export function getEffectiveSpeaker(
   return merges[spkId] ?? spkId;
 }
 
+/** Extract undoable fields from state as a plain snapshot */
+function takeSnapshot(state: EditorState): UndoableState {
+  return {
+    composition: [...state.composition],
+    charComposition: [...state.charComposition],
+    lastSegments: state.lastSegments.map((s) => ({ ...s })),
+    charLevelData: state.charLevelData.map((c) => ({ ...c })),
+    smartParagraphGroups: state.smartParagraphGroups.map((g) => [...g]),
+    isSmartParagraphManuallyEdited: state.isSmartParagraphManuallyEdited,
+    speakerNames: { ...state.speakerNames },
+    speakerMerges: { ...state.speakerMerges },
+    hasEdited: state.hasEdited,
+  };
+}
+
+/** Save current state to undo stack before a mutation (call inside immer's set callback) */
+function pushHistory(state: EditorState): void {
+  const snapshot = takeSnapshot(state);
+  state._undoStack.push(snapshot);
+  // Discard redo stack on new mutation
+  state._redoStack = [];
+  // Enforce max history limit
+  if (state._undoStack.length > state._maxHistory) {
+    state._undoStack = state._undoStack.slice(state._undoStack.length - state._maxHistory);
+  }
+}
+
+/** Restore a snapshot onto the current state (call inside immer's set callback) */
+function restoreSnapshot(state: EditorState, snapshot: UndoableState): void {
+  state.composition = snapshot.composition;
+  state.charComposition = snapshot.charComposition;
+  state.lastSegments = snapshot.lastSegments;
+  state.charLevelData = snapshot.charLevelData;
+  state.smartParagraphGroups = snapshot.smartParagraphGroups;
+  state.isSmartParagraphManuallyEdited = snapshot.isSmartParagraphManuallyEdited;
+  state.speakerNames = snapshot.speakerNames;
+  state.speakerMerges = snapshot.speakerMerges;
+  state.hasEdited = snapshot.hasEdited;
+}
+
 export const useEditorStore = create<EditorState>()(
-  immer((set) => ({
+  immer((set, get) => ({
     // Initial state
     lastFullText: '',
     lastSegments: [],
@@ -106,6 +184,17 @@ export const useEditorStore = create<EditorState>()(
     editedPlayPos: 0,
     dragSrcIdx: null,
 
+    // TTS state
+    ttsAudioMap: {},
+    ttsDurationMap: {},
+    ttsGeneratingMap: {},
+    inlineEditIndex: null,
+
+    // Undo/Redo state
+    _undoStack: [],
+    _redoStack: [],
+    _maxHistory: 50,
+
     // Actions
     setRecognitionResult: (fullText, segments, charLevelData = []) => {
       set((state) => {
@@ -118,14 +207,17 @@ export const useEditorStore = create<EditorState>()(
         state.editedPlaying = false;
         state.editedPlayPos = 0;
         state.isSmartParagraphManuallyEdited = false;
+        // Clear history on new recognition
+        state._undoStack = [];
+        state._redoStack = [];
       });
     },
 
     deleteAtPosition: (index) => {
       set((state) => {
+        pushHistory(state);
         state.composition = state.composition.filter((_, i) => i !== index);
         state.hasEdited = true;
-        // If in smart paragraph mode, mark as manually edited
         if (state.displayMode === 'smart-paragraph') {
           state.isSmartParagraphManuallyEdited = true;
         }
@@ -134,6 +226,7 @@ export const useEditorStore = create<EditorState>()(
 
     deleteCharAtPosition: (index) => {
       set((state) => {
+        pushHistory(state);
         state.charComposition = state.charComposition.filter(
           (_, i) => i !== index
         );
@@ -143,13 +236,12 @@ export const useEditorStore = create<EditorState>()(
 
     deleteMultiplePositions: (indices) => {
       set((state) => {
-        // 创建要删除的索引集合
+        pushHistory(state);
         const toDelete = new Set(indices);
         state.composition = state.composition.filter((_, i) => !toDelete.has(i));
         state.hasEdited = true;
         if (state.displayMode === 'smart-paragraph') {
           state.isSmartParagraphManuallyEdited = true;
-          // 重新计算段落分组
           state.smartParagraphGroups = [];
         }
       });
@@ -157,6 +249,7 @@ export const useEditorStore = create<EditorState>()(
 
     deleteMultipleCharPositions: (indices) => {
       set((state) => {
+        pushHistory(state);
         const toDelete = new Set(indices);
         state.charComposition = state.charComposition.filter((_, i) => !toDelete.has(i));
         state.hasEdited = true;
@@ -165,12 +258,12 @@ export const useEditorStore = create<EditorState>()(
 
     reorderComposition: (fromIndex, toIndex) => {
       set((state) => {
+        pushHistory(state);
         const newComposition = [...state.composition];
         const [removed] = newComposition.splice(fromIndex, 1);
         newComposition.splice(toIndex, 0, removed);
         state.composition = newComposition;
         state.hasEdited = true;
-        // If in smart paragraph mode, mark as manually edited
         if (state.displayMode === 'smart-paragraph') {
           state.isSmartParagraphManuallyEdited = true;
         }
@@ -204,7 +297,9 @@ export const useEditorStore = create<EditorState>()(
 
     resetEdits: () => {
       set((state) => {
-        // Reset composition arrays to original state
+        for (const url of Object.values(state.ttsAudioMap)) {
+          URL.revokeObjectURL(url);
+        }
         state.composition = state.lastSegments.map((_, i) => i);
         state.charComposition = state.charLevelData.map((_, i) => i);
         state.hasEdited = false;
@@ -212,17 +307,24 @@ export const useEditorStore = create<EditorState>()(
         state.editedPlayPos = 0;
         state.insertAfterIndex = null;
         state.isSmartParagraphManuallyEdited = false;
-        // Reset smart paragraph groups will be recalculated
         state.smartParagraphGroups = [];
-        // Reset speaker names and merges
         state.speakerNames = {};
         state.speakerMerges = {};
+        state.ttsAudioMap = {};
+        state.ttsDurationMap = {};
+        state.ttsGeneratingMap = {};
+        state.inlineEditIndex = null;
+        // Clear history on reset
+        state._undoStack = [];
+        state._redoStack = [];
       });
     },
 
     clearAll: () => {
       set((state) => {
-        // Clear all recognition results and editor state
+        for (const url of Object.values(state.ttsAudioMap)) {
+          URL.revokeObjectURL(url);
+        }
         state.lastFullText = '';
         state.lastSegments = [];
         state.charLevelData = [];
@@ -238,6 +340,13 @@ export const useEditorStore = create<EditorState>()(
         state.editedPlaying = false;
         state.editedPlayPos = 0;
         state.dragSrcIdx = null;
+        state.ttsAudioMap = {};
+        state.ttsDurationMap = {};
+        state.ttsGeneratingMap = {};
+        state.inlineEditIndex = null;
+        // Clear history on clearAll
+        state._undoStack = [];
+        state._redoStack = [];
       });
     },
 
@@ -287,6 +396,7 @@ export const useEditorStore = create<EditorState>()(
 
     deleteByText: (text) => {
       set((state) => {
+        pushHistory(state);
         // 去除末尾标点进行匹配
         const normalizedText = text
           .replace(/[。，、！？；：""''（）【】《》,.!?;:()[\]<>]+$/g, '')
@@ -336,6 +446,7 @@ export const useEditorStore = create<EditorState>()(
 
     replaceText: (oldText, newText) => {
       set((state) => {
+        pushHistory(state);
         // 不再规范化，直接使用原始文本进行部分匹配
         const searchText = oldText.trim();
         if (!searchText) {
@@ -421,10 +532,10 @@ export const useEditorStore = create<EditorState>()(
 
     setSpeakerName: (speakerId, name) => {
       set((state) => {
+        pushHistory(state);
         if (name.trim()) {
           state.speakerNames[speakerId] = name.trim();
         } else {
-          // Empty name removes the custom name
           delete state.speakerNames[speakerId];
         }
       });
@@ -432,6 +543,7 @@ export const useEditorStore = create<EditorState>()(
 
     mergeSpeaker: (fromSpkId, toSpkId) => {
       set((state) => {
+        pushHistory(state);
         // Update any existing merges that point to fromSpkId to point to toSpkId
         // This keeps the mapping flat (no chains)
         for (const key in state.speakerMerges) {
@@ -455,6 +567,92 @@ export const useEditorStore = create<EditorState>()(
       // This is a getter, we need to access state differently
       // Since immer doesn't support getters well, we'll handle this in components
       return spkId;
+    },
+
+    // TTS actions
+    setTTSAudio: (segmentIndex, blobUrl, durationMs) => {
+      set((state) => {
+        state.ttsAudioMap[segmentIndex] = blobUrl;
+        if (durationMs !== undefined) {
+          state.ttsDurationMap[segmentIndex] = durationMs;
+        }
+        state.ttsGeneratingMap[segmentIndex] = false;
+      });
+    },
+
+    removeTTSAudio: (segmentIndex) => {
+      set((state) => {
+        const url = state.ttsAudioMap[segmentIndex];
+        if (url) {
+          URL.revokeObjectURL(url);
+        }
+        delete state.ttsAudioMap[segmentIndex];
+        delete state.ttsDurationMap[segmentIndex];
+        delete state.ttsGeneratingMap[segmentIndex];
+      });
+    },
+
+    clearAllTTSAudio: () => {
+      set((state) => {
+        for (const url of Object.values(state.ttsAudioMap)) {
+          URL.revokeObjectURL(url);
+        }
+        state.ttsAudioMap = {};
+        state.ttsDurationMap = {};
+        state.ttsGeneratingMap = {};
+      });
+    },
+
+    setTTSGenerating: (segmentIndex, generating) => {
+      set((state) => {
+        state.ttsGeneratingMap[segmentIndex] = generating;
+      });
+    },
+
+    setInlineEditIndex: (index) => {
+      set((state) => {
+        state.inlineEditIndex = index;
+      });
+    },
+
+    replaceSegmentTextByIndex: (segmentIndex, newText) => {
+      set((state) => {
+        pushHistory(state);
+        if (segmentIndex >= 0 && segmentIndex < state.lastSegments.length) {
+          state.lastSegments[segmentIndex].text = newText;
+        }
+      });
+    },
+
+    // Undo/Redo actions
+    undo: () => {
+      set((state) => {
+        if (state._undoStack.length === 0) return;
+        // Save current state to redo stack
+        state._redoStack.push(takeSnapshot(state));
+        // Pop from undo stack and restore
+        const snapshot = state._undoStack.pop()!;
+        restoreSnapshot(state, snapshot);
+      });
+    },
+
+    redo: () => {
+      set((state) => {
+        if (state._redoStack.length === 0) return;
+        // Save current state to undo stack
+        state._undoStack.push(takeSnapshot(state));
+        // Pop from redo stack and restore
+        const snapshot = state._redoStack.pop()!;
+        restoreSnapshot(state, snapshot);
+      });
+    },
+
+    canUndo: () => {
+      return get()._undoStack.length > 0;
+    },
+
+    canRedo: () => {
+      return get()._redoStack.length > 0;
     },
   }))
 );
