@@ -14,11 +14,24 @@ chat_bp = Blueprint('chat', __name__)
 def _get_llm():
     return get_client()
 
-# 图像生成客户端（封面生成仍用 OpenAI SDK + nano-banana-pro）
-image_client = openai.OpenAI(
-    base_url=LLM_BASE_URL,
-    api_key=IMAGE_API_KEY,
-)
+
+# 图像生成客户端（封面生成用 OpenAI SDK + nano-banana-pro，惰性初始化）
+_image_client = None
+
+
+def _get_image_client():
+    """获取图像生成客户端（需要 bsk- 前缀 key）"""
+    global _image_client
+    if _image_client is None:
+        if not IMAGE_API_KEY:
+            raise ValueError("IMAGE_API_KEY 未设置，请在 .env 中配置（bsk- 前缀 key）")
+        if not LLM_BASE_URL:
+            raise ValueError("LLM_BASE_URL 未设置，请在 .env 中配置")
+        _image_client = openai.OpenAI(
+            base_url=LLM_BASE_URL,
+            api_key=IMAGE_API_KEY,
+        )
+    return _image_client
 
 # 封面风格提示词映射
 COVER_STYLE_PROMPTS = {
@@ -90,7 +103,7 @@ def generate_cover():
         print(f"[Cover] Generating cover with style: {style}")
         print(f"[Cover] Prompt: {final_prompt[:200]}...")
 
-        response = image_client.chat.completions.create(
+        response = _get_image_client().chat.completions.create(
             model="nano-banana-pro",
             messages=[
                 {"role": "system", "content": system_prompt},

@@ -173,4 +173,6 @@ COVER_STYLE_PROMPTS = {
 - `app.py` - 后端 API 集成代码
 - `llm examples/imageService.ts` - TypeScript 示例（注意响应处理差异）
 - `llm examples/aiClient.ts` - API 客户端配置示例
-- `llm examples/api-key.txt` - API Key 示例（bsk- 前缀）
+- `.env.example` - 环境变量模板（所有 API Key / Base URL 统一在此配置，复制为 `.env` 使用）
+
+> 注意：API Key 不再硬编码在代码或示例文件中，统一从 `.env` 读取（见 `config.py`）。

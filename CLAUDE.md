@@ -24,6 +24,9 @@ VoxFlow - 基于文本的多模态编辑器。使用 FunASR 中文语音识别�
 ## 启动命令
 
 ```bash
+# 首次使用：复制环境变量模板并填写 API Key / 服务地址
+cp .env.example .env
+
 # 后端一键启动（自动激活 venv，若 .venv 不存在会自动创建并安装依赖）
 ./start.sh
 
@@ -39,6 +42,8 @@ npm run build  # 构建生产版本
 ```
 
 访问 `http://localhost:8082`（生产）或 `http://localhost:3001`（开发）
+
+> 所有密钥与外部服务地址统一从 `.env` 读取（`config.py` 负责加载），禁止在代码中硬编码。
 
 ## 项目结构
 
@@ -143,7 +148,7 @@ npm run build  # 构建生产版本
 - `~/` 路径需使用 `os.path.expanduser()` 展开
 - 视频音频提取输出到 `/tmp` 目录，避免污染素材库
 - LLM 对话使用 SSE 流式响应，前端有 60 秒超时保护
-- 管理员密码硬编码在 `app.py` 中（`ADMIN_PASSWORD`）
+- 管理员密码、API Key、服务地址等敏感配置统一放在 `.env`（参考 `.env.example`），由 `config.py` 读取
 - **新增后端 API 时，必须同时更新 `vite.config.js` 的 proxy 配置**，否则开发模式下前端请求会返回 404（Vite 开发服务器不认识未配置的路由）
 
 ## 延伸阅读

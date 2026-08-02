@@ -44,12 +44,18 @@
 ### 安装依赖
 
 ```bash
+# 配置环境变量（API Key / 服务地址，模板见 .env.example）
+cp .env.example .env
+
 # 前端依赖
 npm install
 
-# Python 依赖（建议使用虚拟环境）
+# Python 依赖（建议使用虚拟环境，Python 3.11）
 pip install flask funasr modelscope
 ```
+
+> 所有密钥与外部服务地址（LLM、图像生成、TTS）统一在 `.env` 中配置，
+> `.env` 已被 `.gitignore` 忽略，请勿提交。
 
 ### 启动服务
 

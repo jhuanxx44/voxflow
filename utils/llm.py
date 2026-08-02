@@ -2,13 +2,14 @@
 Gemini LLM 客户端封装（同步版本，适配 Flask）
 基于 pptgenaiserver/utils/llm.py 简化，去掉多模态和 Token 统计
 """
-import os
 import time
 from typing import List, Optional, Generator
 
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+
+from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 
 load_dotenv()
 
@@ -36,13 +37,15 @@ class GeminiClient:
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
     ):
-        self.model = model or os.environ.get("OPENAI_MODEL", "gemini-3.1-pro")
+        self.model = model or LLM_MODEL or "gemini-3.1-pro"
 
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
+        self.api_key = api_key or LLM_API_KEY
         if not self.api_key:
-            raise ValueError("API 密钥未设置，请提供 api_key 参数或设置 OPENAI_API_KEY 环境变量")
+            raise ValueError("API 密钥未设置，请在 .env 中配置 LLM_API_KEY（personal- 前缀 key）")
 
-        self.base_url = base_url or os.environ.get("OPENAI_BASE_URL", "")
+        self.base_url = base_url or LLM_BASE_URL
+        if not self.base_url:
+            raise ValueError("LLM 服务地址未设置，请在 .env 中配置 LLM_BASE_URL")
 
         self.client = genai.Client(
             api_key=self.api_key,
