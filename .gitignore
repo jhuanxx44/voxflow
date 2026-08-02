@@ -11,3 +11,9 @@ __pycache__/
 # Python venv
 .venv/
 .vite.log
+
+# 环境变量（含 API Key）
+.env
+
+# 本地数据/素材
+data/
