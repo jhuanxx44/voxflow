@@ -20,7 +20,7 @@ _image_client = None
 
 
 def _get_image_client():
-    """获取图像生成客户端"""
+    """获取图像生成客户端。"""
     global _image_client
     if _image_client is None:
         if not IMAGE_API_KEY:
@@ -86,7 +86,7 @@ def chat():
 
 @chat_bp.route('/generate-cover', methods=['POST'])
 def generate_cover():
-    """生成视频封面图片 (使用 nano-banana-pro)"""
+    """使用已配置的图像模型生成视频封面。"""
     try:
         data = request.get_json()
         prompt = data.get('prompt', '')

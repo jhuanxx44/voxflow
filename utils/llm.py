@@ -37,11 +37,11 @@ class GeminiClient:
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
     ):
-        self.model = model or LLM_MODEL or "gemini-3.1-pro"
+        self.model = model or LLM_MODEL or "gemini-2.5-flash"
 
         self.api_key = api_key or LLM_API_KEY
         if not self.api_key:
-            raise ValueError("API 密钥未设置，请在 .env 中配置 LLM_API_KEY（personal- 前缀 key）")
+            raise ValueError("API 密钥未设置，请在 .env 中配置 LLM_API_KEY")
 
         self.base_url = base_url or LLM_BASE_URL
         if not self.base_url:
