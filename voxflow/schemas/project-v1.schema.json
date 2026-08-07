@@ -1,0 +1,257 @@
+{
+  "$defs": {
+    "MediaInfo": {
+      "additionalProperties": false,
+      "properties": {
+        "audio_codec": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Audio Codec"
+        },
+        "duration_ms": {
+          "minimum": 0,
+          "title": "Duration Ms",
+          "type": "integer"
+        },
+        "format_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format Name"
+        },
+        "has_audio": {
+          "title": "Has Audio",
+          "type": "boolean"
+        },
+        "has_video": {
+          "title": "Has Video",
+          "type": "boolean"
+        },
+        "height": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Height"
+        },
+        "video_codec": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Video Codec"
+        },
+        "width": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Width"
+        }
+      },
+      "required": [
+        "duration_ms",
+        "has_video",
+        "has_audio"
+      ],
+      "title": "MediaInfo",
+      "type": "object"
+    },
+    "SourceMedia": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "managed_path": {
+          "title": "Managed Path",
+          "type": "string"
+        },
+        "media": {
+          "$ref": "#/$defs/MediaInfo"
+        },
+        "original_name": {
+          "title": "Original Name",
+          "type": "string"
+        },
+        "reference_source": {
+          "default": false,
+          "title": "Reference Source",
+          "type": "boolean"
+        },
+        "sha256": {
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "original_name",
+        "managed_path",
+        "sha256",
+        "media"
+      ],
+      "title": "SourceMedia",
+      "type": "object"
+    },
+    "TranscriptStatus": {
+      "enum": [
+        "none",
+        "queued",
+        "running",
+        "ready",
+        "failed"
+      ],
+      "title": "TranscriptStatus",
+      "type": "string"
+    },
+    "TranscriptSummary": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "job_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Job Id"
+        },
+        "language": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Language"
+        },
+        "model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Model"
+        },
+        "segment_count": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Segment Count",
+          "type": "integer"
+        },
+        "status": {
+          "$ref": "#/$defs/TranscriptStatus",
+          "default": "none"
+        }
+      },
+      "title": "TranscriptSummary",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "name": {
+      "title": "Name",
+      "type": "string"
+    },
+    "revision": {
+      "default": 0,
+      "minimum": 0,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source": {
+      "$ref": "#/$defs/SourceMedia"
+    },
+    "timeline_revision_path": {
+      "default": "revisions/000000.json",
+      "title": "Timeline Revision Path",
+      "type": "string"
+    },
+    "transcript": {
+      "$ref": "#/$defs/TranscriptSummary"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "source"
+  ],
+  "title": "Project",
+  "type": "object"
+}
