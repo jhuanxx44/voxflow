@@ -12,8 +12,9 @@ Audit date: 2026-08-07
 - The tracked working tree contains no `.env`, private key file, runtime
   `result/` or `data/` file, known high-confidence credential pattern, or
   organization-private service hostname.
-- Python base runtime dependencies and JavaScript production dependencies have
-  no known vulnerability in the lockfiles at the time of this audit.
+- JavaScript production dependencies and all Python dependencies other than the
+  two time-bounded PyTorch acceptances below have no known vulnerability in the
+  lockfiles at the time of this audit.
 - The local Web development server now defaults to loopback-only networking and
   an explicit loopback CORS allowlist.
 
@@ -24,6 +25,36 @@ python scripts/check_public_repo.py
 ```
 
 CI additionally runs Gitleaks, CodeQL, pip-audit, npm audit, and Dependabot.
+
+## Time-bounded PyTorch risk acceptance
+
+The optional `asr-local` extra currently pins the latest installable matched
+pair, PyTorch/Torchaudio 2.10.0. Two upstream PyTorch advisories cannot be
+resolved by an available matched release as of the audit date:
+
+| Advisory | Trigger | Current disposition |
+|---|---|---|
+| `PYSEC-2025-194` / `GHSA-rrmf-rvhw-rf47` | local `torch.jit.script` memory corruption | VoxFlow and the installed FunASR code do not call this API; patched Torch 2.13 has no matching published Torchaudio package |
+| `PYSEC-2026-139` | local PT2 loading-handler deserialization | upstream has not published a fixed version |
+
+These IDs are explicitly ignored by the CI pip-audit command so every other
+dependency remains blocking. They are not described as fixed or absent.
+
+Risk controls:
+
+- PyTorch is not installed by the base, CLI-lite, or MCP-lite distributions;
+  it is confined to the optional local ASR provider.
+- VoxFlow accepts media input, not model paths; the configured FunASR model IDs
+  are fixed in source.
+- Automatic FunASR update checks are disabled, and the unused/misleading
+  `trust_remote_code` argument was removed.
+- Operators must treat the ModelScope model source and local model cache as
+  trusted executable/model supply-chain inputs. Do not replace cached model
+  files with untrusted downloads.
+
+Review deadline: 2026-09-07, or immediately when a compatible Torch/Torchaudio
+pair containing the upstream fixes is published. At that point remove both
+CI ignores and the corresponding Dependabot dismissals.
 
 ## History findings
 

@@ -13,6 +13,10 @@
 - M11 公开内容审计 228 files 通过、内部标记零命中。首次 pip-audit 卡在本机 uv Python 3.12 ensurepip 而非漏洞；npm audit 真实发现 PostCSS high advisory，正在升级锁定版本并重跑两端审计。
 - M11 依赖审计闭环：npm 0 vulnerabilities，pip-audit no known vulnerabilities；GitHub Dependabot alerts/security updates/private vulnerability reporting 已启用，secret scanning/push protection 保持开启。
 - M11 最终门全绿：70 tests、Ruff、mypy、229-file public audit、TypeScript、Vite build、npm audit 0、pip-audit 0；准备独立提交并 push 后观察 V1/Security workflows。
+- M11 已提交并 push `0df5fa6 security: harden the public repository`。Dependabot 随后显示 npm 12 alerts 均 fixed，但全 extras 中 Flask/Torch/pytest 仍有 7 open；安全模块恢复 in-progress，开始约束升级与全 extras 审计补救。
+- Flask 3.1.3、pytest 9.1.1、Torch/Torchaudio 2.10.0 已同步；70 tests/Ruff/mypy/public audit/TypeScript/Vite 全绿。全 extras pip-audit 首次只因 PyPI read timeout 退出，切换 OSV batch service 后继续。
+- OSV 全 extras 剩两条 Torch 本地漏洞：一条修复版 2.13 无匹配 Torchaudio，另一条 upstream 无修复。已建立精确 ID、触发面、控制措施与 2026-09-07 到期复核的 accepted-risk；CI 只忽略这两个 ID，其余漏洞继续阻塞。
+- M11 remediation 最终验证：Torch 2.10 真实 FunASR→MCP→edit→export 成功；70 tests/Ruff/mypy/public audit 全绿；全 extras pip-audit 为 0 known + 2 documented ignores。准备补救提交并 push，随后复核 Dependabot 状态。
 
 ## 2026-08-07 Phase 9 发布加固
 

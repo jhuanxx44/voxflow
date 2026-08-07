@@ -26,6 +26,8 @@ M12 可重复 Web E2E
 - [x] 增加自动 secret/dependency/security 检查
 - [x] 审计 Git 历史；不在未授权下 force-rewrite 公共历史
 - [x] 启用 GitHub alerts、automated fixes 与 private reporting
+- [x] 修复 push 后暴露的 Flask/pytest/Torch 可修 alerts
+- [x] 对两条 upstream 无可用组合的 Torch 风险建立精确、到期的 acceptance
 - [x] 独立 commit + push
 - **Status:** complete
 
@@ -193,6 +195,9 @@ M12 可重复 Web E2E
 | M11 公开内容审计把工作树已删除但 index 尚未 staged 的旧文档当作不可读文件 | 1 | 扫描目标改为拟提交工作树；明确跳过不存在的待删除路径，再重跑敏感内容检查 |
 | M11 首次 Python dependency audit 在 uv Python 3.12 临时 venv `ensurepip` SIGABRT | 1 | 不是漏洞结果；锁文件已含传递依赖，改用 Python 3.11 + `--no-deps --disable-pip` 直接审计 pinned requirements |
 | M11 npm audit 报告 PostCSS 1 个 high advisory | 1 | 在现有 semver 范围内运行标准 `npm audit fix` 更新锁定版本，随后重跑 production audit |
+| M11 首次 security workflow 依赖导出只覆盖 base，push 后 Dependabot 暴露 Flask/Torch/pytest 7 个 open alerts | 1 | npm 12 条已自动 fixed；Python 门改为 `--all-extras`，升级到 advisory 首个 patched 版本并补 remediation commit |
+| M11 直接锁定 Torch/Torchaudio 2.13.0 无解：PyPI 尚无 torchaudio 2.13.0 | 1 | 不重复解析；读取 advisory 影响条件，先升当前成对可用版本，对未发布修复仅在确认风险边界后做有证据暂缓 |
+| M11 全 extras pip-audit 逐包访问 PyPI 时 read timeout | 1 | 测试/构建已通过且无漏洞结果；改用 pip-audit OSV batch service 审计相同完整 pinned set，降低网络请求次数 |
 | Phase 9 计划更新 patch 上下文未匹配 | 1 | 重新读取精确段落，按现有 Markdown 的 `- **Status:**` 形式重做定向 patch |
 | Phase 9 首次 lint 停在 import 排序与嵌套 context manager | 1 | 使用定向 patch 调整 Runtime import 顺序，并合并 telemetry 的两个上下文管理器 |
 | Phase 9 首次 mypy 发现 cleanup 局部变量类型被前序循环收窄 | 1 | 将删除阶段变量改为独立名称，避免 `artifact_id: str` 与 `Any | None` 复用 |

@@ -17,6 +17,13 @@
 - Flask 当前 `CORS(app)` 全开放且开发入口绑定 `0.0.0.0`。VoxFlow 没有多租户认证边界，公开安全默认应为 `127.0.0.1` + loopback origins；需要局域网访问时由 `VOXFLOW_WEB_HOST`/`VOXFLOW_CORS_ORIGINS` 显式 opt-in。
 - M11 dependency audit：npm 原锁定 PostCSS 命中 1 个 high advisory，标准 audit fix 后 production tree 为 0 vulnerabilities；Python base runtime pinned requirements 经 pip-audit 为 no known vulnerabilities。CI 使用 Python 3.11 + `--no-deps --disable-pip`，避免本机 uv Python 3.12 ensurepip 崩溃且仍逐项审计完整 pinned transitive set。
 - GitHub repository settings 已成功启用 Dependabot vulnerability alerts、automated security fixes 和 private vulnerability reporting；secret scanning/push protection 原本已开启。内部非 provider pattern/validity checks 当前平台仍显示 disabled，不影响提交侧 Gitleaks 和自有 hygiene gate。
+- Push 后 Dependabot 的 19 条提示中，npm 12 条已被锁文件升级自动 fixed；open 为 Flask×2、pytest×1、Torch×4（同一 direct/lock dependency 重复）。Flask 3.1.3 与 pytest 9.0.3 有可用修复。Torch `lstm_cell` 修复在 2.10.0；`torch.jit.script` 修复标为 2.13.0，但当前没有配套 torchaudio 2.13.0，依赖不可解析。
+- VoxFlow 自有代码不调用 `torch.jit.script`、`torch.lstm_cell`、`torch.load` 或 pickle；Torch 只由受信任的本地 FunASR/ModelScope provider 加载。先升级可用的 Torch/Torchaudio 2.10 pair；剩余 JIT advisory 若 PyPI 仍无修复组合，可按“仅本地攻击、代码路径不使用、等待 upstream 配套发布”暂缓并设复核条件。
+- OSV 全 extras 实测在 Torch 2.10 剩 2 条：`PYSEC-2025-194` 为本地触发 `torch.jit.script` memory corruption（自有/FunASR扫描均无调用）；`PYSEC-2026-139` 为 PT2 loading deserialization、只可本地触发且 upstream PR 尚未发布修复。FunASR/ModelScope 当前代码扫描未发现对应 API，但模型反序列化仍要求只使用受信任模型源与缓存。
+- 这两条不能伪装成“零漏洞”：应在 CI 以精确 ID ignore、在安全审计写明 accepted-risk/复核日期/升级条件，并在 GitHub Dependabot 上用 `tolerable_risk` + 证据 comment 暂缓；其余 Flask/pytest/lstm advisory 通过可用版本真实修复。
+- ASR adapter 的模型 ID 是代码内固定的官方 `iic/...`，外部用户不能通过 CLI/Web 请求注入任意模型路径；但当前两套 FunASR 初始化都设置 `trust_remote_code=True`，所以本地模型缓存和上游模型源必须视为受信任代码供应链，而非普通媒体输入。Torch deserialization accepted-risk 文档必须明确这点，不能泛称完全无触发面。
+- 进一步检查 FunASR 1.2.7 源码：`trust_remote_code` 没有任何读取点，缓存模型目录也无远程 `.py`；该参数只是误导性遗留，应删除。真正供应链风险是 FunASR 的 `model_revision`/VAD/punc/spk revisions 默认 `master`，需要从已验证缓存元数据找到可复现 revision 或至少记录 model source/禁用自动更新边界。
+- 本机缓存 `.mv` 显示四个 ModelScope 模型均来自 `master`，`.msc` 为 ModelScope 自有二进制缓存元数据；当前没有可直接复用的仓库 commit pin。M11 先删除无效 `trust_remote_code`、保持 FunASR `disable_update=True`、固定模型 ID，并把模型源/缓存列为信任边界；精确 revision pin 作为后续供应链增强而非伪造未知 tag。
 
 ## 2026-08-07 完整本地 V1 续作
 
