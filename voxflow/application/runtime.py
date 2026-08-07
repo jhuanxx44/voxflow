@@ -8,6 +8,7 @@ from voxflow.application.edits import EditService
 from voxflow.application.exports import ExportService
 from voxflow.application.jobs import JobService
 from voxflow.application.projects import ProjectService
+from voxflow.application.speech import SpeechService
 from voxflow.application.transcripts import TranscriptService
 from voxflow.infrastructure.catalog import Catalog
 from voxflow.infrastructure.project_store import ProjectStore
@@ -24,6 +25,7 @@ class Runtime:
     edits: EditService
     jobs: JobService
     exports: ExportService
+    speech: SpeechService
 
     @classmethod
     def create(cls, settings: Settings | None = None) -> Runtime:
@@ -42,4 +44,5 @@ class Runtime:
             edits=EditService(store),
             jobs=jobs,
             exports=ExportService(store, jobs, catalog),
+            speech=SpeechService(store, jobs, catalog),
         )

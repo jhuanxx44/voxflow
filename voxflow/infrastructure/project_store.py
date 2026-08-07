@@ -115,6 +115,7 @@ class ProjectStore:
         (temporary_directory / "source").mkdir(parents=True)
         (temporary_directory / "revisions").mkdir()
         (temporary_directory / "exports").mkdir()
+        (temporary_directory / "replacements").mkdir()
         (temporary_directory / "artifacts").mkdir()
         (temporary_directory / "logs").mkdir()
 

@@ -38,7 +38,7 @@ class JobService:
         *,
         run_inline: bool | None = None,
     ) -> Job:
-        if kind not in {"transcribe", "export"}:
+        if kind not in {"transcribe", "export", "speech_replace"}:
             raise ValidationError("Unsupported job kind", details={"kind": kind})
         if kind == "transcribe":
             model = request.get("model", "advanced")
@@ -49,11 +49,13 @@ class JobService:
                 )
             if len(str(request.get("hotwords", ""))) > 20_000:
                 raise ValidationError("ASR hotwords exceed the 20000 character limit")
+        if kind == "speech_replace" and not str(request.get("text", "")).strip():
+            raise ValidationError("Speech replacement text cannot be empty")
         job_id = new_job_id()
         log_path = self.settings.jobs_dir / f"{job_id}.log"
         job = Job(
             id=job_id,
-            kind=cast(Literal["transcribe", "export"], kind),
+            kind=cast(Literal["transcribe", "export", "speech_replace"], kind),
             project_id=project_id,
             request=request,
             log_path=str(log_path),

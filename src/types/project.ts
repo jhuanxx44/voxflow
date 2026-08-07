@@ -65,6 +65,11 @@ export interface TimelineClipV1 {
   speaker_id: string | null;
   token_ids: string[];
   replacement_artifact_id: string | null;
+  replacement_duration_ms: number | null;
+  render_duration_ms: number | null;
+  duration_policy: SpeechDurationPolicy | null;
+  stretch_ratio: number | null;
+  replacement_warnings: string[];
 }
 
 export interface TimelineV1 {
@@ -87,7 +92,7 @@ export interface TranscriptV1 {
 
 export interface JobV1 {
   id: string;
-  kind: 'transcribe' | 'export';
+  kind: 'transcribe' | 'export' | 'speech_replace';
   project_id: string;
   status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'interrupted';
   progress: number;
@@ -124,7 +129,48 @@ export type EditOperationV1 =
       op: 'merge_speakers';
       from_speaker_id: string;
       to_speaker_id: string;
+    }
+  | {
+      op: 'attach_speech_replacement';
+      clip_id: string;
+      artifact_id: string;
+      clip_fingerprint: string;
+      text: string;
+      duration_policy: SpeechDurationPolicy;
+      replacement_duration_ms: number;
+      render_duration_ms: number;
+      stretch_ratio: number;
     };
+
+export type SpeechDurationPolicy = 'natural' | 'fit_source' | 'pad_or_trim';
+
+export type AttachSpeechReplacementV1 = Extract<
+  EditOperationV1,
+  { op: 'attach_speech_replacement' }
+>;
+
+export interface EditPreviewV1 {
+  project_id: string;
+  timeline: TimelineV1;
+  diff: {
+    base_revision: number;
+    result_revision: number;
+    duration_before_ms: number;
+    duration_after_ms: number;
+    duration_delta_ms: number;
+    warnings: string[];
+  };
+}
+
+export interface SpeechReplacementCandidateV1 {
+  artifactId: string;
+  previewUrl: string;
+  durationMs: number;
+  baseRevision: number;
+  operation: AttachSpeechReplacementV1;
+  warnings: string[];
+  safeStretch: boolean;
+}
 
 export interface ProjectEditorSnapshot {
   project: ProjectV1;

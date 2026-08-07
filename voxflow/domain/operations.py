@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Annotated, Literal, TypeAlias
 
 from pydantic import Field
@@ -67,6 +69,18 @@ class MergeSpeakers(StrictModel):
     to_speaker_id: str
 
 
+class AttachSpeechReplacement(StrictModel):
+    op: Literal["attach_speech_replacement"]
+    clip_id: str
+    artifact_id: str
+    clip_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+    text: str = Field(min_length=1)
+    duration_policy: Literal["natural", "fit_source", "pad_or_trim"]
+    replacement_duration_ms: int = Field(gt=0)
+    render_duration_ms: int = Field(gt=0)
+    stretch_ratio: float = Field(gt=0)
+
+
 EditOperation: TypeAlias = Annotated[
     DeleteClips
     | DeleteRanges
@@ -75,7 +89,8 @@ EditOperation: TypeAlias = Annotated[
     | SplitClip
     | CorrectTranscript
     | RenameSpeaker
-    | MergeSpeakers,
+    | MergeSpeakers
+    | AttachSpeechReplacement,
     Field(discriminator="op"),
 ]
 
@@ -130,6 +145,23 @@ def validate_timeline_invariants(timeline: TimelineRevision, *, allow_empty: boo
                 )
             visited.add(current)
             current = timeline.speaker_merges[current]
+
+
+def clip_fingerprint(clip: TimelineClip) -> str:
+    """Fingerprint the semantic clip content that a TTS candidate replaces."""
+    payload = {
+        "id": clip.id,
+        "kind": clip.kind,
+        "source_segment_id": clip.source_segment_id,
+        "source_in_ms": clip.source_in_ms,
+        "source_out_ms": clip.source_out_ms,
+        "transcript_text": clip.transcript_text,
+        "speaker_id": clip.speaker_id,
+        "token_ids": clip.token_ids,
+        "replacement_artifact_id": clip.replacement_artifact_id,
+    }
+    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode()).hexdigest()
 
 
 def _clip_index(timeline: TimelineRevision, clip_id: str) -> int:
@@ -386,6 +418,29 @@ def reduce_edit_plan(
                 if clip.speaker_id == operation.from_speaker_id:
                     clip.speaker_id = operation.to_speaker_id
                     changed.add(clip.id)
+
+        elif isinstance(operation, AttachSpeechReplacement):
+            index = _clip_index(result, operation.clip_id)
+            clip = result.clips[index]
+            if clip_fingerprint(clip) != operation.clip_fingerprint:
+                raise ValidationError(
+                    "Speech replacement candidate no longer matches the clip",
+                    details={"clip_id": operation.clip_id},
+                )
+            result.clips[index] = TimelineClip.model_validate(
+                {
+                    **clip.model_dump(mode="python"),
+                    "kind": "replacement",
+                    "replacement_artifact_id": operation.artifact_id,
+                    "replacement_duration_ms": operation.replacement_duration_ms,
+                    "render_duration_ms": operation.render_duration_ms,
+                    "duration_policy": operation.duration_policy,
+                    "stretch_ratio": operation.stretch_ratio,
+                    "transcript_text": operation.text,
+                    "replacement_warnings": [],
+                }
+            )
+            changed.add(clip.id)
 
     if not result.clips:
         raise ValidationError("An edit cannot leave the timeline empty")

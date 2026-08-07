@@ -19,6 +19,12 @@ class Settings:
     max_input_bytes: int = 100 * 1024 * 1024 * 1024
     max_media_duration_ms: int = 24 * 60 * 60 * 1000
     export_timeout_seconds: int = 3600
+    tts_provider: str = "indextts"
+    tts_service_url: str = ""
+    tts_default_prompt_audio: str = "examples/xiaolin.wav"
+    tts_timeout_seconds: int = 180
+    tts_min_stretch_ratio: float = 0.8
+    tts_max_stretch_ratio: float = 1.25
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -44,6 +50,14 @@ class Settings:
                 os.environ.get("VOXFLOW_MAX_MEDIA_DURATION_MS", str(24 * 60 * 60 * 1000))
             ),
             export_timeout_seconds=int(os.environ.get("VOXFLOW_EXPORT_TIMEOUT_SECONDS", "3600")),
+            tts_provider=os.environ.get("VOXFLOW_TTS_PROVIDER", "indextts"),
+            tts_service_url=os.environ.get("TTS_SERVICE_URL", ""),
+            tts_default_prompt_audio=os.environ.get(
+                "TTS_DEFAULT_PROMPT_AUDIO", "examples/xiaolin.wav"
+            ),
+            tts_timeout_seconds=int(os.environ.get("VOXFLOW_TTS_TIMEOUT_SECONDS", "180")),
+            tts_min_stretch_ratio=float(os.environ.get("VOXFLOW_TTS_MIN_STRETCH", "0.8")),
+            tts_max_stretch_ratio=float(os.environ.get("VOXFLOW_TTS_MAX_STRETCH", "1.25")),
         )
 
     @property
@@ -63,6 +77,10 @@ class Settings:
         return self.home / "web-uploads"
 
     @property
+    def tts_cache_dir(self) -> Path:
+        return self.home / "tts-cache"
+
+    @property
     def catalog_path(self) -> Path:
         return self.home / "catalog.sqlite"
 
@@ -71,3 +89,4 @@ class Settings:
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
         self.asr_cache_dir.mkdir(parents=True, exist_ok=True)
         self.web_uploads_dir.mkdir(parents=True, exist_ok=True)
+        self.tts_cache_dir.mkdir(parents=True, exist_ok=True)

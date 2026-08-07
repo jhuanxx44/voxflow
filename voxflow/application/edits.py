@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 from typing import Any
 
 from voxflow.domain.errors import IdempotencyConflictError, RevisionConflictError, ValidationError
-from voxflow.domain.models import utc_now
-from voxflow.domain.operations import EditDiff, EditPlan, EditPreview, reduce_edit_plan
+from voxflow.domain.models import ArtifactKind, utc_now
+from voxflow.domain.operations import (
+    AttachSpeechReplacement,
+    EditDiff,
+    EditPlan,
+    EditPreview,
+    reduce_edit_plan,
+)
+from voxflow.infrastructure.files import sha256_file
 from voxflow.infrastructure.project_store import ProjectStore
 
 
@@ -23,6 +31,78 @@ class EditService:
         )
         return hashlib.sha256(canonical.encode()).hexdigest()
 
+    def _validate_replacements(self, plan: EditPlan, *, strict: bool) -> dict[str, list[str]]:
+        project = self.store.get(plan.project_id)
+        warnings_by_clip: dict[str, list[str]] = {}
+        for operation in plan.operations:
+            if not isinstance(operation, AttachSpeechReplacement):
+                continue
+            artifact = self.store.catalog.get_artifact(operation.artifact_id)
+            if artifact is None or artifact.project_id != plan.project_id:
+                raise ValidationError(
+                    "Speech replacement artifact does not belong to this project",
+                    details={"artifact_id": operation.artifact_id},
+                )
+            if artifact.kind != ArtifactKind.REPLACEMENT_AUDIO:
+                raise ValidationError("Artifact is not a speech replacement candidate")
+            path = Path(artifact.path)
+            if not path.is_file() or sha256_file(path) != artifact.sha256:
+                raise ValidationError("Speech replacement artifact is missing or changed")
+            metadata = artifact.metadata
+            expected = {
+                "clip_id": operation.clip_id,
+                "clip_fingerprint": operation.clip_fingerprint,
+                "text": operation.text,
+                "duration_policy": operation.duration_policy,
+                "replacement_duration_ms": operation.replacement_duration_ms,
+                "render_duration_ms": operation.render_duration_ms,
+            }
+            mismatches = {
+                key: {"operation": value, "artifact": metadata.get(key)}
+                for key, value in expected.items()
+                if metadata.get(key) != value
+            }
+            artifact_ratio = float(metadata.get("stretch_ratio", 0))
+            if abs(artifact_ratio - operation.stretch_ratio) > 1e-9:
+                mismatches["stretch_ratio"] = {
+                    "operation": operation.stretch_ratio,
+                    "artifact": artifact_ratio,
+                }
+            if mismatches:
+                raise ValidationError(
+                    "Speech replacement operation does not match its candidate artifact",
+                    details={"artifact_id": artifact.id, "mismatches": mismatches},
+                )
+            if project.source.media.has_video and operation.duration_policy == "natural":
+                raise ValidationError("Video speech replacement cannot use natural ripple in v1")
+            warnings = [str(item) for item in metadata.get("warnings", [])]
+            safe_stretch = bool(metadata.get("safe_stretch", False))
+            if strict and operation.duration_policy == "fit_source" and not safe_stretch:
+                raise ValidationError(
+                    "Unsafe fit_source stretch is rejected; regenerate with pad_or_trim",
+                    details={
+                        "stretch_ratio": operation.stretch_ratio,
+                        "safe_range": [
+                            self.store.settings.tts_min_stretch_ratio,
+                            self.store.settings.tts_max_stretch_ratio,
+                        ],
+                        "warnings": warnings,
+                    },
+                )
+            warnings_by_clip[operation.clip_id] = warnings
+        return warnings_by_clip
+
+    @staticmethod
+    def _apply_replacement_warnings(
+        preview: EditPreview, warnings_by_clip: dict[str, list[str]]
+    ) -> EditPreview:
+        for clip in preview.timeline.clips:
+            if clip.id in warnings_by_clip:
+                clip.replacement_warnings = warnings_by_clip[clip.id]
+                preview.diff.warnings.extend(warnings_by_clip[clip.id])
+        preview.diff.warnings = list(dict.fromkeys(preview.diff.warnings))
+        return preview
+
     def preview(self, plan: EditPlan) -> EditPreview:
         project = self.store.get(plan.project_id)
         if project.revision != plan.expected_revision:
@@ -35,7 +115,10 @@ class EditService:
             )
         transcript = self.store.get_transcript(plan.project_id)
         timeline = self.store.get_timeline(plan.project_id)
-        return reduce_edit_plan(timeline, transcript, plan)
+        warnings = self._validate_replacements(plan, strict=False)
+        return self._apply_replacement_warnings(
+            reduce_edit_plan(timeline, transcript, plan), warnings
+        )
 
     def apply(self, plan: EditPlan) -> dict[str, Any]:
         payload_hash = self._plan_hash(plan)
@@ -84,7 +167,10 @@ class EditService:
                 )
             transcript = self.store.get_transcript(plan.project_id)
             timeline = self.store.get_timeline(plan.project_id)
-            preview = reduce_edit_plan(timeline, transcript, plan)
+            warnings = self._validate_replacements(plan, strict=True)
+            preview = self._apply_replacement_warnings(
+                reduce_edit_plan(timeline, transcript, plan), warnings
+            )
             preview.timeline.source = "edit_plan"
             preview.timeline.created_at = utc_now()
             result = {

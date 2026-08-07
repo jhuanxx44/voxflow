@@ -6,7 +6,6 @@
 import { useState } from 'react';
 import type {
   PodcastRoughCutResult,
-  EditSuggestion,
   SuggestionPriority,
   SuggestionAction,
 } from '@/types';

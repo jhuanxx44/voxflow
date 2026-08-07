@@ -3,6 +3,23 @@
     "TimelineClip": {
       "additionalProperties": false,
       "properties": {
+        "duration_policy": {
+          "anyOf": [
+            {
+              "enum": [
+                "natural",
+                "fit_source",
+                "pad_or_trim"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Policy"
+        },
         "id": {
           "title": "Id",
           "type": "string"
@@ -16,6 +33,19 @@
           "title": "Kind",
           "type": "string"
         },
+        "render_duration_ms": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Render Duration Ms"
+        },
         "replacement_artifact_id": {
           "anyOf": [
             {
@@ -27,6 +57,26 @@
           ],
           "default": null,
           "title": "Replacement Artifact Id"
+        },
+        "replacement_duration_ms": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replacement Duration Ms"
+        },
+        "replacement_warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Replacement Warnings",
+          "type": "array"
         },
         "source_in_ms": {
           "minimum": 0,
@@ -53,6 +103,19 @@
           ],
           "default": null,
           "title": "Speaker Id"
+        },
+        "stretch_ratio": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stretch Ratio"
         },
         "token_ids": {
           "items": {

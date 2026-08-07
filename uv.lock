@@ -2213,6 +2213,9 @@ providers = [
     { name = "python-dotenv" },
     { name = "requests" },
 ]
+tts = [
+    { name = "requests" },
+]
 web = [
     { name = "flask" },
     { name = "flask-cors" },
@@ -2239,6 +2242,7 @@ requires-dist = [
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=6,<7" },
     { name = "python-dotenv", marker = "extra == 'providers'", specifier = ">=1.0.0" },
     { name = "requests", marker = "extra == 'providers'", specifier = ">=2.32.0" },
+    { name = "requests", marker = "extra == 'tts'", specifier = ">=2.32.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.9,<1" },
     { name = "sentencepiece", marker = "extra == 'asr-local'", specifier = ">=0.2.1" },
     { name = "soundfile", marker = "extra == 'asr-local'", specifier = ">=0.12.1" },
@@ -2246,7 +2250,7 @@ requires-dist = [
     { name = "torchaudio", marker = "extra == 'asr-local'", specifier = "==2.9.1" },
     { name = "typer", specifier = ">=0.15,<1" },
 ]
-provides-extras = ["mcp", "web", "asr-local", "providers", "dev"]
+provides-extras = ["mcp", "web", "asr-local", "providers", "tts", "dev"]
 
 [[package]]
 name = "websockets"
