@@ -115,3 +115,20 @@
 - 601 秒/1202 segments 的 Codex MCP 粗剪满足 MVP Definition of Done 的 10 分钟以上素材要求，输出 596.0 秒与 preview 一致。
 - 最终 `make check`：50 tests、ruff、mypy 全绿；schema check、前端 build、安装态 CLI/MCP smoke 和 companion skill validation 均通过。
 - Phase 7–9（Web project/revision 迁移、TTS replacement 成片、发布加固）明确不在本次用户要求的 Phase 0–6 范围内，未被误标完成。
+# Phase 9 发布加固（2026-08-07）
+
+- Linux 本地实证最终使用已校验的 Alpine 3.23.4 aarch64 cloud image + Lima/VZ；SHA-512 与 USTC 发布 sidecar 完全一致。VM 内为 Linux 6.18.22、Python 3.12.13、FFmpeg/ffprobe 8.0.1。
+- 当前 Phase 9 工作树在 VM 内独立复制最小构建输入并生成 `voxflow-1.0.0-py3-none-any.whl`，随后安装到全新 venv；不是复用 macOS venv 或 editable install。
+- 仓库外 smoke 成功输出 `{ok: true, project_id: prj_c4ccc1ab66554bfdb198fbc4c502f71c, output_bytes: 10057}`。脚本自身已用 ffprobe 断言导出 MP4 同时有 audio/video stream，且时长 1.0 秒 ± 0.15 秒；TemporaryDirectory 正常退出后自动删除产物，因此无需伪造额外持久产物证据。
+
+- 既有 `scripts/smoke_mcp_long.py` 只覆盖 601 秒正弦波 + 1202 个合成 transcript，不足以证明正式 Phase 9 的 30–120 分钟 ASR + 10+ edits + export 验收。
+- 仓库当前没有可复用的音频/视频媒体文件；`Settings` 的默认 `examples/xiaolin.wav` 也不在仓库中。
+- 因此正式长文件验收需要使用可追溯的公开授权真实语音素材，下载到隔离临时目录，不进入 Git；报告必须记录来源、license、SHA-256、时长和完整命令。
+- Phase 9 基础功能已通过全仓 `make check`：67 tests、Ruff、mypy 全绿。
+- Internet Archive metadata 请求在 20 秒内超时，未下载或写入任何仓库文件；改用 FunASR 官方公开测试音频源。
+- FunASR 官方 `vad_example.wav` 下载成功：70.470625 秒、2,261,722 bytes、SHA-256 `a7431f0169ef76ef630c945a1d2c3675d8c8c2df2ae4a6b16f8a88ba1bccfbbb`。这是自然中文语音，可重复拼接为 30+ 分钟压力输入；报告会明确说明“真实语音样本重复拼接”，不将其表述为 30 分钟独立录音。
+- 长素材脚本使用 10 个独立 `delete_clips` operation + 1 个 `move_clip` + 1 个 `correct_transcript`，preview/apply diff 必须完全一致；导出 duration 与 edit diff 的容差为 250ms。
+- 首次 30 分钟导出基线把 683 个非相邻 source ranges 编译为 683 个并行 `atrim`；FFmpeg 持续约 106% CPU，但 5 分钟仍未产出，说明旧 graph 对长 transcript 是真实的 O(ranges × source duration) 性能瓶颈。
+- 优化方案：对 16+ 且互不重叠的 audio-only ranges 使用一次 `asegment` 按全部边界精确拆分，再按 timeline 顺序 concat 选中片段；既支持任意重排，又只解码源一次。重叠范围保守回退旧 graph。
+- 同一 30 分钟 project/revision 优化对比：旧 graph 582.744 秒；新 graph `real 3.81s`。两者输出均为 30,379,042 bytes，SHA-256 均为 `d24a0bf0d633686cf8249c3c2f46b3865460f780c6f393277d42bd1a411f04d5`，ffprobe duration 均为 1518.807 秒，因此加速未改变成片。
+- macOS fresh install 已有本地实证。Docker Desktop backend HTTP 500 后改用已校验 Alpine 3.23.4/Lima VM，Linux fresh wheel install 与 E2E 已实际通过；Ubuntu CI matrix 保留为 push 后的第二 Linux 发行版证据。

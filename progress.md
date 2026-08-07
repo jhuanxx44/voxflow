@@ -1,5 +1,50 @@
 # VoxFlow CLI / MCP 规划进度
 
+## 2026-08-07 Phase 9 发布加固
+
+- 本轮 session catchup 已完成：确认仍在 `dev_edit`，HEAD 为 Phase 8 提交 `dc7846e`，Phase 9 工作树未提交且与交接摘要一致。
+- 已确认 Lima 2.2.0 为本轮临时安装，当前无 VM；下一步使用无代理直连下载 Alpine 3.23 cloud image，在隔离 VM 内完成 fresh wheel install 与仓库外 CLI E2E，随后清理 VM、镜像缓存和本轮安装的 Lima。
+- Alpine 官方镜像无代理直连 43 秒仅下载 566 KB（约 13 KB/s，预计近 5 小时），已主动中止；不会重复该失败路径，改为测速可信镜像后继续。
+- USTC 镜像 27 秒完成 224 MB 下载；本地 SHA-512 `737b0e...ffd91c` 与发布 sidecar 完全一致。
+- 首次 Lima override 修改了模板的 x86_64 `images[0]`，arm64 条目仍指向官方源；已在任何 VM 启动前中止，确认应改 `images[1]` 后重建临时实例。
+- Alpine VM 已 READY，环境为 Linux 6.18/aarch64、Alpine 3.23.4、Python 3.12.13、FFmpeg 8.0.1；当前工作树 wheel `voxflow-1.0.0-py3-none-any.whl` 在 VM 内构建并安装成功。
+- 首次 smoke 因 venv `bin` 未进入 PATH 而无法定位已安装的 `voxflow` 命令；产品尚未开始执行，记录后按常规激活态 PATH 重跑。
+- Linux fresh-install E2E 已成功：doctor healthy，create→transcript import→edit→MP4 export 返回 project `prj_c4ccc1ab66554bfdb198fbc4c502f71c`、输出 10,057 bytes；仅后置 `find -ls` 因 BusyBox 方言不支持而使组合 shell 返回 1，产品链路已明确成功，继续单独采集产物证据。
+- 发布报告已补充本地 Linux 镜像校验、OS/Python/FFmpeg、VM 内 wheel 构建、fresh venv、仓库外 E2E 与 ffprobe 证据；Ubuntu CI 保留为 push 后闭环，不再作为 push 前不可完成的循环依赖。
+- 清理前精确核对：唯一 Lima VM 为本轮 `voxflow-v1-linux`；两个 cache URL 分别是本轮失败的 Alpine 官方下载（2.3 MB partials）和 Ubuntu cloud image（128 MB partial）；另有本轮 `/tmp` Alpine 完整镜像 224 MB。可安全按精确路径清理。
+- Linux 临时 VM 已正常 stop/delete，Lima 2.2.0 已卸载。完整镜像和两个本轮 cache 按安全策略移入 macOS Trash（名称均以 `voxflow-phase9-...-20260807` 开头），可恢复；原路径与 VM 均已确认不存在。
+- Linux fresh-install 缺口已关闭；开始 Phase 9 最终质量门，全部通过后才创建独立 Phase 9 commit。
+- Phase 9 最终门通过：`make check` 为 69 tests passed、Ruff、mypy 38 files 全绿；schema regenerate 零差异；`npx tsc --noEmit`、Vite build（237 modules）、CLI/MCP/speech smokes、`uv lock --check`、`git diff --check` 全部通过。
+- Phase 9 功能与验收报告均已完成，当前阶段切换为 Web 核心链路真实浏览器回归；先完成独立 Phase 9 commit，仍不 push。
+- 发布 wheel 留下的根目录 `build/` 是本轮 22:12 生成的 340 KB staging output，不是用户源码；补入 `.gitignore` 并移入 Trash，避免后续发布构建反复污染工作树。
+- Phase 9 首次 commit 为 `755b7e1 feat(release): harden VoxFlow 1.0`；staged check 同时提示新报告 3 行尾随空格，但组合命令未 fail-fast，已定向修复并准备 amend，不产生额外模块 commit。
+
+- Phase 8 已提交：`dc7846e feat(tts): persist and render speech replacements`（48 files，2202 insertions，250 deletions）。
+- 未 push；开始按正式规划审计 Phase 9 的诊断、迁移、清理、失败恢复、并发、安装与安全验收缺口。
+- planning session catchup 已恢复；权威 Git 状态为 `dev_edit` 领先远端 4 个提交，工作树只有本进度记录。
+- 已将持续计划的当前阶段从 Phase 8 切换为 Phase 9；先复用既有 doctor/catalog/project store 实现 diagnostics、migration、mark-and-sweep 与 structured logs。
+- 首次计划 patch 因 Markdown status 行带列表前缀而未匹配，已读取精确上下文后修正；未触及业务代码。
+- Phase 9 基础实现已落盘：显式 schema compatibility、v0→v1 migration+backup、mark-and-sweep cleanup、脱敏 diagnostics zip、JSONL operational events、CLI version/migrate/diagnostics/cleanup，以及可注入的磁盘余量 job 边界。
+- 首次定向 lint 仅发现 Runtime import 排序和 telemetry 嵌套 context 两项机械问题，已按规则定向修正，下一步补齐安全/兼容/恢复测试。
+- Ruff 已全绿；首次 mypy 仅发现 cleanup 删除循环复用了先前已收窄的 `artifact_id` 名称，已改为独立变量。
+- TTS HTTP 与轮询 timeout 现统一为 retryable `PROVIDER_TIMEOUT`，失败会立即清除 partial candidate；磁盘边界为 retryable `INSUFFICIENT_STORAGE`，可在外部状态恢复后通过 `job retry` 重新执行。
+- 新增 8 个 Phase 9 集成场景与 CLI 能力发现契约；首次定向 gate 仅停在测试文件一个未使用 import，已删除并准备从头重跑。
+- 定向测试首轮 9 passed / 3 failed：两项因 ProjectStore 广义异常包装吞掉专门 schema 错误，一项为 doctor golden 未纳入新增字段；已透传兼容错误并更新 golden，业务算法本身未失败。
+- CLI/MCP/Web 现均将同一 request_id 写入响应与结构化事件；Web 二进制响应也带 `X-Request-ID`。
+- 一次 Ruff format 范围误扩造成 5 个 legacy route 纯格式 diff；已确认这些文件在本轮开始时 clean，并通过 `apply_patch` 精确恢复 HEAD，未保留无关改动。
+- 全仓 `make check` 通过：67 tests、Ruff format/check、38 source mypy 全绿。
+- 长素材盘点确认既有 601 秒 smoke 是正弦波+合成 transcript，仓库没有真实媒体；Phase 9 正式压力验收将使用可追溯的公开授权真实语音，隔离下载且不进入 Git。
+- 已取得 FunASR 官方 70.47 秒自然中文语音样本并核验 SHA-256；准备重复拼接为 30+ 分钟输入，验收报告将如实标明素材构成。
+- 新增可复现 `scripts/stress_v1_long.py`：校验官方样本 hash、FFmpeg 拼接 30–120 分钟、真实 FunASR、12 个独立 Edit Operations、MP3 export、ffprobe duration 与 RSS/timing JSON；静态检查和 `--help` smoke 通过。
+- 30 分钟 advanced FunASR 实跑完成：ASR 295.54 秒，12 operations apply 0.132 秒；首次 export 暴露 683 atrim 长图性能瓶颈。
+- 已实现 audio-only 大 range graph 的单次 `asegment` 解码优化，并添加 20 个逆序 range 的真实 FFmpeg duration 测试；等待基线导出结束后执行对比复测。
+- 旧 renderer 基线最终 582.744 秒；优化后同一 project/revision 仅 3.81 秒，产物 size、SHA-256、ffprobe duration 完全相同，约 153× 加速。
+- detached worker 现在继承提交端全部有效 Settings，避免 FFmpeg/provider/timeout/TTL 配置漂移；新增真实进程组 SIGKILL → heartbeat interrupted → retry success 集成测试。
+- 发布版本已从 0.1.0 升至 1.0.0；首次 `uv lock --check` 按预期提示根包版本变化，下一步机械刷新 lockfile 后执行 macOS/Linux fresh-install smoke。
+- macOS 全新 Python 3.11 venv 从源码构建并安装 `voxflow==1.0.0` 成功；仓库外 create→import→edit→MP4 export smoke 通过，产物 10,056 bytes。
+- Linux Docker 本地验证被宿主 Docker Desktop backend HTTP 500 阻断；已关闭并清理本次启动的 app/backend 进程，未改仓库/容器数据。
+- 新增 GitHub Actions Ubuntu/macOS matrix：make check、前端 build、wheel build、全新 venv 安装和仓库外完整 smoke，确保 push 后 Linux 成为硬发布门。
+
 ## 2026-08-07 Phase 8 恢复与续作
 
 - 已从 session catchup 恢复 Phase 8 未提交工作树，确认当前目标为持久化 TTS replacement 两阶段工作流。

@@ -12,7 +12,12 @@ from pathlib import Path
 
 from filelock import FileLock, Timeout
 
-from voxflow.domain.errors import LockConflictError, NotFoundError, ValidationError
+from voxflow.domain.errors import (
+    LockConflictError,
+    NotFoundError,
+    SchemaCompatibilityError,
+    ValidationError,
+)
 from voxflow.domain.ids import new_artifact_id, new_clip_id, new_project_id
 from voxflow.domain.models import (
     Artifact,
@@ -34,6 +39,7 @@ from voxflow.infrastructure.files import (
     sha256_file,
 )
 from voxflow.infrastructure.media import MediaProbe
+from voxflow.infrastructure.schema_compat import require_current_schema
 from voxflow.settings import Settings
 
 _SAFE_ID = re.compile(r"^[a-z]+_[a-f0-9]{32}$")
@@ -189,7 +195,11 @@ class ProjectStore:
         if not path.is_file():
             raise NotFoundError("Project not found", details={"project_id": project_id})
         try:
-            return Project.model_validate(read_json(path))
+            payload = read_json(path)
+            require_current_schema(payload, document="project")
+            return Project.model_validate(payload)
+        except SchemaCompatibilityError:
+            raise
         except Exception as error:
             raise ValidationError(
                 "Project manifest is invalid",
@@ -209,7 +219,11 @@ class ProjectStore:
                 details={"project_id": project_id, "revision": selected},
             )
         try:
-            return TimelineRevision.model_validate(read_json(path))
+            payload = read_json(path)
+            require_current_schema(payload, document="timeline")
+            return TimelineRevision.model_validate(payload)
+        except SchemaCompatibilityError:
+            raise
         except Exception as error:
             raise ValidationError(
                 "Timeline manifest is invalid",
@@ -221,7 +235,11 @@ class ProjectStore:
         if not path.is_file():
             raise NotFoundError("Transcript not found", details={"project_id": project_id})
         try:
-            return Transcript.model_validate(read_json(path))
+            payload = read_json(path)
+            require_current_schema(payload, document="transcript")
+            return Transcript.model_validate(payload)
+        except SchemaCompatibilityError:
+            raise
         except Exception as error:
             raise ValidationError(
                 "Transcript manifest is invalid",
@@ -342,14 +360,16 @@ class ProjectStore:
             manifest = directory / "project.json"
             if not manifest.is_file():
                 continue
-            project = Project.model_validate(read_json(manifest))
+            project_payload = read_json(manifest)
+            require_current_schema(project_payload, document="project")
+            project = Project.model_validate(project_payload)
             discovered_projects.append((project, manifest))
             artifacts_dir = directory / "artifacts"
             if artifacts_dir.is_dir():
                 for artifact_manifest in artifacts_dir.glob("art_*.json"):
-                    discovered_artifacts.append(
-                        Artifact.model_validate(read_json(artifact_manifest))
-                    )
+                    payload = read_json(artifact_manifest)
+                    require_current_schema(payload, document="artifact")
+                    discovered_artifacts.append(Artifact.model_validate(payload))
 
         self.catalog.clear_discovery_index()
         projects = 0

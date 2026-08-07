@@ -144,6 +144,10 @@ class Catalog:
             ).fetchone()
         return Artifact.model_validate_json(row["data_json"]) if row else None
 
+    def delete_artifact(self, artifact_id: str) -> None:
+        with self.connect() as connection:
+            connection.execute("DELETE FROM artifacts WHERE id = ?", (artifact_id,))
+
     def upsert_job(self, job: Job) -> None:
         with self.connect() as connection:
             connection.execute(

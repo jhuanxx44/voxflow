@@ -32,6 +32,7 @@ def test_api_v1_project_transcript_edit_restore_and_export(
         "vtt",
         "wav",
     ]
+    assert capabilities.get_json()["meta"]["request_id"] == capabilities.headers["X-Request-ID"]
 
     with wav_file.open("rb") as handle:
         created_response = client.post(
@@ -151,6 +152,7 @@ def test_api_v1_revision_conflict_and_legacy_deprecation(
     )
     assert conflict.status_code == 409
     assert conflict.get_json()["error"]["code"] == "REVISION_CONFLICT"
+    assert conflict.get_json()["meta"]["request_id"] == conflict.headers["X-Request-ID"]
 
     legacy = client.post("/export-media", json={})
     assert legacy.headers["Deprecation"] == "true"
