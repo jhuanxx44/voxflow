@@ -44,7 +44,7 @@ tts = ["requests>=2.32.0"]
 dev = [
   "hypothesis>=6.120,<7",
   "mypy>=1.14,<2",
-  "pytest>=8.3,<9",
+  "pytest>=9.0.3,<10",
   "pytest-cov>=6,<7",
   "ruff>=0.9,<1",
 ]
