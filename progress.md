@@ -44,6 +44,7 @@
 - standalone Playwright browser 已关闭；遗留的精确 task profile root PID 39482 已 TERM 并确认全部 helper 退出。Vite/Flask 会话已 Ctrl-C 停止，端口 3001/8082 无 listener。
 - V1 报告已补全真实 Web 浏览器回归环境、媒体 hash、逐项交互、导出探测、responsive 和四项修复；开始最后全量质量门。
 - 最终本地发布门全绿：`make check` 为 69 tests、Ruff、mypy 38 files；schema regenerate 零差异；`npx tsc --noEmit`、Vite build、CLI/MCP/TTS smoke、`uv lock --check`、`git diff --check` 均通过。准备提交独立 Web E2E 回归收口 commit。
+- Web 回归收口已提交为 `6112bd2 fix(web): complete browser regression hardening` 并 push `dev_edit`；GitHub Actions run `31191618850` 对该 SHA 的 macOS 14（1m02s）与 Ubuntu latest（1m28s）均成功，两个 job 均覆盖 Python/前端门、wheel build、fresh wheel install 和仓库外 E2E smoke。完整本地 V1 与 Web 回归目标闭环。
 
 - Phase 8 已提交：`dc7846e feat(tts): persist and render speech replacements`（48 files，2202 insertions，250 deletions）。
 - 未 push；开始按正式规划审计 Phase 9 的诊断、迁移、清理、失败恢复、并发、安装与安全验收缺口。

@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-Web 核心链路浏览器回归
+完整本地 V1 与 Web 回归已完成
 
 ## 阶段
 
@@ -111,8 +111,8 @@ Web 核心链路浏览器回归
 - [x] 提交 Phase 9 发布加固
 - [x] 最终本地全量门通过
 - [x] 提交 Web E2E 回归与最终文档
-- [ ] push 当前分支并确认 Ubuntu/macOS CI
-- **Status:** in_progress
+- [x] push 当前分支并确认 Ubuntu/macOS CI
+- **Status:** complete
 
 ## 已确认决策
 
