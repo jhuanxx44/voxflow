@@ -29,12 +29,21 @@ jobs:
           uv export --frozen --all-extras --no-emit-project --quiet
           --output-file /tmp/voxflow-requirements.txt
       - name: Audit Python dependencies
-        run: >-
-          uvx --python 3.11 --from pip-audit pip-audit
-          --requirement /tmp/voxflow-requirements.txt
-          --no-deps --disable-pip --vulnerability-service osv
-          --ignore-vuln PYSEC-2025-194
-          --ignore-vuln PYSEC-2026-139
+        run: |
+          for attempt in 1 2 3; do
+            if uvx --python 3.11 --from pip-audit pip-audit \
+              --requirement /tmp/voxflow-requirements.txt \
+              --no-deps --disable-pip --vulnerability-service osv \
+              --ignore-vuln PYSEC-2025-194 \
+              --ignore-vuln PYSEC-2026-139; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              exit 1
+            fi
+            echo "pip-audit attempt $attempt failed; retrying after transient-service backoff"
+            sleep "$((attempt * 10))"
+          done
       - name: Audit JavaScript runtime dependencies
         run: npm audit --omit=dev --audit-level=high
 
