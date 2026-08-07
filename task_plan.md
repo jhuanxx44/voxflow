@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-M13 README 价值定位
+M14 首次安装路径统一
 
 ## 阶段
 
@@ -45,16 +45,16 @@ M13 README 价值定位
 - [x] 首屏突出 Agent + MCP + preview/apply/revision 的独特价值
 - [x] 提供清晰场景、能力矩阵、演示路径和差异化说明
 - [x] 修复过期端口、仓库 URL 和文档导航
-- [ ] 独立 commit + push
-- **Status:** in_progress
+- [x] 独立 commit + push（`c8598c3`）
+- **Status:** complete
 
 ### M14: 首次安装路径统一
 
-- [ ] 统一普通用户 CLI/MCP、Web、贡献者三条安装路径
-- [ ] 消除 README/start.sh/requirements/pyproject 的冲突
-- [ ] 增加全新环境安装 smoke 与故障诊断说明
+- [x] 统一普通用户 CLI/MCP、Web、贡献者三条安装路径
+- [x] 消除 README/start.sh/requirements/pyproject 的冲突
+- [x] 增加全新环境安装 smoke 与故障诊断说明
 - [ ] 独立 commit + push
-- **Status:** pending
+- **Status:** in_progress
 
 ### M15: 新旧架构收敛
 

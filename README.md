@@ -52,65 +52,43 @@ flowchart LR
 
 > 当前定位是单机、本地优先的编辑引擎。Web 默认只监听 loopback，未提供多租户认证，不应直接暴露到公网。安全边界见 [SECURITY.md](SECURITY.md)。
 
-## 快速开始
+## 安装
 
-### 环境要求
-- Python 3.11（支持范围 `>=3.11,<3.13`）
-- Node.js 18+
-- ffmpeg（用于视频处理）
+要求：macOS/Linux、Python 3.11、uv、FFmpeg/ffprobe。Web 额外要求 Node.js 20+。
 
-### 安装依赖
+### 1. CLI / MCP 用户
 
 ```bash
-# 配置环境变量（API Key / 服务地址，模板见 .env.example）
-cp .env.example .env
-
-# 前端依赖
-npm install
-
-# Python 依赖（建议使用虚拟环境，Python 3.11）
-pip install flask funasr modelscope
-```
-
-> 所有密钥与外部服务地址（LLM、图像生成、TTS）统一在 `.env` 中配置，
-> `.env` 已被 `.gitignore` 忽略，请勿提交。
-
-### 启动服务
-
-```bash
-# 启动后端（默认端口 8082）
-python app.py
-
-# 开发模式（前端热更新，端口 3001）
-npm run dev
-
-# 或构建生产版本
-npm run build
-```
-
-开发时访问 `http://127.0.0.1:3001`；Flask API 默认位于 `http://127.0.0.1:8082`。
-
-## Headless CLI / MCP
-
-VoxFlow 现在同时提供确定性的 Headless 编辑内核。Codex、Claude 或脚本负责理解编辑意图，VoxFlow 负责项目持久化、识别、Edit Plan 校验、revision、FFmpeg 渲染和 artifact 管理。
-
-### 安装 CLI
-
-Headless 工具固定使用 Python 3.11，依赖按 extras 分离。默认 `make install-local` 安装完整本地识别能力；不需要 ASR 时可使用轻量目标避免安装 Torch。
-
-```bash
-# 开发环境（包含现有 Web、FunASR、MCP 和测试依赖）
-make sync
-
-# 安装可从任意目录调用的 CLI + MCP + 本地 FunASR
-make install-local
-
-# 可选：仅安装 transcript import / 编辑 / 导出能力，不安装 Torch/FunASR
-make install-local-lite
-
-command -v voxflow
+uv tool install --python 3.11 \
+  'voxflow[mcp,asr-local,tts] @ git+https://github.com/jhuanxx44/voxflow.git'
 voxflow --json doctor
 ```
+
+### 2. Web 用户
+
+```bash
+git clone https://github.com/jhuanxx44/voxflow.git
+cd voxflow
+./start.sh
+```
+
+打开 `http://127.0.0.1:3001`。`./start.sh -b` 只启动 8082 后端。
+
+### 3. 贡献者
+
+```bash
+git clone https://github.com/jhuanxx44/voxflow.git
+cd voxflow
+make sync
+npm ci
+make check
+```
+
+三条路径的完整说明、轻量无 Torch 安装和故障诊断见 [安装指南](docs/INSTALLATION.md)。不要用手工 `pip install` 拼装环境；Python 以 `pyproject.toml` / `uv.lock` 为准，前端以 `package-lock.json` 为准。
+
+## CLI / MCP 使用
+
+VoxFlow 现在同时提供确定性的 Headless 编辑内核。Codex、Claude 或脚本负责理解编辑意图，VoxFlow 负责项目持久化、识别、Edit Plan 校验、revision、FFmpeg 渲染和 artifact 管理。
 
 默认项目数据位于系统应用数据目录，可用 `VOXFLOW_HOME=/path` 覆盖。
 
@@ -251,6 +229,7 @@ V1 发布证据、失败恢复、安全与长文件数据见 [V1 发布验收报
 ## 文档
 
 - [CLI / MCP 设计与完整契约](docs/CLI_MCP_IMPLEMENTATION_PLAN.md)
+- [CLI、MCP、Web 与贡献者安装](docs/INSTALLATION.md)
 - [V1 发布验收报告](docs/V1_RELEASE_TEST_REPORT.md)
 - [可重复 Web Playwright 回归](docs/WEB_E2E.md)
 - [LLM provider 配置边界](docs/LLM_PROVIDER_GUIDE.md)

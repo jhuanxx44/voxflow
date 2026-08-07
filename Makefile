@@ -1,4 +1,4 @@
-.PHONY: sync test lint typecheck security-audit check install-local install-local-lite
+.PHONY: sync test lint typecheck security-audit check install-local install-local-lite install-dev-cli
 
 sync:
 	uv sync --python 3.11 --extra dev --extra mcp --extra web --extra asr-local --extra providers --extra tts
@@ -19,7 +19,10 @@ security-audit:
 check: lint typecheck security-audit test
 
 install-local:
-	uv tool install --python 3.11 --force --editable '.[mcp,asr-local,tts]'
+	uv tool install --python 3.11 --force '.[mcp,asr-local,tts]'
 
 install-local-lite:
-	uv tool install --python 3.11 --force --editable '.[mcp]'
+	uv tool install --python 3.11 --force '.[mcp]'
+
+install-dev-cli:
+	uv tool install --python 3.11 --force --editable '.[mcp,asr-local,tts]'

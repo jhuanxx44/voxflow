@@ -23,6 +23,8 @@
 - M12 已加入 test-only deterministic ASR server、运行时音视频 fixture、Playwright desktop/mobile 场景、稳定定位符和 Ubuntu CI job；正在执行真实浏览器回归并修正场景级问题。
 - M12 本地完整矩阵已通过：desktop 完整编辑+五格式真实下载，mobile 音频上传+390×844 布局健康；全量 `make check` 70 tests、TypeScript、Vite build 与 npm production audit 全绿，准备独立提交并 push。
 - M12 已提交/push `952ddc3`。M13 README 首屏已改为 Agent/Codex/Claude + MCP 的确定性媒体编辑定位，加入能力矩阵、工作流、CI badge、本地媒体边界，并修复开发端口与文档导航；进入验证。
+- M13 已提交/push `c8598c3`。M14 已将安装收敛为 CLI/MCP、Web、贡献者三条路径；删除独立 requirements，`start.sh` 使用 frozen uv lock/npm ci，新增安装与故障诊断文档，开始 fresh-install 和启动 smoke。
+- M14 fresh wheel + MCP extra 在全新 Python 3.11 venv、仓库外目录安装成功，version/doctor healthy；新版 `start.sh -b` 从 frozen lock 启动 127.0.0.1:8082，capabilities/server-status 均 200，退出后无残留服务。
 
 ## 2026-08-07 Phase 9 发布加固
 
