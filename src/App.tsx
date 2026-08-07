@@ -38,9 +38,21 @@ function App() {
   const mediaRef = useRef<HTMLMediaElement>(null);
 
   // Stores
-  const { isRecognizing, currentFile, currentMaterial } = useASRStore();
-  const hasAudioSource = currentFile !== null || currentMaterial !== null;
-  const { lastSegments, isCharEditMode, setInlineEditIndex } = useEditorStore();
+  const {
+    isRecognizing,
+    currentFile,
+    currentMaterial,
+    setAudioUrl,
+    setMediaType,
+  } = useASRStore();
+  const {
+    lastSegments,
+    isCharEditMode,
+    setInlineEditIndex,
+    projectId,
+    loadProject,
+  } = useEditorStore();
+  const hasAudioSource = currentFile !== null || currentMaterial !== null || projectId !== null;
 
   // Debug: log lastSegments
   useEffect(() => {
@@ -82,6 +94,23 @@ function App() {
       document.documentElement.classList.add('light');
     }
   }, []);
+
+  // Restore the last committed project after a browser refresh.
+  useEffect(() => {
+    if (projectId) return;
+    const queryProjectId = new URLSearchParams(window.location.search).get('project');
+    const savedProjectId = queryProjectId || localStorage.getItem('voxflow.currentProjectId');
+    if (!savedProjectId) return;
+    loadProject(savedProjectId)
+      .then((snapshot) => {
+        setAudioUrl(snapshot.project.source_url);
+        setMediaType(snapshot.project.source.media.has_video ? 'video' : 'audio');
+      })
+      .catch((loadError) => {
+        console.error('恢复 VoxFlow project 失败:', loadError);
+        localStorage.removeItem('voxflow.currentProjectId');
+      });
+  }, [projectId, loadProject, setAudioUrl, setMediaType]);
 
   // Global undo/redo keyboard shortcuts
   useEffect(() => {

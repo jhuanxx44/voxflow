@@ -24,7 +24,8 @@ import { useExport } from '@/hooks/useExport';
 import { useTTSRegenerate } from '@/hooks/useTTSRegenerate';
 import { groupSegmentsToParagraphs } from '@/utils/paragraphGrouping';
 import { getSpeakerColor } from '@/utils/constants';
-import type { DisplayMode } from '@/types';
+import { searchTranscript } from '@/services/projectService';
+import type { DisplayMode, SearchMatchV1 } from '@/types';
 
 interface ResultCardProps {
   audioRef: React.RefObject<HTMLMediaElement>;
@@ -58,6 +59,11 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
     ttsGeneratingMap,
     inlineEditIndex,
     setInlineEditIndex,
+    projectId,
+    revision,
+    isCommitting,
+    lastError,
+    revisionConflict,
   } = useEditorStore();
 
   // Subscribe to stack lengths for button disabled state
@@ -69,12 +75,25 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
 
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const [fillerText, setFillerText] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchMatches, setSearchMatches] = useState<SearchMatchV1[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   // Speaker context menu state
   const [speakerMenu, setSpeakerMenu] = useState<{
     spkId: number;
     x: number;
     y: number;
+  } | null>(null);
+  const [renameSpeakerDialog, setRenameSpeakerDialog] = useState<{
+    spkId: number;
+    value: string;
+  } | null>(null);
+  const [mergeSpeakerDialog, setMergeSpeakerDialog] = useState<{
+    fromSpkId: number;
+    toSpkId: number;
+    fromName: string;
+    toName: string;
   } | null>(null);
 
   // Export menu state
@@ -118,6 +137,34 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
   const { handleDragStart, handleDragOver, handleDragLeave, handleDrop } = useDragAndDrop({
     onReorder: reorderComposition,
   });
+
+  const handleSearch = useCallback(async () => {
+    if (!projectId || !searchQuery.trim()) {
+      setSearchMatches([]);
+      return;
+    }
+    setIsSearching(true);
+    try {
+      setSearchMatches(await searchTranscript(projectId, searchQuery.trim()));
+    } catch (searchError) {
+      console.error('字幕搜索失败:', searchError);
+      setSearchMatches([]);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [projectId, searchQuery]);
+
+  const seekSearchMatch = useCallback(
+    (match: SearchMatchV1) => {
+      const clip = useEditorStore
+        .getState()
+        .timelineClips.find((item) => item.source_segment_id === match.segment.id);
+      if (!clip || !audioRef.current) return;
+      audioRef.current.currentTime = clip.source_in_ms / 1000;
+      audioRef.current.focus();
+    },
+    [audioRef]
+  );
 
   /**
    * Handle audio play event
@@ -277,12 +324,9 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
     if (!speakerMenu) return;
     const { spkId } = speakerMenu;
     const currentName = speakerNames[spkId] || `说话人 ${spkId + 1}`;
-    const newName = window.prompt('请输入说话人名称：', currentName);
-    if (newName !== null) {
-      setSpeakerName(spkId, newName);
-    }
+    setRenameSpeakerDialog({ spkId, value: currentName });
     closeSpeakerMenu();
-  }, [speakerMenu, speakerNames, setSpeakerName, closeSpeakerMenu]);
+  }, [speakerMenu, speakerNames, closeSpeakerMenu]);
 
   /**
    * Handle merge speaker from menu
@@ -293,12 +337,10 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
       const { spkId: fromSpkId } = speakerMenu;
       const fromName = speakerNames[fromSpkId] || `说话人 ${fromSpkId + 1}`;
       const toName = speakerNames[toSpkId] || `说话人 ${toSpkId + 1}`;
-      if (confirm(`确定要将「${fromName}」合并到「${toName}」吗？`)) {
-        mergeSpeaker(fromSpkId, toSpkId);
-      }
+      setMergeSpeakerDialog({ fromSpkId, toSpkId, fromName, toName });
       closeSpeakerMenu();
     },
-    [speakerMenu, speakerNames, mergeSpeaker, closeSpeakerMenu]
+    [speakerMenu, speakerNames, closeSpeakerMenu]
   );
 
   // Close speaker menu when clicking outside
@@ -516,6 +558,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={(toIndex) => handleDrop(toIndex, stopEditedPlayback)}
+              onReorder={reorderComposition}
               onContextMenu={handleContextMenu}
               ttsAudioMap={ttsAudioMap}
               ttsGeneratingMap={ttsGeneratingMap}
@@ -539,6 +582,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={(toIndex) => handleDrop(toIndex, stopEditedPlayback)}
+              onReorder={reorderComposition}
               onContextMenu={handleContextMenu}
               isInlineEditing={inlineEditIndex === idx}
               onInlineEditConfirm={handleInlineEditConfirm}
@@ -565,6 +609,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={(toIndex) => handleDrop(toIndex, stopEditedPlayback)}
+              onReorder={reorderComposition}
               onContextMenu={handleContextMenu}
               isInlineEditing={inlineEditIndex === idx}
               onInlineEditConfirm={handleInlineEditConfirm}
@@ -582,7 +627,14 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
     <div className="rounded-lg border border-[var(--border-input)] bg-[var(--bg-card)] p-4">
       {/* Header with speaker stats */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold">识别全文</h2>
+        <div>
+          <h2 className="text-lg font-semibold">识别全文</h2>
+          {projectId && (
+            <div className="text-xs text-[var(--text-muted)]" data-testid="project-revision">
+              Revision {revision}{isCommitting ? ' · 正在提交…' : ' · 已同步'}
+            </div>
+          )}
+        </div>
         {speakerStats.length > 0 && (
           <div className="flex items-center gap-2 text-sm">
             <span className="text-[var(--text-muted)]">
@@ -604,6 +656,15 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
           </div>
         )}
       </div>
+
+      {(lastError || revisionConflict) && (
+        <div
+          className="mb-4 rounded border border-amber-500/50 bg-amber-500/10 px-3 py-2 text-sm text-amber-700 dark:text-amber-300"
+          role="alert"
+        >
+          {revisionConflict ? '检测到其他客户端的新 revision，已刷新到最新版本。' : lastError}
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className="mb-4 flex flex-wrap gap-2">
@@ -628,7 +689,8 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
 
         <button
           onClick={undo}
-          disabled={!canUndo}
+          disabled={!canUndo || isCommitting}
+          data-testid="undo-edit"
           className="rounded border border-[var(--border-input)] bg-[var(--bg-button)] px-2 py-1 text-sm disabled:opacity-30 disabled:cursor-not-allowed"
           title="撤回 (Ctrl+Z)"
         >
@@ -636,7 +698,8 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
         </button>
         <button
           onClick={redo}
-          disabled={!canRedo}
+          disabled={!canRedo || isCommitting}
+          data-testid="redo-edit"
           className="rounded border border-[var(--border-input)] bg-[var(--bg-button)] px-2 py-1 text-sm disabled:opacity-30 disabled:cursor-not-allowed"
           title="重做 (Ctrl+Shift+Z)"
         >
@@ -662,6 +725,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
           <button
             onClick={() => setShowExportMenu(!showExportMenu)}
             disabled={!canExport || isExporting}
+            data-testid="export-menu"
             className="rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-1.5 text-sm font-medium shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-400"
           >
             {isExporting ? exportProgress : '导出 ▼'}
@@ -736,6 +800,52 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
         </div>
       </div>
 
+      {/* Server-backed transcript search */}
+      <div className="mb-4">
+        <div className="flex items-center gap-2">
+          <input
+            type="search"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') void handleSearch();
+            }}
+            placeholder="搜索字幕"
+            aria-label="搜索字幕"
+            data-testid="transcript-search"
+            className="min-w-0 flex-1 rounded border border-[var(--border-input)] bg-[var(--bg-input)] px-3 py-1.5 text-sm"
+          />
+          <button
+            onClick={() => void handleSearch()}
+            disabled={isSearching || !searchQuery.trim()}
+            className="rounded border border-[var(--border-input)] bg-[var(--bg-button)] px-3 py-1.5 text-sm disabled:opacity-50"
+          >
+            {isSearching ? '搜索中…' : '搜索'}
+          </button>
+        </div>
+        {searchQuery.trim() && !isSearching && (
+          <div className="mt-2 text-xs text-[var(--text-muted)]" data-testid="search-count">
+            找到 {searchMatches.length} 条结果
+          </div>
+        )}
+        {searchMatches.length > 0 && (
+          <div className="mt-2 max-h-36 space-y-1 overflow-auto rounded border border-[var(--border-input)] p-2">
+            {searchMatches.map((match) => (
+              <button
+                key={match.segment.id}
+                onClick={() => seekSearchMatch(match)}
+                className="block w-full rounded px-2 py-1 text-left text-sm hover:bg-[var(--hover-bg)]"
+              >
+                <span className="text-[var(--text-muted)]">
+                  {(match.segment.start_ms / 1000).toFixed(1)}s ·{' '}
+                </span>
+                {match.segment.text}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Filler word deletion - separate row */}
       <div className="mb-4 flex items-center gap-2">
         <input
@@ -761,6 +871,63 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
 
       {/* Hidden TTS audio element */}
       <audio ref={ttsAudioRef} className="hidden" />
+
+      {renameSpeakerDialog && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-label="编辑说话人名称">
+          <div className="w-full max-w-sm rounded-lg border border-[var(--border-input)] bg-[var(--bg-card)] p-4 shadow-xl">
+            <label htmlFor="speaker-name-input" className="mb-2 block text-sm font-medium">
+              说话人名称
+            </label>
+            <input
+              id="speaker-name-input"
+              value={renameSpeakerDialog.value}
+              onChange={(event) =>
+                setRenameSpeakerDialog({ ...renameSpeakerDialog, value: event.target.value })
+              }
+              className="w-full rounded border border-[var(--border-input)] bg-[var(--bg-input)] px-3 py-2"
+              autoFocus
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button className="rounded px-3 py-1.5" onClick={() => setRenameSpeakerDialog(null)}>
+                取消
+              </button>
+              <button
+                className="rounded bg-blue-600 px-3 py-1.5 text-white"
+                onClick={() => {
+                  setSpeakerName(renameSpeakerDialog.spkId, renameSpeakerDialog.value);
+                  setRenameSpeakerDialog(null);
+                }}
+              >
+                保存名称
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {mergeSpeakerDialog && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" role="dialog" aria-modal="true" aria-label="合并说话人">
+          <div className="w-full max-w-sm rounded-lg border border-[var(--border-input)] bg-[var(--bg-card)] p-4 shadow-xl">
+            <p className="text-sm">
+              确定将「{mergeSpeakerDialog.fromName}」合并到「{mergeSpeakerDialog.toName}」吗？
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button className="rounded px-3 py-1.5" onClick={() => setMergeSpeakerDialog(null)}>
+                取消
+              </button>
+              <button
+                className="rounded bg-blue-600 px-3 py-1.5 text-white"
+                onClick={() => {
+                  mergeSpeaker(mergeSpeakerDialog.fromSpkId, mergeSpeakerDialog.toSpkId);
+                  setMergeSpeakerDialog(null);
+                }}
+              >
+                确认合并
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Speaker context menu */}
       {speakerMenu && (

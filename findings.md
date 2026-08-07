@@ -18,6 +18,15 @@
 - Web artifact 下载需要经过受控 Flask `send_file` endpoint，浏览器不应接收/拼接本地绝对路径；source preview 同样应按 project ID 服务 managed media。
 - 正式 Phase 7 可拆成两个可独立验收的大模块提交：版本化 Flask adapter/contract tests；React/Zustand project/revision 迁移与浏览器证据。
 - Web API 视图必须净化 project `managed_path`、job `log_path`/result path、artifact path；浏览器统一使用受控 source/download URL，CLI/MCP 仍保留本地路径能力。
+- 前端迁移可保留现有组件契约：每次从 server timeline 构造 `lastSegments` view cache，并令 `composition=[0..n)`；稳定 `clip_id`/`token_id` 由新增的 timeline/char 元数据承载，不能继续用数组下标作为写协议。
+- 客户端 localStorage ASR cache 应退出权威链路；Headless 已有 source hash + ASR config cache。Web 识别流程改为 create project → detached transcription job → poll → fetch transcript/timeline。
+- Undo/Redo 可用 revision target 双栈实现：普通 commit 记录 base revision；undo restore 目标 revision并把 undo 前 revision 放入 redo 栈；redo 再 restore该目标。每次 restore 都生成新的单调递增 revision。
+- 多个 UI 动作必须串行提交，否则同步触发的 chat 批量删除/替换会共享旧 expected revision；前端 store 需要 mutation queue，并在每个任务执行时重新读取当前 revision/view cache。
+- 字/词级写入必须让 `CharUnit` 携带 `tokenId` 和 `clipId`；无 token precision 的 segment 只能明确拒绝词级删除，不能静默退化成错误范围。
+- 前端旧 localStorage ASR cache、legacy export service 目前仍保留为未使用兼容代码，但主 UI 已不再调用；Phase 7 收尾可在引用审计后决定删除或标记 deprecated。
+- 浏览器刷新只需恢复 committed project view；undo/redo 双栈是当前浏览器会话 UI 状态，不需要跨刷新持久化。revision history 仍完整保存在后端。
+- Web 支持 `/?project=<project_id>` 深链打开 CLI/MCP 创建的项目，并在成功 hydrate 后写入当前项目 localStorage；这是三入口共享 project 的直接用户入口，也便于隔离 E2E。
+- Browser 实证确认 restore-based undo/redo 的 revision 单调性：delete 1→2、undo 2→3（restore r1）、redo 3→4（restore r2）；刷新后 r4 保持且被删内容未回归。
 
 ## 当前可复用能力
 

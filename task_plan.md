@@ -69,11 +69,11 @@ Phase 7：Web UI 迁移
 ### Phase 7: Web UI 迁移
 
 - [x] 新增版本化 `/api/v1` project/job/edit/export adapters
-- [ ] Zustand 改为 project revision + view cache + draft edit plan
-- [ ] 删除、词级删除、拖拽、speaker rename/merge、undo/redo、export 接入 application API
-- [ ] Web、CLI、MCP 轮流编辑同一 project，并验证 revision conflict
-- [ ] 浏览器刷新后 committed edits 不丢失，旧路由保持兼容并记录 deprecation
-- **Status:** in_progress
+- [x] Zustand 改为 project revision + view cache + draft edit plan
+- [x] 删除、词级删除、拖拽、speaker rename/merge、undo/redo、export 接入 application API
+- [x] Web、CLI、MCP 轮流编辑同一 project，并验证 revision conflict
+- [x] 浏览器刷新后 committed edits 不丢失，旧路由保持兼容并记录 deprecation
+- **Status:** complete
 
 ### Phase 8: TTS replacement 成片
 
@@ -106,7 +106,7 @@ Phase 7：Web UI 迁移
 ### 提交与发布门
 
 - [x] 提交 Phase 0–6 基线
-- [ ] 提交 Phase 7 Web 迁移
+- [x] 提交 Phase 7 Web 迁移
 - [ ] 提交 Phase 8 TTS replacement
 - [ ] 提交 Phase 9 发布加固
 - [ ] 提交 Web E2E 回归与最终文档
@@ -141,3 +141,7 @@ Phase 7：Web UI 迁移
 | 首次 mypy versioned route 时发现 `config.py` 两个 legacy 共享 dict 缺类型 | 1 | 为 `export_tasks`/`uploaded_files` 添加显式 `dict[str, dict[str, Any]]`，并把 v1 route 纳入 Makefile typecheck |
 | 扩大 Makefile lint 范围后 `config.py` 不符合 ruff format | 1 | 对已纳入质量门的 config 执行一次机械格式化，随后重跑完整 gate |
 | `config.py` format 后仍有第三方 import 分组问题 | 1 | 使用 ruff `--fix` 仅整理 import block；不重复只跑 formatter |
+| 首次启动 Web E2E Flask 未注入隔离 `VOXFLOW_HOME` | 1 | 立即停止该进程，在任何 project 请求前用显式临时 home + inline jobs 重启；默认用户数据未被读写 |
+| Browser runtime 不支持 `waitForLoadState(networkidle)` | 1 | 改用受支持的 `domcontentloaded`，随后以 DOM 中 project revision 的具体状态作为异步 hydrate 完成信号 |
+| CUA 两种 pointer path 均未触发 HTML5 drop | 2 | 保留原 drag/drop，并补 Alt+方向键可访问重排作为可靠 UI/E2E 入口；最终另用支持原生 dragTo 的 Playwright 回归真实拖拽 |
+| Browser 点击 speaker rename 后原生 `window.prompt` 未提供可控 dialog | 1 | 将 prompt/confirm 改为应用内可访问 rename/merge dialogs，提升真实 UI 可测性与可用性 |

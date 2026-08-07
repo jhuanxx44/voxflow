@@ -15,6 +15,16 @@
 - Phase 7 后端 adapter 完成：上传建 project、source range serving、transcript/timeline/search、edit preview/apply、restore、persistent jobs、五格式 export 与 artifact 下载均通过 `/api/v1` 暴露。
 - Web API 已净化所有 project/job/artifact 本地绝对路径；旧 `/asr`、`/export-media` 保持工作并返回 deprecation/successor headers。
 - 完整质量门通过：52 tests、ruff、mypy（含 v1 route）、`npm run build` 242 modules。
+- Phase 7 React 迁移进行中：新增 typed project API client，上传/素材识别改为 project → persistent ASR job → poll → transcript/timeline hydrate。
+- `editorStore` 已改为 project/revision view cache；segment/token delete、move、text correction、speaker rename/merge、undo/redo 全部编译为稳定 ID 的 server mutation，并通过串行队列避免 stale revision。
+- 页面刷新会从 localStorage 的 project ID 恢复 source/transcript/timeline；导出已统一改为 persistent job + artifact download，包含 MP4/MP3/WAV/SRT/VTT。
+- ResultCard 已展示 revision/sync/conflict 状态并新增 server-backed 字幕搜索；当前 production build 通过（238 modules）。
+- 已启动隔离的 Flask (`VOXFLOW_HOME=/tmp/voxflow-web-e2e.*`) 与 Vite 3001 渲染环境；第一次 Flask 启动遗漏隔离环境变量，但在任何 project 请求前已停止并正确重启，未触碰默认项目数据。
+- Browser rendered smoke 已通过：页面身份/非空/无 overlay/console health，CLI-created project 深链恢复为 Revision 1，媒体、两位 speaker 和字幕正确渲染。
+- Browser 字幕搜索“搜索”返回 1 条；右键句段删除提交到 Revision 2；Undo 生成 Revision 3 并恢复文本，Redo 生成 Revision 4 再删除；浏览器刷新后 Revision 4 和删除结果保持，console 仍无错误。
+- Browser 后续验证：词级删除 Revision 6；可访问重排 Revision 8；speaker rename Revision 9、merge Revision 10；视频字幕点击跳转并持续播放；MP3/WAV/SRT/VTT/MP4 均触发真实 artifact download。
+- CLI 在 Web Revision 10 后提交 Revision 11；stale Web 写收到 conflict、自动刷新并显示外部文本。新增自动化 `test_cross_interface.py` 固化 CLI→Web→MCP→stale Web 契约。
+- Phase 7 提交前完整 gate 通过：53 tests、ruff、mypy、Vite 238 modules、`git diff --check`。
 
 ## 2026-08-04
 

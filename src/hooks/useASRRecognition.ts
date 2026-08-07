@@ -1,16 +1,14 @@
-/**
- * useASRRecognition Hook
- *
- * Manages ASR recognition process including cache checking,
- * API calls, and result handling.
- */
+/** Project-backed upload -> persistent ASR job -> editor hydration flow. */
 
 import { useCallback, useState } from 'react';
 import { useASRStore } from '@/stores/asrStore';
 import { useEditorStore } from '@/stores/editorStore';
-import { recognize, normalizeResult } from '@/services/asrService';
-import { useCache } from './useCache';
-import { buildCharLevelData } from '@/utils/charLevelBuilder';
+import {
+  createProject,
+  loadProjectEditor,
+  startTranscription,
+  waitForJob,
+} from '@/services/projectService';
 
 export interface UseASRRecognitionOptions {
   onSuccess?: () => void;
@@ -20,125 +18,53 @@ export interface UseASRRecognitionOptions {
 
 export const useASRRecognition = (options: UseASRRecognitionOptions = {}) => {
   const [error, setError] = useState<Error | null>(null);
-
   const {
     currentFile,
     currentMaterial,
     recognitionMode,
     hotwords,
-    cacheEnabled,
     setIsRecognizing,
     setUsedHotwords,
     setUploadedFileId,
+    setAudioUrl,
+    setMediaType,
   } = useASRStore();
+  const hydrateProject = useEditorStore((state) => state.hydrateProject);
 
-  const { setRecognitionResult } = useEditorStore();
-
-  const {
-    getFromCache,
-    saveToCache,
-    removeFromCache,
-    generateFileId,
-    buildCacheKey,
-  } = useCache();
-
-  /**
-   * Perform ASR recognition
-   */
   const performRecognition = useCallback(async () => {
     setError(null);
-
-    // Validate input
     if (!currentFile && !currentMaterial) {
-      const err = new Error('请先选择音频文件或素材');
-      setError(err);
-      options.onError?.(err);
+      const missing = new Error('请先选择音频文件或素材');
+      setError(missing);
+      options.onError?.(missing);
       return;
     }
 
     setIsRecognizing(true);
-
     try {
-      // Generate file ID and cache key
-      const fileId = await generateFileId(currentFile, currentMaterial);
-      const isAdvanced = recognitionMode === 'advanced';
-      const cacheKey = buildCacheKey(fileId, isAdvanced, hotwords);
-
-      // Check cache if enabled
-      if (cacheEnabled) {
-        const cached = getFromCache(cacheKey);
-        if (cached && cached.result) {
-          // Normalize result
-          const { full_text, segments } = normalizeResult(cached.result);
-
-          // Build character-level data
-          const charLevelData = buildCharLevelData(segments);
-
-          // Update editor store
-          setRecognitionResult(full_text, segments, charLevelData);
-
-          // Update used hotwords
-          setUsedHotwords(cached.result.hotwords_used || null);
-
-          // Trigger callback
-          options.onCacheHit?.();
-          options.onSuccess?.();
-
-          setIsRecognizing(false);
-          return;
-        }
-      }
-
-      // Cache miss or disabled, perform recognition
-      const result = await recognize({
+      const project = await createProject({
         file: currentFile || undefined,
         materialName: currentMaterial || undefined,
-        enableAdvanced: isAdvanced,
-        hotwords: hotwords.trim() || undefined,
+        name: currentMaterial || currentFile?.name.replace(/\.[^.]+$/, ''),
       });
+      setAudioUrl(project.source_url);
+      setMediaType(project.source.media.has_video ? 'video' : 'audio');
+      setUploadedFileId(null);
 
-      // Save to cache if enabled
-      if (cacheEnabled) {
-        const fileName = currentMaterial || currentFile?.name || 'unknown';
-        saveToCache(cacheKey, fileName, result);
-      }
-
-      // Normalize result
-      const { full_text, segments } = normalizeResult(result);
-
-      // Build character-level data
-      const charLevelData = buildCharLevelData(segments);
-
-      // Update editor store
-      setRecognitionResult(full_text, segments, charLevelData);
-
-      // Update used hotwords
-      setUsedHotwords(result.hotwords_used || null);
-
-      // Save uploaded file ID for export (if present)
-      if (result.uploaded_file_id) {
-        setUploadedFileId(result.uploaded_file_id);
-      }
-
-      // Trigger callback
+      const job = await startTranscription(project.id, {
+        model: recognitionMode,
+        hotwords: hotwords.trim(),
+      });
+      await waitForJob(job.id);
+      const snapshot = await loadProjectEditor(project.id);
+      hydrateProject(snapshot);
+      setUsedHotwords(hotwords.trim() || null);
       options.onSuccess?.();
-    } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      console.error('识别失败:', error);
-      setError(error);
-      options.onError?.(error);
-
-      // If cache error, try to remove corrupted cache
-      if (error.message.includes('缓存')) {
-        try {
-          const fileId = await generateFileId(currentFile, currentMaterial);
-          const isAdvanced = recognitionMode === 'advanced';
-          const cacheKey = buildCacheKey(fileId, isAdvanced, hotwords);
-          removeFromCache(cacheKey);
-        } catch (e) {
-          console.error('移除损坏缓存失败:', e);
-        }
-      }
+    } catch (caught) {
+      const failure = caught instanceof Error ? caught : new Error(String(caught));
+      console.error('识别失败:', failure);
+      setError(failure);
+      options.onError?.(failure);
     } finally {
       setIsRecognizing(false);
     }
@@ -147,21 +73,14 @@ export const useASRRecognition = (options: UseASRRecognitionOptions = {}) => {
     currentMaterial,
     recognitionMode,
     hotwords,
-    cacheEnabled,
     setIsRecognizing,
     setUsedHotwords,
     setUploadedFileId,
-    setRecognitionResult,
-    getFromCache,
-    saveToCache,
-    removeFromCache,
-    generateFileId,
-    buildCacheKey,
+    setAudioUrl,
+    setMediaType,
+    hydrateProject,
     options,
   ]);
 
-  return {
-    performRecognition,
-    error,
-  };
+  return { performRecognition, error };
 };

@@ -31,6 +31,7 @@ interface ParagraphGroupProps {
   onDragLeave: () => void;
   /** Callback for drop */
   onDrop: (index: number) => void;
+  onReorder?: (fromIndex: number, toIndex: number) => void;
   /** Callback for right-click context menu */
   onContextMenu: (e: React.MouseEvent, index: number, originalIndex?: number) => void;
   /** TTS audio map for segments (originalIndex → has TTS audio) */
@@ -49,6 +50,7 @@ export const ParagraphGroup: React.FC<ParagraphGroupProps> = ({
   onDragOver,
   onDragLeave,
   onDrop,
+  onReorder,
   onContextMenu,
   ttsAudioMap,
   ttsGeneratingMap,
@@ -67,6 +69,7 @@ export const ParagraphGroup: React.FC<ParagraphGroupProps> = ({
           onDragOver={onDragOver}
           onDragLeave={onDragLeave}
           onDrop={onDrop}
+          onReorder={onReorder}
           onContextMenu={onContextMenu}
           hasTTSAudio={!!(ttsAudioMap && ttsAudioMap[originalIndices[index]])}
           isTTSGenerating={!!(ttsGeneratingMap && ttsGeneratingMap[originalIndices[index]])}
