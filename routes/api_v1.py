@@ -6,7 +6,7 @@ import mimetypes
 import threading
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, TypeAlias, cast
 from uuid import uuid4
 
 from flask import Blueprint, Response, current_app, jsonify, request, send_file
@@ -24,9 +24,12 @@ from voxflow.domain.errors import (
     ValidationError,
     VoxFlowError,
 )
+from voxflow.domain.models import ArtifactKind
 from voxflow.domain.operations import EditPlan
 
 api_v1_bp = Blueprint("api_v1", __name__, url_prefix="/api/v1")
+
+DurationPolicy: TypeAlias = Literal["natural", "fit_source", "pad_or_trim"]
 
 _runtime_instance: Runtime | None = None
 _runtime_lock = threading.Lock()
@@ -121,6 +124,7 @@ def capabilities() -> tuple[Response, int]:
             "project_schema_version": 1,
             "edit_plan_schema_version": 1,
             "export_formats": sorted(_runtime().exports.FORMATS),
+            "speech_duration_policies": ["natural", "fit_source", "pad_or_trim"],
             "legacy_routes": ["/asr", "/export-media", "/tts"],
         }
     )
@@ -309,6 +313,31 @@ def start_export(project_id: str) -> tuple[Response, int]:
     return _data(_web_job(job), 202)
 
 
+@api_v1_bp.post("/projects/<project_id>/speech-replacements")
+def start_speech_replacement(project_id: str) -> tuple[Response, int]:
+    body = _json_body()
+    try:
+        expected_revision = int(body["expected_revision"])
+        clip_id = str(body["clip_id"])
+        text = str(body["text"])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValidationError(
+            "Speech replacement requires expected_revision, clip_id, and text"
+        ) from error
+    policy = body.get("duration_policy")
+    if policy not in {None, "natural", "fit_source", "pad_or_trim"}:
+        raise ValidationError("Invalid speech replacement duration_policy")
+    job = _runtime().speech.start(
+        project_id,
+        expected_revision=expected_revision,
+        clip_id=clip_id,
+        text=text,
+        duration_policy=cast(DurationPolicy | None, policy),
+        parameters=body.get("parameters") if isinstance(body.get("parameters"), dict) else None,
+    )
+    return _data(_web_job(job), 202)
+
+
 @api_v1_bp.get("/jobs")
 def list_jobs() -> tuple[Response, int]:
     page = _runtime().jobs.list(
@@ -353,7 +382,7 @@ def artifact_content(artifact_id: str) -> Response:
     return send_file(
         path,
         mimetype=artifact.mime_type,
-        as_attachment=True,
+        as_attachment=artifact.kind != ArtifactKind.REPLACEMENT_AUDIO,
         conditional=True,
         download_name=filename,
     )

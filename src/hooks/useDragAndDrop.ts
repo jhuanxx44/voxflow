@@ -61,12 +61,6 @@ export function useDragAndDrop({ onReorder }: UseDragAndDropOptions) {
         stopEditedPlayback();
       }
 
-      // Perform the reorder
-      // The actual logic adjusts for the splice behavior:
-      // If moving forward, the destination shifts back by 1 after removal
-      const adjustedToIndex = dragSrcIdx < toIndex ? toIndex - 1 : toIndex;
-      const finalIndex = Math.min(adjustedToIndex + 1, Number.MAX_SAFE_INTEGER);
-
       onReorder(dragSrcIdx, toIndex);
 
       // Clear drag source

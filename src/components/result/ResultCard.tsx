@@ -28,12 +28,11 @@ import { searchTranscript } from '@/services/projectService';
 import type { DisplayMode, SearchMatchV1 } from '@/types';
 
 interface ResultCardProps {
-  audioRef: React.RefObject<HTMLMediaElement>;
+  audioRef: React.RefObject<HTMLMediaElement | null>;
 }
 
 export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
   const {
-    lastFullText,
     lastSegments,
     charLevelData,
     composition,
@@ -57,6 +56,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
     mergeSpeaker,
     ttsAudioMap,
     ttsGeneratingMap,
+    ttsCandidateMap,
     inlineEditIndex,
     setInlineEditIndex,
     projectId,
@@ -102,7 +102,12 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
 
   // TTS
   const ttsAudioRef = useRef<HTMLAudioElement>(null);
-  const { regenerateByIndex } = useTTSRegenerate();
+  const {
+    regenerateByIndex,
+    applyCandidateByIndex,
+    discardCandidateByIndex,
+    progress: ttsProgress,
+  } = useTTSRegenerate();
 
   /**
    * 计算说话人统计信息
@@ -257,13 +262,6 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
   /**
    * Handle double-click to start edited playback from position
    */
-  const handleDoubleClick = useCallback(
-    (index: number) => {
-      startEditedPlayback(index);
-    },
-    [startEditedPlayback]
-  );
-
   /**
    * Handle context menu — pass both render index and original index
    */
@@ -297,6 +295,36 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
   const handleInlineEditCancel = useCallback(() => {
     setInlineEditIndex(null);
   }, [setInlineEditIndex]);
+
+  const playTTSCandidate = useCallback((url: string) => {
+    if (!ttsAudioRef.current) return;
+    ttsAudioRef.current.src = url;
+    ttsAudioRef.current.play().catch((error) => {
+      console.error('[TTS] Candidate preview failed:', error);
+    });
+  }, []);
+
+  const handleApplyTTSCandidate = useCallback(
+    async (segmentIndex: number) => {
+      try {
+        await applyCandidateByIndex(segmentIndex);
+      } catch (error) {
+        alert(`应用语音候选失败: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+    [applyCandidateByIndex]
+  );
+
+  const handlePadOrTrimCandidate = useCallback(
+    async (segmentIndex: number, text: string) => {
+      try {
+        await regenerateByIndex(segmentIndex, text, 'pad_or_trim');
+      } catch (error) {
+        alert(`重新生成语音候选失败: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+    [regenerateByIndex]
+  );
 
   /**
    * Handle right-click on speaker label to show context menu
@@ -663,6 +691,75 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
           role="alert"
         >
           {revisionConflict ? '检测到其他客户端的新 revision，已刷新到最新版本。' : lastError}
+        </div>
+      )}
+
+      {Object.keys(ttsCandidateMap).length > 0 && (
+        <div
+          className="mb-4 space-y-3 rounded border border-blue-500/40 bg-blue-500/10 p-3"
+          data-testid="speech-candidate-panel"
+        >
+          <div className="text-sm font-medium">语音 replacement 候选</div>
+          {ttsProgress && <div className="text-xs text-[var(--text-muted)]">{ttsProgress}</div>}
+          {Object.entries(ttsCandidateMap).map(([indexText, candidate]) => {
+            const segmentIndex = Number(indexText);
+            const unsafeFit =
+              candidate.operation.duration_policy === 'fit_source' &&
+              !candidate.safeStretch;
+            return (
+              <div
+                key={candidate.artifactId}
+                className="rounded border border-[var(--border-input)] bg-[var(--bg-card)] p-3"
+                data-testid={`speech-candidate-${segmentIndex}`}
+              >
+                <div className="mb-2 text-sm">
+                  “{candidate.operation.text}” · {(candidate.durationMs / 1000).toFixed(2)}s ·{' '}
+                  {candidate.operation.duration_policy}
+                </div>
+                {candidate.warnings.length > 0 && (
+                  <ul className="mb-2 list-disc pl-5 text-xs text-amber-700 dark:text-amber-300">
+                    {candidate.warnings.map((warning) => (
+                      <li key={warning}>{warning}</li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className="rounded border border-[var(--border-input)] px-3 py-1 text-sm"
+                    onClick={() => playTTSCandidate(candidate.previewUrl)}
+                  >
+                    试听候选
+                  </button>
+                  <button
+                    className="rounded bg-blue-600 px-3 py-1 text-sm text-white disabled:opacity-50"
+                    disabled={unsafeFit || isCommitting}
+                    onClick={() => void handleApplyTTSCandidate(segmentIndex)}
+                  >
+                    应用到时间线
+                  </button>
+                  {unsafeFit && (
+                    <button
+                      className="rounded bg-amber-600 px-3 py-1 text-sm text-white"
+                      onClick={() =>
+                        void handlePadOrTrimCandidate(
+                          segmentIndex,
+                          candidate.operation.text
+                        )
+                      }
+                    >
+                      改用 pad/trim
+                    </button>
+                  )}
+                  <button
+                    className="rounded px-3 py-1 text-sm text-[var(--text-muted)]"
+                    onClick={() => discardCandidateByIndex(segmentIndex)}
+                  >
+                    放弃候选
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 

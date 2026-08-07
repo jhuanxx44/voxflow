@@ -1,11 +1,15 @@
 import type {
   ApiEnvelope,
   ApiErrorEnvelope,
+  AttachSpeechReplacementV1,
   EditOperationV1,
+  EditPreviewV1,
   JobV1,
   ProjectEditorSnapshot,
   ProjectV1,
   SearchMatchV1,
+  SpeechDurationPolicy,
+  SpeechReplacementCandidateV1,
   TimelineV1,
   TranscriptV1,
 } from '@/types/project';
@@ -144,6 +148,84 @@ export function applyEdit(
       operations,
     }),
   });
+}
+
+export function previewEdit(
+  projectId: string,
+  expectedRevision: number,
+  operations: EditOperationV1[],
+  reason: string
+): Promise<EditPreviewV1> {
+  return api<EditPreviewV1>(`/api/v1/projects/${projectId}/edits/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      schema_version: 1,
+      project_id: projectId,
+      expected_revision: expectedRevision,
+      client_request_id: `web-preview-${crypto.randomUUID()}`,
+      reason,
+      operations,
+    }),
+  });
+}
+
+export async function startSpeechReplacement(
+  projectId: string,
+  expectedRevision: number,
+  clipId: string,
+  text: string,
+  options: {
+    durationPolicy?: SpeechDurationPolicy;
+    onProgress?: (job: JobV1) => void;
+  } = {}
+): Promise<SpeechReplacementCandidateV1> {
+  const submitted = await api<JobV1>(
+    `/api/v1/projects/${projectId}/speech-replacements`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        expected_revision: expectedRevision,
+        clip_id: clipId,
+        text,
+        duration_policy: options.durationPolicy,
+      }),
+    }
+  );
+  const job = await waitForJob(submitted.id, { onProgress: options.onProgress });
+  const result = job.result;
+  const artifactId = result?.artifact_id;
+  const rawOperation = result?.recommended_operation;
+  if (
+    typeof artifactId !== 'string' ||
+    !rawOperation ||
+    typeof rawOperation !== 'object' ||
+    (rawOperation as { op?: unknown }).op !== 'attach_speech_replacement'
+  ) {
+    throw new ProjectApiError(
+      '语音候选任务缺少 artifact 或推荐操作',
+      'INVALID_JOB_RESULT',
+      500
+    );
+  }
+  const operation = rawOperation as AttachSpeechReplacementV1;
+  const warnings = Array.isArray(result?.warnings)
+    ? result.warnings.map((warning) => String(warning))
+    : [];
+  const durationMs = Number(result?.duration_ms);
+  return {
+    artifactId,
+    previewUrl:
+      typeof result?.download_url === 'string'
+        ? result.download_url
+        : `/api/v1/artifacts/${artifactId}/content`,
+    durationMs: Number.isFinite(durationMs) ? durationMs : operation.replacement_duration_ms,
+    baseRevision: expectedRevision,
+    operation,
+    warnings,
+    safeStretch: result?.safe_stretch !== false,
+  };
 }
 
 export function restoreRevision(

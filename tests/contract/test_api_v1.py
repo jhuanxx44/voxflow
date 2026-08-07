@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -154,3 +155,60 @@ def test_api_v1_revision_conflict_and_legacy_deprecation(
     legacy = client.post("/export-media", json={})
     assert legacy.headers["Deprecation"] == "true"
     assert "successor-version" in legacy.headers["Link"]
+    legacy_tts = client.post("/tts", json={})
+    assert legacy_tts.headers["Deprecation"] == "true"
+    assert "speech-replacements" in legacy_tts.headers["Link"]
+
+
+def test_api_v1_speech_candidate_preview_and_attach(settings: Settings, wav_file: Path) -> None:
+    runtime = Runtime.create(replace(settings, tts_provider="fake"))
+    project = runtime.store.create(wav_file)
+    runtime.transcripts.import_payload(
+        project.id,
+        {
+            "text": "原始语音",
+            "segments": [{"start": 0, "end": 1000, "text": "原始语音"}],
+        },
+    )
+    clip = runtime.store.get_timeline(project.id).clips[0]
+    app.config["TESTING"] = True
+    app.config["VOXFLOW_RUNTIME"] = runtime
+    client = app.test_client()
+
+    submitted = client.post(
+        f"/api/v1/projects/{project.id}/speech-replacements",
+        json={
+            "expected_revision": 1,
+            "clip_id": clip.id,
+            "text": "新的语音",
+            "duration_policy": "natural",
+            "parameters": {"fake_duration_ms": 1200},
+        },
+    )
+    assert submitted.status_code == 202
+    job = submitted.get_json()["data"]
+    assert job["status"] == "succeeded"
+    assert "path" not in job["result"]
+    operation = job["result"]["recommended_operation"]
+    artifact_id = job["result"]["artifact_id"]
+    preview_content = client.get(job["result"]["download_url"])
+    assert preview_content.status_code == 200
+    assert preview_content.headers["Content-Disposition"].startswith("inline")
+
+    plan = {
+        "schema_version": 1,
+        "project_id": project.id,
+        "expected_revision": 1,
+        "client_request_id": "web-speech-attach",
+        "reason": "Web candidate attach",
+        "operations": [operation],
+    }
+    preview = client.post(f"/api/v1/projects/{project.id}/edits/preview", json=plan)
+    applied = client.post(f"/api/v1/projects/{project.id}/edits", json=plan)
+    assert preview.status_code == 200
+    assert applied.status_code == 201
+    assert preview.get_json()["data"]["diff"] == applied.get_json()["data"]["diff"]
+    timeline = client.get(f"/api/v1/projects/{project.id}/timeline").get_json()["data"]
+    assert timeline["revision"] == 2
+    assert timeline["items"][0]["kind"] == "replacement"
+    assert timeline["items"][0]["replacement_artifact_id"] == artifact_id

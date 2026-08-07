@@ -1,200 +1,157 @@
-/**
- * useTTSRegenerate - Hook for TTS regeneration with voice cloning
- *
- * Handles:
- * - Reference audio segment selection based on speaker ID
- * - TTS generation via backend proxy
- * - Store state management (generating status, audio blobs)
- */
+/** Persistent project-backed two-phase speech replacement workflow. */
 
 import { useCallback, useState } from 'react';
 import { useEditorStore } from '@/stores/editorStore';
-import { useASRStore } from '@/stores/asrStore';
-import { generateTTS } from '@/services/ttsService';
-import type { TTSSource } from '@/services/ttsService';
+import {
+  previewEdit,
+  startSpeechReplacement,
+} from '@/services/projectService';
+import type {
+  SpeechDurationPolicy,
+  SpeechReplacementCandidateV1,
+} from '@/types/project';
 
-/** Minimum segment duration (ms) for reference audio */
-const MIN_REF_SEGMENT_DURATION = 500;
-
-/** Target total reference audio duration (ms) */
-const TARGET_REF_DURATION = 5000;
-
-/**
- * Select reference audio segments for a given speaker.
- * Picks the longest segments from the same speaker until reaching the target duration.
- */
-function selectRefSegments(
-  segments: Array<{ start: number; end: number; spk?: number | null }>,
-  targetSpk: number,
-  excludeIndex?: number
-): Array<{ start: number; end: number }> {
-  // Find all segments from the same speaker
-  const candidates = segments
-    .map((seg, idx) => ({ ...seg, idx }))
-    .filter((seg) => {
-      if (seg.spk !== targetSpk) return false;
-      if (excludeIndex !== undefined && seg.idx === excludeIndex) return false;
-      const duration = (seg.end || seg.start) - seg.start;
-      return duration >= MIN_REF_SEGMENT_DURATION;
-    })
-    .map((seg) => ({
-      start: seg.start,
-      end: seg.end || seg.start,
-      duration: (seg.end || seg.start) - seg.start,
-    }));
-
-  // Sort by duration descending
-  candidates.sort((a, b) => b.duration - a.duration);
-
-  // Accumulate until target duration
-  const selected: Array<{ start: number; end: number }> = [];
-  let totalDuration = 0;
-
-  for (const seg of candidates) {
-    selected.push({ start: seg.start, end: seg.end });
-    totalDuration += seg.duration;
-    if (totalDuration >= TARGET_REF_DURATION) break;
-  }
-
-  return selected;
-}
-
-/**
- * Get the TTS source info from ASR store state
- */
-function getTTSSource(
-  currentMaterial: string | null,
-  uploadedFileId: string | null
-): TTSSource | null {
-  if (currentMaterial) {
-    return { type: 'material', name: currentMaterial };
-  }
-  if (uploadedFileId) {
-    return { type: 'upload', file_id: uploadedFileId };
-  }
-  return null;
+function uniqueWarnings(...groups: string[][]): string[] {
+  return [...new Set(groups.flat().filter(Boolean))];
 }
 
 export function useTTSRegenerate() {
   const [progress, setProgress] = useState('');
 
-  const lastSegments = useEditorStore((s) => s.lastSegments);
-  const composition = useEditorStore((s) => s.composition);
-  const setTTSAudio = useEditorStore((s) => s.setTTSAudio);
-  const setTTSGenerating = useEditorStore((s) => s.setTTSGenerating);
-  const ttsGeneratingMap = useEditorStore((s) => s.ttsGeneratingMap);
-  const replaceSegmentTextByIndex = useEditorStore((s) => s.replaceSegmentTextByIndex);
-
-  const currentMaterial = useASRStore((s) => s.currentMaterial);
-  const uploadedFileId = useASRStore((s) => s.uploadedFileId);
+  const lastSegments = useEditorStore((state) => state.lastSegments);
+  const composition = useEditorStore((state) => state.composition);
+  const ttsGeneratingMap = useEditorStore((state) => state.ttsGeneratingMap);
+  const setTTSAudio = useEditorStore((state) => state.setTTSAudio);
+  const setTTSGenerating = useEditorStore((state) => state.setTTSGenerating);
+  const setTTSCandidate = useEditorStore((state) => state.setTTSCandidate);
+  const removeTTSCandidate = useEditorStore((state) => state.removeTTSCandidate);
+  const removeTTSAudio = useEditorStore((state) => state.removeTTSAudio);
+  const applySpeechCandidate = useEditorStore((state) => state.applySpeechCandidate);
 
   const isRegenerating = Object.values(ttsGeneratingMap).some(Boolean);
 
-  /**
-   * Regenerate TTS for a specific segment by its original index in lastSegments
-   */
   const regenerateByIndex = useCallback(
-    async (segmentIndex: number, newText?: string) => {
-      const segment = lastSegments[segmentIndex];
-      if (!segment) {
-        console.warn('[TTS] Segment not found:', segmentIndex);
-        return;
+    async (
+      segmentIndex: number,
+      newText?: string,
+      durationPolicy?: SpeechDurationPolicy
+    ): Promise<SpeechReplacementCandidateV1 | undefined> => {
+      const state = useEditorStore.getState();
+      const segment = state.lastSegments[segmentIndex];
+      const clip = state.timelineClips[segmentIndex];
+      if (!state.projectId || !clip || !segment) {
+        throw new Error('当前片段尚未关联持久化 VoxFlow project');
       }
+      const textToSynthesize = (newText ?? segment.text).trim();
+      if (!textToSynthesize) return undefined;
 
-      const source = getTTSSource(currentMaterial, uploadedFileId);
-      if (!source) {
-        console.warn('[TTS] No source file available');
-        throw new Error('没有源文件，无法进行 TTS 重生成');
-      }
-
-      // If new text provided, update the specific segment text
-      if (newText !== undefined && newText !== segment.text) {
-        replaceSegmentTextByIndex(segmentIndex, newText);
-      }
-
-      const textToSynthesize = newText || segment.text;
-      if (!textToSynthesize.trim()) {
-        console.warn('[TTS] Empty text, skipping');
-        return;
-      }
-
-      // Select reference segments for voice cloning
-      const targetSpk = segment.spk;
-      const refSegments =
-        typeof targetSpk === 'number'
-          ? selectRefSegments(lastSegments, targetSpk, segmentIndex)
-          : [];
-
-      // Set generating state
       setTTSGenerating(segmentIndex, true);
-
+      setProgress('正在生成持久化语音候选…');
       try {
-        const result = await generateTTS({
-          text: textToSynthesize,
-          source,
-          refSegments,
-        });
-
-        setTTSAudio(segmentIndex, result.blobUrl, result.durationMs);
-        console.log(
-          `[TTS] Generated for segment ${segmentIndex}: ${result.durationMs?.toFixed(0)}ms`
+        const candidate = await startSpeechReplacement(
+          state.projectId,
+          state.revision,
+          clip.id,
+          textToSynthesize,
+          {
+            durationPolicy,
+            onProgress: (job) => {
+              const percent = Math.round(job.progress * 100);
+              setProgress(`语音候选 ${job.phase} · ${percent}%`);
+            },
+          }
         );
+        const preview = await previewEdit(
+          state.projectId,
+          state.revision,
+          [candidate.operation],
+          'Web: preview speech replacement'
+        );
+        const ready = {
+          ...candidate,
+          warnings: uniqueWarnings(candidate.warnings, preview.diff.warnings),
+        };
+        setTTSAudio(segmentIndex, ready.previewUrl, ready.durationMs);
+        setTTSCandidate(segmentIndex, ready);
+        setProgress('候选已生成：请先试听，再应用到时间线');
+        return ready;
       } catch (error) {
         setTTSGenerating(segmentIndex, false);
+        setProgress('');
         throw error;
       }
     },
-    [lastSegments, currentMaterial, uploadedFileId, setTTSAudio, setTTSGenerating, replaceSegmentTextByIndex]
+    [setTTSAudio, setTTSGenerating, setTTSCandidate]
   );
 
-  /**
-   * Regenerate TTS for segments matching a given text string.
-   * Uses punctuation-normalized matching (same as deleteByText).
-   */
+  const applyCandidateByIndex = useCallback(
+    async (segmentIndex: number) => {
+      const candidate = useEditorStore.getState().ttsCandidateMap[segmentIndex];
+      if (!candidate) throw new Error('语音候选不存在或已失效');
+      if (
+        candidate.operation.duration_policy === 'fit_source' &&
+        !candidate.safeStretch
+      ) {
+        throw new Error('拉伸比例超出安全范围，请改用 pad/trim 策略重新生成');
+      }
+      setProgress('正在应用候选并创建新 revision…');
+      await applySpeechCandidate(segmentIndex, candidate.operation);
+      setProgress('语音 replacement 已提交');
+    },
+    [applySpeechCandidate]
+  );
+
+  const discardCandidateByIndex = useCallback(
+    (segmentIndex: number) => {
+      removeTTSCandidate(segmentIndex);
+      const clip = useEditorStore.getState().timelineClips[segmentIndex];
+      if (clip?.replacement_artifact_id) {
+        setTTSAudio(
+          segmentIndex,
+          `/api/v1/artifacts/${clip.replacement_artifact_id}/content`,
+          clip.replacement_duration_ms ?? undefined
+        );
+      } else {
+        removeTTSAudio(segmentIndex);
+      }
+      setProgress('');
+    },
+    [removeTTSAudio, removeTTSCandidate, setTTSAudio]
+  );
+
   const regenerateByText = useCallback(
     async (text: string) => {
       const normalizedText = text
         .replace(/[。，、！？；：""''（）【】《》,.!?;:()[\]<>]+$/g, '')
         .trim();
-
       if (!normalizedText) return;
 
-      // Find matching segment indices in the composition
-      const matchingOriginalIndices: number[] = [];
-      for (let i = 0; i < composition.length; i++) {
-        const idx = composition[i];
-        const seg = lastSegments[idx];
-        if (!seg) continue;
-        const segText = seg.text
-          .replace(/[。，、！？；：""''（）【】《》,.!?;:()[\]<>]+$/g, '')
-          .trim();
-        if (segText === normalizedText) {
-          matchingOriginalIndices.push(idx);
-        }
-      }
+      const matchingOriginalIndices = composition.filter((index) => {
+        const segment = lastSegments[index];
+        if (!segment) return false;
+        return (
+          segment.text
+            .replace(/[。，、！？；：""''（）【】《》,.!?;:()[\]<>]+$/g, '')
+            .trim() === normalizedText
+        );
+      });
+      if (!matchingOriginalIndices.length) return;
 
-      if (matchingOriginalIndices.length === 0) {
-        console.warn(`[TTS] No matching segments for text: "${text}"`);
-        return;
-      }
-
-      // Regenerate each matching segment
       const errors: string[] = [];
-      for (let i = 0; i < matchingOriginalIndices.length; i++) {
-        const segIdx = matchingOriginalIndices[i];
-        setProgress(`正在处理 ${i + 1}/${matchingOriginalIndices.length}: "${text.slice(0, 20)}..."`);
+      for (let index = 0; index < matchingOriginalIndices.length; index += 1) {
+        const segmentIndex = matchingOriginalIndices[index];
+        setProgress(
+          `正在生成候选 ${index + 1}/${matchingOriginalIndices.length}: “${text.slice(0, 20)}”`
+        );
         try {
-          await regenerateByIndex(segIdx);
-        } catch (e) {
-          errors.push(`Segment ${segIdx}: ${e instanceof Error ? e.message : String(e)}`);
+          await regenerateByIndex(segmentIndex);
+        } catch (error) {
+          errors.push(
+            `Segment ${segmentIndex}: ${error instanceof Error ? error.message : String(error)}`
+          );
         }
       }
-
-      setProgress('');
-
-      if (errors.length > 0) {
-        throw new Error(`部分 TTS 生成失败:\n${errors.join('\n')}`);
-      }
+      if (errors.length) throw new Error(`部分 TTS 候选生成失败:\n${errors.join('\n')}`);
     },
     [composition, lastSegments, regenerateByIndex]
   );
@@ -202,6 +159,8 @@ export function useTTSRegenerate() {
   return {
     regenerateByIndex,
     regenerateByText,
+    applyCandidateByIndex,
+    discardCandidateByIndex,
     isRegenerating,
     progress,
   };

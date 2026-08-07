@@ -1,5 +1,70 @@
 {
   "$defs": {
+    "AttachSpeechReplacement": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_id": {
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "clip_fingerprint": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Clip Fingerprint",
+          "type": "string"
+        },
+        "clip_id": {
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "duration_policy": {
+          "enum": [
+            "natural",
+            "fit_source",
+            "pad_or_trim"
+          ],
+          "title": "Duration Policy",
+          "type": "string"
+        },
+        "op": {
+          "const": "attach_speech_replacement",
+          "title": "Op",
+          "type": "string"
+        },
+        "render_duration_ms": {
+          "exclusiveMinimum": 0,
+          "title": "Render Duration Ms",
+          "type": "integer"
+        },
+        "replacement_duration_ms": {
+          "exclusiveMinimum": 0,
+          "title": "Replacement Duration Ms",
+          "type": "integer"
+        },
+        "stretch_ratio": {
+          "exclusiveMinimum": 0,
+          "title": "Stretch Ratio",
+          "type": "number"
+        },
+        "text": {
+          "minLength": 1,
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "artifact_id",
+        "clip_fingerprint",
+        "text",
+        "duration_policy",
+        "replacement_duration_ms",
+        "render_duration_ms",
+        "stretch_ratio"
+      ],
+      "title": "AttachSpeechReplacement",
+      "type": "object"
+    },
     "CorrectTranscript": {
       "additionalProperties": false,
       "properties": {
@@ -239,6 +304,7 @@
       "items": {
         "discriminator": {
           "mapping": {
+            "attach_speech_replacement": "#/$defs/AttachSpeechReplacement",
             "correct_transcript": "#/$defs/CorrectTranscript",
             "delete_clips": "#/$defs/DeleteClips",
             "delete_ranges": "#/$defs/DeleteRanges",
@@ -274,6 +340,9 @@
           },
           {
             "$ref": "#/$defs/MergeSpeakers"
+          },
+          {
+            "$ref": "#/$defs/AttachSpeechReplacement"
           }
         ]
       },

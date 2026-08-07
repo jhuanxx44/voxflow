@@ -77,7 +77,8 @@
     "kind": {
       "enum": [
         "transcribe",
-        "export"
+        "export",
+        "speech_replace"
       ],
       "title": "Kind",
       "type": "string"

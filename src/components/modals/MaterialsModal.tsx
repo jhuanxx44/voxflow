@@ -20,7 +20,6 @@ import { useASRStore, MediaType } from '@/stores/asrStore';
 import type { Material } from '@/types/materials';
 import {
   getMaterials,
-  getMaterialDownloadUrl,
   formatFileSize
 } from '@/services/materialsService';
 

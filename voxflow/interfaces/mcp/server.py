@@ -25,6 +25,7 @@ ContextSize: TypeAlias = Annotated[int, Field(ge=0, le=10)]
 Revision: TypeAlias = Annotated[int, Field(ge=0)]
 ASRModel: TypeAlias = Literal["basic", "advanced"]
 ExportFormat: TypeAlias = Literal["mp4", "mp3", "wav", "srt", "vtt"]
+DurationPolicy: TypeAlias = Literal["natural", "fit_source", "pad_or_trim"]
 
 
 class MCPSuccessEnvelope(StrictModel):
@@ -255,6 +256,27 @@ def edit_undo_apply(
 
 
 @mcp.tool()
+def speech_replace_start(
+    project_id: str,
+    clip_id: str,
+    expected_revision: Revision,
+    text: str,
+    duration_policy: DurationPolicy | None = None,
+) -> MCPEnvelope:
+    """Generate a persistent TTS candidate; preview/apply its recommended operation next."""
+    return _envelope(
+        lambda: _runtime().speech.start(
+            project_id,
+            expected_revision=expected_revision,
+            clip_id=clip_id,
+            text=text,
+            duration_policy=duration_policy,
+        ),
+        recommended_next_tool="job_get",
+    )
+
+
+@mcp.tool()
 def export_start(project_id: str, output_format: ExportFormat = "mp4") -> MCPEnvelope:
     """Start MP4/MP3/WAV/SRT/VTT rendering and return a job ID."""
     return _envelope(
@@ -265,7 +287,7 @@ def export_start(project_id: str, output_format: ExportFormat = "mp4") -> MCPEnv
 
 @mcp.tool()
 def job_get(job_id: str) -> MCPEnvelope:
-    """Poll recognition/export status, progress, result artifact, or structured error."""
+    """Poll recognition/export/speech status, result artifact, or structured error."""
     return _envelope(lambda: _runtime().jobs.get(job_id))
 
 

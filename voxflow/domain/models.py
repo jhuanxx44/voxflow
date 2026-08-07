@@ -137,6 +137,11 @@ class TimelineClip(StrictModel):
     speaker_id: str | None = None
     token_ids: list[str] = Field(default_factory=list)
     replacement_artifact_id: str | None = None
+    replacement_duration_ms: int | None = Field(default=None, gt=0)
+    render_duration_ms: int | None = Field(default=None, gt=0)
+    duration_policy: Literal["natural", "fit_source", "pad_or_trim"] | None = None
+    stretch_ratio: float | None = Field(default=None, gt=0)
+    replacement_warnings: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def validate_range(self) -> TimelineClip:
@@ -144,11 +149,17 @@ class TimelineClip(StrictModel):
             raise ValueError("clip source_out_ms must be greater than source_in_ms")
         if self.kind == "replacement" and not self.replacement_artifact_id:
             raise ValueError("replacement clips require replacement_artifact_id")
+        if self.kind == "replacement" and (
+            not self.replacement_duration_ms
+            or not self.render_duration_ms
+            or not self.duration_policy
+        ):
+            raise ValueError("replacement clips require duration metadata and policy")
         return self
 
     @property
     def duration_ms(self) -> int:
-        return self.source_out_ms - self.source_in_ms
+        return self.render_duration_ms or (self.source_out_ms - self.source_in_ms)
 
 
 class TimelineRevision(StrictModel):
@@ -187,7 +198,7 @@ class Artifact(StrictModel):
 class Job(StrictModel):
     schema_version: Literal[1] = 1
     id: str
-    kind: Literal["transcribe", "export"]
+    kind: Literal["transcribe", "export", "speech_replace"]
     project_id: str
     status: JobStatus = JobStatus.QUEUED
     progress: float = Field(default=0.0, ge=0.0, le=1.0)

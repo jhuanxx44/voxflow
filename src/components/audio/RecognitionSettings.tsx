@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { useASRStore } from '@/stores/asrStore';
-import type { RecognitionMode, ServerStatus } from '@/stores/asrStore';
+import type { ServerStatus } from '@/stores/asrStore';
 
 interface RecognitionSettingsProps {
   onRecognize?: () => void;
@@ -23,16 +23,10 @@ export const RecognitionSettings: React.FC<RecognitionSettingsProps> = ({
   className = '',
 }) => {
   const {
-    recognitionMode,
-    setRecognitionMode,
     hotwords,
     setHotwords,
     serverStatus,
   } = useASRStore();
-
-  const handleModeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setRecognitionMode(e.target.checked ? 'advanced' : 'basic');
-  };
 
   const handleHotwordsChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setHotwords(e.target.value);

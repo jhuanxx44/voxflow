@@ -38,6 +38,7 @@ def mark_legacy_api_deprecation(response):
     legacy_successors = {
         "/asr": "/api/v1/projects/{project_id}/transcriptions",
         "/export-media": "/api/v1/projects/{project_id}/exports",
+        "/tts": "/api/v1/projects/{project_id}/speech-replacements",
     }
     successor = legacy_successors.get(request.path)
     if successor:

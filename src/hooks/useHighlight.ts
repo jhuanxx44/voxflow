@@ -14,7 +14,7 @@ import { useEditorStore } from '@/stores/editorStore';
 const HIGHLIGHT_EPS = 30; // 30ms tolerance for highlight matching
 
 interface UseHighlightOptions {
-  audioRef: React.RefObject<HTMLMediaElement>;
+  audioRef: React.RefObject<HTMLMediaElement | null>;
 }
 
 export function useHighlight({ audioRef }: UseHighlightOptions) {

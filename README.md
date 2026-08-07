@@ -115,7 +115,15 @@ voxflow --json timeline get <project-id> --limit 100
 voxflow --json edit preview <project-id> --plan /absolute/path/edit-plan.json
 voxflow --json edit apply <project-id> --plan /absolute/path/edit-plan.json
 
-# 5. 导出
+# 5. 可选：生成持久化语音候选（不会直接修改 timeline）
+voxflow --json speech replace-start <project-id> <clip-id> \
+  --expected-revision <revision> --text "修正后的台词" --wait
+
+# 将 job.result.recommended_operation 放入 Edit Plan 后，仍必须 preview/apply。
+# 音频默认 natural ripple；视频默认 fit_source。
+# 超出 0.8–1.25 安全拉伸范围时 apply 会拒绝，需显式改用 pad_or_trim。
+
+# 6. 导出
 voxflow --json export create <project-id> --format mp4 \
   --out /absolute/path/edited.mp4 --wait
 ```
@@ -162,7 +170,9 @@ args = ["mcp", "serve"]
 env = { VOXFLOW_HOME = "/absolute/path/to/voxflow-data" }
 ```
 
-MCP 对长任务使用 `transcript_start` / `export_start` 返回 job ID，再用 `job_get` 轮询；媒体内容不会通过 MCP 返回，只提供本地 artifact 路径。
+MCP 对长任务使用 `transcript_start` / `speech_replace_start` / `export_start` 返回 job ID，再用 `job_get` 轮询。语音任务只生成候选 artifact 和 `recommended_operation`；Agent 仍需调用 `edit_preview`、得到可接受 diff/warning 后再调用 `edit_apply`。媒体内容不会通过 MCP 返回，只提供本地 artifact 路径。
+
+本地 TTS provider 通过 `VOXFLOW_TTS_PROVIDER` 选择；默认 `indextts` 使用 `TTS_SERVICE_URL`。候选缓存键包含 provider/version、voice reference、文本和参数，存放在 `VOXFLOW_HOME/tts-cache/`。Web 会使用受控 artifact URL 试听，刷新后从 committed timeline 恢复 replacement，不依赖浏览器 Blob。
 
 ### 开发验证
 
@@ -170,6 +180,8 @@ MCP 对长任务使用 `transcript_start` / `export_start` 返回 job ID，再�
 make check
 python3.11 scripts/smoke_cli.py
 uv run python scripts/smoke_mcp.py
+# CLI 生成 candidate -> MCP preview/apply -> WAV renderer
+uv run python scripts/smoke_speech.py
 # macOS + 本地 ModelScope 模型缓存：真实 FunASR -> MCP edit -> export
 uv run python scripts/smoke_mcp_asr.py
 # 601 秒 / 1202 segments 的长素材 MCP 验证
