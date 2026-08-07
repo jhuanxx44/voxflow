@@ -10,16 +10,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jedimindtricks0606/audio-editor.git"
+    "url": "git+https://github.com/jhuanxx44/voxflow.git"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "VoxFlow contributors",
+  "license": "MIT",
   "type": "commonjs",
   "bugs": {
-    "url": "https://github.com/jedimindtricks0606/audio-editor/issues"
+    "url": "https://github.com/jhuanxx44/voxflow/issues"
   },
-  "homepage": "https://github.com/jedimindtricks0606/audio-editor#readme",
+  "homepage": "https://github.com/jhuanxx44/voxflow#readme",
   "devDependencies": {
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
