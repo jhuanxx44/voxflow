@@ -1,71 +1,61 @@
-/**
- * Editor Store - Manages the main editor state including recognition results,
- * composition arrays, display modes, and editing state
- */
+/** Project-backed editor view cache and deterministic Edit Plan actions. */
 
 import { create } from 'zustand';
-import { immer } from 'zustand/middleware/immer';
-import type { Segment, CharUnit, DisplayMode } from '@/types';
+import type { CharUnit, DisplayMode, Segment } from '@/types';
+import type {
+  EditOperationV1,
+  ProjectEditorSnapshot,
+  TimelineClipV1,
+  TranscriptTokenV1,
+} from '@/types/project';
+import {
+  applyEdit,
+  loadProjectEditor,
+  ProjectApiError,
+  restoreRevision,
+} from '@/services/projectService';
 
-/** Fields tracked by undo/redo history */
-interface UndoableState {
-  composition: number[];
-  charComposition: number[];
-  lastSegments: Segment[];
-  charLevelData: CharUnit[];
-  smartParagraphGroups: number[][];
-  isSmartParagraphManuallyEdited: boolean;
-  speakerNames: Record<number, string>;
-  speakerMerges: Record<number, number>;
-  hasEdited: boolean;
-}
+const CURRENT_PROJECT_KEY = 'voxflow.currentProjectId';
 
 interface EditorState {
-  // Recognition results
+  projectId: string | null;
+  projectName: string;
+  revision: number;
+  sourceUrl: string | null;
+  timelineClips: TimelineClipV1[];
+  isCommitting: boolean;
+  lastError: string | null;
+  revisionConflict: boolean;
+
   lastFullText: string;
   lastSegments: Segment[];
   charLevelData: CharUnit[];
-
-  // Composition arrays (critical for editing)
-  composition: number[]; // segment indices
-  charComposition: number[]; // character indices
-
-  // Smart paragraph groups
+  composition: number[];
+  charComposition: number[];
   smartParagraphGroups: number[][];
   isSmartParagraphManuallyEdited: boolean;
-
-  // Speaker names mapping (speakerId -> custom name)
   speakerNames: Record<number, string>;
-  // Speaker merges mapping (fromSpkId -> toSpkId)
   speakerMerges: Record<number, number>;
-
-  // Modes
   isCharEditMode: boolean;
   displayMode: DisplayMode;
-
-  // Editing state
   hasEdited: boolean;
   insertAfterIndex: number | null;
-
-  // Playback state
   editedPlaying: boolean;
   editedPlayPos: number;
-
-  // Drag state
   dragSrcIdx: number | null;
 
-  // TTS regeneration state
-  ttsAudioMap: Record<number, string>;      // segmentIndex → blob URL
-  ttsDurationMap: Record<number, number>;    // segmentIndex → duration ms
-  ttsGeneratingMap: Record<number, boolean>; // segmentIndex → generating?
-  inlineEditIndex: number | null;            // 当前内联编辑的 renderIndex
+  ttsAudioMap: Record<number, string>;
+  ttsDurationMap: Record<number, number>;
+  ttsGeneratingMap: Record<number, boolean>;
+  inlineEditIndex: number | null;
 
-  // Undo/Redo history (dual-stack)
-  _undoStack: UndoableState[];
-  _redoStack: UndoableState[];
+  _undoStack: number[];
+  _redoStack: number[];
   _maxHistory: number;
 
-  // Actions
+  hydrateProject: (snapshot: ProjectEditorSnapshot, preserveHistory?: boolean) => void;
+  loadProject: (projectId: string, preserveHistory?: boolean) => Promise<ProjectEditorSnapshot>;
+  refreshProject: () => Promise<void>;
   setRecognitionResult: (
     fullText: string,
     segments: Segment[],
@@ -94,14 +84,10 @@ interface EditorState {
   setSpeakerName: (speakerId: number, name: string) => void;
   mergeSpeaker: (fromSpkId: number, toSpkId: number) => void;
   getEffectiveSpeaker: (spkId: number) => number;
-
-  // Undo/Redo actions
   undo: () => void;
   redo: () => void;
   canUndo: () => boolean;
   canRedo: () => boolean;
-
-  // TTS actions
   setTTSAudio: (segmentIndex: number, blobUrl: string, durationMs?: number) => void;
   removeTTSAudio: (segmentIndex: number) => void;
   clearAllTTSAudio: () => void;
@@ -110,12 +96,28 @@ interface EditorState {
   replaceSegmentTextByIndex: (segmentIndex: number, newText: string) => void;
 }
 
-/**
- * Get the effective speaker ID after applying merges
- * @param spkId - Original speaker ID
- * @param merges - Speaker merges mapping
- * @returns The effective speaker ID (target of merge or original)
- */
+type SetEditorState = (
+  partial:
+    | Partial<EditorState>
+    | ((state: EditorState) => Partial<EditorState>)
+) => void;
+
+let mutationQueue: Promise<void> = Promise.resolve();
+
+function enqueue(task: () => Promise<void>): void {
+  mutationQueue = mutationQueue.then(task, task);
+}
+
+function speakerNumber(speakerId: string | null): number | null {
+  if (!speakerId) return null;
+  const match = /^spk_(\d+)$/.exec(speakerId);
+  return match ? Number(match[1]) : null;
+}
+
+function speakerStableId(speakerId: number): string {
+  return `spk_${speakerId}`;
+}
+
 export function getEffectiveSpeaker(
   spkId: number,
   merges: Record<number, number>
@@ -123,536 +125,567 @@ export function getEffectiveSpeaker(
   return merges[spkId] ?? spkId;
 }
 
-/** Extract undoable fields from state as a plain snapshot */
-function takeSnapshot(state: EditorState): UndoableState {
+function snapshotView(snapshot: ProjectEditorSnapshot): Partial<EditorState> {
+  const tokenMap = new Map<string, TranscriptTokenV1>();
+  for (const segment of snapshot.transcript.items) {
+    for (const token of segment.tokens) tokenMap.set(token.id, token);
+  }
+
+  const lastSegments: Segment[] = snapshot.timeline.items.map((clip) => ({
+    text: clip.transcript_text,
+    start: clip.source_in_ms,
+    end: clip.source_out_ms,
+    spk: speakerNumber(clip.speaker_id),
+    timestamp: clip.token_ids
+      .map((tokenId) => tokenMap.get(tokenId))
+      .filter((token): token is TranscriptTokenV1 => Boolean(token))
+      .map((token) => [token.start_ms, token.end_ms]),
+  }));
+
+  const charLevelData: CharUnit[] = [];
+  snapshot.timeline.items.forEach((clip, clipIndex) => {
+    clip.token_ids.forEach((tokenId, tokenIndex) => {
+      const token = tokenMap.get(tokenId);
+      if (!token) return;
+      charLevelData.push({
+        char: token.text,
+        start: token.start_ms,
+        end: token.end_ms,
+        segmentIndex: clipIndex,
+        charIndex: tokenIndex,
+        spk: speakerNumber(clip.speaker_id),
+        previewable: true,
+        type: token.type,
+        tokenId: token.id,
+        clipId: clip.id,
+      });
+    });
+  });
+
+  const speakerNames: Record<number, string> = {};
+  for (const [speakerId, name] of Object.entries(snapshot.timeline.speaker_labels)) {
+    const parsed = speakerNumber(speakerId);
+    if (parsed !== null) speakerNames[parsed] = name;
+  }
+  const speakerMerges: Record<number, number> = {};
+  for (const [source, target] of Object.entries(snapshot.timeline.speaker_merges)) {
+    const parsedSource = speakerNumber(source);
+    const parsedTarget = speakerNumber(target);
+    if (parsedSource !== null && parsedTarget !== null) {
+      speakerMerges[parsedSource] = parsedTarget;
+    }
+  }
+
   return {
-    composition: [...state.composition],
-    charComposition: [...state.charComposition],
-    lastSegments: state.lastSegments.map((s) => ({ ...s })),
-    charLevelData: state.charLevelData.map((c) => ({ ...c })),
-    smartParagraphGroups: state.smartParagraphGroups.map((g) => [...g]),
-    isSmartParagraphManuallyEdited: state.isSmartParagraphManuallyEdited,
-    speakerNames: { ...state.speakerNames },
-    speakerMerges: { ...state.speakerMerges },
-    hasEdited: state.hasEdited,
+    projectId: snapshot.project.id,
+    projectName: snapshot.project.name,
+    revision: snapshot.timeline.revision,
+    sourceUrl: snapshot.project.source_url,
+    timelineClips: snapshot.timeline.items,
+    lastFullText: snapshot.timeline.items.map((clip) => clip.transcript_text).join(''),
+    lastSegments,
+    charLevelData,
+    composition: lastSegments.map((_, index) => index),
+    charComposition: charLevelData.map((_, index) => index),
+    speakerNames,
+    speakerMerges,
+    smartParagraphGroups: [],
+    isSmartParagraphManuallyEdited: false,
+    hasEdited: snapshot.timeline.revision > 1,
+    editedPlaying: false,
+    editedPlayPos: 0,
+    insertAfterIndex: null,
+    revisionConflict: false,
+    lastError: null,
   };
 }
 
-/** Save current state to undo stack before a mutation (call inside immer's set callback) */
-function pushHistory(state: EditorState): void {
-  const snapshot = takeSnapshot(state);
-  state._undoStack.push(snapshot);
-  // Discard redo stack on new mutation
-  state._redoStack = [];
-  // Enforce max history limit
-  if (state._undoStack.length > state._maxHistory) {
-    state._undoStack = state._undoStack.slice(state._undoStack.length - state._maxHistory);
+function setApiError(set: SetEditorState, error: unknown): void {
+  const message = error instanceof Error ? error.message : String(error);
+  set({
+    isCommitting: false,
+    lastError: message,
+    revisionConflict:
+      error instanceof ProjectApiError && error.code === 'REVISION_CONFLICT',
+  });
+  if (error instanceof ProjectApiError && error.code === 'REVISION_CONFLICT') {
+    console.info('[VoxFlow project edit] revision conflict handled by refresh');
+  } else {
+    console.error('[VoxFlow project edit]', error);
   }
 }
 
-/** Restore a snapshot onto the current state (call inside immer's set callback) */
-function restoreSnapshot(state: EditorState, snapshot: UndoableState): void {
-  state.composition = snapshot.composition;
-  state.charComposition = snapshot.charComposition;
-  state.lastSegments = snapshot.lastSegments;
-  state.charLevelData = snapshot.charLevelData;
-  state.smartParagraphGroups = snapshot.smartParagraphGroups;
-  state.isSmartParagraphManuallyEdited = snapshot.isSmartParagraphManuallyEdited;
-  state.speakerNames = snapshot.speakerNames;
-  state.speakerMerges = snapshot.speakerMerges;
-  state.hasEdited = snapshot.hasEdited;
+function queueEdit(
+  get: () => EditorState,
+  set: SetEditorState,
+  buildOperations: (state: EditorState) => EditOperationV1[],
+  reason: string
+): void {
+  enqueue(async () => {
+    const before = get();
+    if (!before.projectId) {
+      set({ lastError: '当前编辑器没有持久化 project' });
+      return;
+    }
+    const operations = buildOperations(before);
+    if (operations.length === 0) return;
+    const projectId = before.projectId;
+    const baseRevision = before.revision;
+    set({ isCommitting: true, lastError: null, revisionConflict: false });
+    try {
+      await applyEdit(projectId, baseRevision, operations, reason);
+      const snapshot = await loadProjectEditor(projectId);
+      const latest = get();
+      set({
+        ...snapshotView(snapshot),
+        isCommitting: false,
+        _undoStack: [...latest._undoStack, baseRevision].slice(-latest._maxHistory),
+        _redoStack: [],
+      });
+    } catch (error) {
+      setApiError(set, error);
+      if (error instanceof ProjectApiError && error.code === 'REVISION_CONFLICT') {
+        try {
+          const snapshot = await loadProjectEditor(projectId);
+          set({ ...snapshotView(snapshot), revisionConflict: true });
+        } catch (refreshError) {
+          setApiError(set, refreshError);
+        }
+      }
+    }
+  });
 }
 
-export const useEditorStore = create<EditorState>()(
-  immer((set, get) => ({
-    // Initial state
-    lastFullText: '',
-    lastSegments: [],
-    charLevelData: [],
-    composition: [],
-    charComposition: [],
-    smartParagraphGroups: [],
-    isSmartParagraphManuallyEdited: false,
-    speakerNames: {},
-    speakerMerges: {},
-    isCharEditMode: false,
-    displayMode:
-      (localStorage.getItem('displayMode') as DisplayMode) || 'continuous',
-    hasEdited: false,
-    insertAfterIndex: null,
-    editedPlaying: false,
-    editedPlayPos: 0,
-    dragSrcIdx: null,
+const initialState = {
+  projectId: null,
+  projectName: '',
+  revision: 0,
+  sourceUrl: null,
+  timelineClips: [],
+  isCommitting: false,
+  lastError: null,
+  revisionConflict: false,
+  lastFullText: '',
+  lastSegments: [],
+  charLevelData: [],
+  composition: [],
+  charComposition: [],
+  smartParagraphGroups: [],
+  isSmartParagraphManuallyEdited: false,
+  speakerNames: {},
+  speakerMerges: {},
+  isCharEditMode: false,
+  displayMode:
+    (localStorage.getItem('displayMode') as DisplayMode) || 'continuous',
+  hasEdited: false,
+  insertAfterIndex: null,
+  editedPlaying: false,
+  editedPlayPos: 0,
+  dragSrcIdx: null,
+  ttsAudioMap: {},
+  ttsDurationMap: {},
+  ttsGeneratingMap: {},
+  inlineEditIndex: null,
+  _undoStack: [],
+  _redoStack: [],
+  _maxHistory: 50,
+} satisfies Omit<
+  EditorState,
+  | 'hydrateProject'
+  | 'loadProject'
+  | 'refreshProject'
+  | 'setRecognitionResult'
+  | 'deleteAtPosition'
+  | 'deleteCharAtPosition'
+  | 'deleteMultiplePositions'
+  | 'deleteMultipleCharPositions'
+  | 'reorderComposition'
+  | 'setDisplayMode'
+  | 'toggleCharEditMode'
+  | 'setCharEditMode'
+  | 'setInsertAfterIndex'
+  | 'resetEdits'
+  | 'clearAll'
+  | 'setDragSrcIdx'
+  | 'setEditedPlaying'
+  | 'setEditedPlayPos'
+  | 'updateComposition'
+  | 'updateCharComposition'
+  | 'setSmartParagraphGroups'
+  | 'setSmartParagraphManuallyEdited'
+  | 'deleteByText'
+  | 'replaceText'
+  | 'setSpeakerName'
+  | 'mergeSpeaker'
+  | 'getEffectiveSpeaker'
+  | 'undo'
+  | 'redo'
+  | 'canUndo'
+  | 'canRedo'
+  | 'setTTSAudio'
+  | 'removeTTSAudio'
+  | 'clearAllTTSAudio'
+  | 'setTTSGenerating'
+  | 'setInlineEditIndex'
+  | 'replaceSegmentTextByIndex'
+>;
 
-    // TTS state
-    ttsAudioMap: {},
-    ttsDurationMap: {},
-    ttsGeneratingMap: {},
-    inlineEditIndex: null,
+export const useEditorStore = create<EditorState>((set, get) => ({
+  ...initialState,
 
-    // Undo/Redo state
-    _undoStack: [],
-    _redoStack: [],
-    _maxHistory: 50,
+  hydrateProject: (snapshot, preserveHistory = false) => {
+    localStorage.setItem(CURRENT_PROJECT_KEY, snapshot.project.id);
+    set({
+      ...snapshotView(snapshot),
+      _undoStack: preserveHistory ? get()._undoStack : [],
+      _redoStack: preserveHistory ? get()._redoStack : [],
+    });
+  },
 
-    // Actions
-    setRecognitionResult: (fullText, segments, charLevelData = []) => {
-      set((state) => {
-        state.lastFullText = fullText;
-        state.lastSegments = segments;
-        state.charLevelData = charLevelData;
-        state.composition = segments.map((_, i) => i);
-        state.charComposition = charLevelData.map((_, i) => i);
-        state.hasEdited = false;
-        state.editedPlaying = false;
-        state.editedPlayPos = 0;
-        state.isSmartParagraphManuallyEdited = false;
-        // Clear history on new recognition
-        state._undoStack = [];
-        state._redoStack = [];
-      });
-    },
+  loadProject: async (projectId, preserveHistory = false) => {
+    const snapshot = await loadProjectEditor(projectId);
+    get().hydrateProject(snapshot, preserveHistory);
+    return snapshot;
+  },
 
-    deleteAtPosition: (index) => {
-      set((state) => {
-        pushHistory(state);
-        state.composition = state.composition.filter((_, i) => i !== index);
-        state.hasEdited = true;
-        if (state.displayMode === 'smart-paragraph') {
-          state.isSmartParagraphManuallyEdited = true;
+  refreshProject: async () => {
+    const projectId = get().projectId;
+    if (!projectId) return;
+    await get().loadProject(projectId, true);
+  },
+
+  setRecognitionResult: (fullText, segments, charLevelData = []) => {
+    localStorage.removeItem(CURRENT_PROJECT_KEY);
+    set({
+      projectId: null,
+      revision: 0,
+      sourceUrl: null,
+      timelineClips: [],
+      lastFullText: fullText,
+      lastSegments: segments,
+      charLevelData,
+      composition: segments.map((_, index) => index),
+      charComposition: charLevelData.map((_, index) => index),
+      hasEdited: false,
+      _undoStack: [],
+      _redoStack: [],
+    });
+  },
+
+  deleteAtPosition: (index) =>
+    queueEdit(
+      get,
+      set,
+      (state) => {
+        const clip = state.timelineClips[state.composition[index]];
+        return clip ? [{ op: 'delete_clips', clip_ids: [clip.id] }] : [];
+      },
+      'Web: delete segment'
+    ),
+
+  deleteCharAtPosition: (index) =>
+    queueEdit(
+      get,
+      set,
+      (state) => {
+        const unit = state.charLevelData[state.charComposition[index]];
+        if (!unit?.clipId || !unit.tokenId) {
+          set({ lastError: '该片段没有稳定 token 时间戳，无法执行词级删除' });
+          return [];
         }
-      });
-    },
+        return [
+          {
+            op: 'delete_ranges',
+            clip_id: unit.clipId,
+            start_token_id: unit.tokenId,
+            end_token_id: unit.tokenId,
+          },
+        ];
+      },
+      'Web: delete token'
+    ),
 
-    deleteCharAtPosition: (index) => {
-      set((state) => {
-        pushHistory(state);
-        state.charComposition = state.charComposition.filter(
-          (_, i) => i !== index
-        );
-        state.hasEdited = true;
-      });
-    },
+  deleteMultiplePositions: (indices) =>
+    queueEdit(
+      get,
+      set,
+      (state) => {
+        const clipIds = indices
+          .map((index) => state.timelineClips[state.composition[index]]?.id)
+          .filter((id): id is string => Boolean(id));
+        return clipIds.length ? [{ op: 'delete_clips', clip_ids: [...new Set(clipIds)] }] : [];
+      },
+      'Web: delete segments'
+    ),
 
-    deleteMultiplePositions: (indices) => {
-      set((state) => {
-        pushHistory(state);
-        const toDelete = new Set(indices);
-        state.composition = state.composition.filter((_, i) => !toDelete.has(i));
-        state.hasEdited = true;
-        if (state.displayMode === 'smart-paragraph') {
-          state.isSmartParagraphManuallyEdited = true;
-          state.smartParagraphGroups = [];
+  deleteMultipleCharPositions: (indices) =>
+    queueEdit(
+      get,
+      set,
+      (state) => {
+        const units = indices
+          .map((index) => state.charLevelData[state.charComposition[index]])
+          .filter((unit): unit is CharUnit & { clipId: string; tokenId: string } =>
+            Boolean(unit?.clipId && unit.tokenId)
+          );
+        const byClip = new Map<string, string[]>();
+        for (const unit of units) {
+          byClip.set(unit.clipId, [...(byClip.get(unit.clipId) || []), unit.tokenId]);
         }
-      });
-    },
-
-    deleteMultipleCharPositions: (indices) => {
-      set((state) => {
-        pushHistory(state);
-        const toDelete = new Set(indices);
-        state.charComposition = state.charComposition.filter((_, i) => !toDelete.has(i));
-        state.hasEdited = true;
-      });
-    },
-
-    reorderComposition: (fromIndex, toIndex) => {
-      set((state) => {
-        pushHistory(state);
-        const newComposition = [...state.composition];
-        const [removed] = newComposition.splice(fromIndex, 1);
-        newComposition.splice(toIndex, 0, removed);
-        state.composition = newComposition;
-        state.hasEdited = true;
-        if (state.displayMode === 'smart-paragraph') {
-          state.isSmartParagraphManuallyEdited = true;
+        const operations: EditOperationV1[] = [];
+        for (const [clipId, tokenIds] of byClip) {
+          const clip = state.timelineClips.find((item) => item.id === clipId);
+          if (!clip) continue;
+          const selected = clip.token_ids
+            .map((tokenId, position) => ({ tokenId, position }))
+            .filter(({ tokenId }) => tokenIds.includes(tokenId));
+          if (!selected.length) continue;
+          const positions = selected.map((item) => item.position);
+          if (Math.max(...positions) - Math.min(...positions) + 1 !== positions.length) {
+            set({ lastError: '同一片段内的多处不连续词级删除请分次执行' });
+            return [];
+          }
+          operations.push({
+            op: 'delete_ranges',
+            clip_id: clipId,
+            start_token_id: selected[0].tokenId,
+            end_token_id: selected[selected.length - 1].tokenId,
+          });
         }
-      });
-    },
+        return operations;
+      },
+      'Web: delete token range'
+    ),
 
-    setDisplayMode: (mode) => {
-      set((state) => {
-        state.displayMode = mode;
-      });
-      localStorage.setItem('displayMode', mode);
-    },
+  reorderComposition: (fromIndex, toIndex) =>
+    queueEdit(
+      get,
+      set,
+      (state) => {
+        const source = state.timelineClips[state.composition[fromIndex]];
+        const anchor = state.timelineClips[state.composition[toIndex]];
+        if (!source || !anchor || source.id === anchor.id) return [];
+        return [
+          {
+            op: 'move_clip',
+            clip_id: source.id,
+            anchor_clip_id: anchor.id,
+            position: fromIndex < toIndex ? 'after' : 'before',
+          },
+        ];
+      },
+      'Web: reorder segment'
+    ),
 
-    toggleCharEditMode: () => {
-      set((state) => {
-        state.isCharEditMode = !state.isCharEditMode;
-      });
-    },
+  setDisplayMode: (displayMode) => {
+    localStorage.setItem('displayMode', displayMode);
+    set({ displayMode });
+  },
+  toggleCharEditMode: () => set((state) => ({ isCharEditMode: !state.isCharEditMode })),
+  setCharEditMode: (isCharEditMode) => set({ isCharEditMode }),
+  setInsertAfterIndex: (insertAfterIndex) => set({ insertAfterIndex }),
 
-    setCharEditMode: (enabled) => {
-      set((state) => {
-        state.isCharEditMode = enabled;
-      });
-    },
+  resetEdits: () => {
+    if (!get().projectId || get().revision <= 1) return;
+    const target = 1;
+    enqueue(async () => {
+      const before = get();
+      if (!before.projectId) return;
+      set({ isCommitting: true, lastError: null });
+      try {
+        await restoreRevision(before.projectId, before.revision, target);
+        const snapshot = await loadProjectEditor(before.projectId);
+        set({
+          ...snapshotView(snapshot),
+          isCommitting: false,
+          _undoStack: [...before._undoStack, before.revision],
+          _redoStack: [],
+        });
+      } catch (error) {
+        setApiError(set, error);
+      }
+    });
+  },
 
-    setInsertAfterIndex: (index) => {
-      set((state) => {
-        state.insertAfterIndex = index;
-      });
-    },
+  clearAll: () => {
+    for (const url of Object.values(get().ttsAudioMap)) URL.revokeObjectURL(url);
+    localStorage.removeItem(CURRENT_PROJECT_KEY);
+    set({ ...initialState, displayMode: get().displayMode });
+  },
+  setDragSrcIdx: (dragSrcIdx) => set({ dragSrcIdx }),
+  setEditedPlaying: (editedPlaying) => set({ editedPlaying }),
+  setEditedPlayPos: (editedPlayPos) => set({ editedPlayPos }),
 
-    resetEdits: () => {
-      set((state) => {
-        for (const url of Object.values(state.ttsAudioMap)) {
-          URL.revokeObjectURL(url);
-        }
-        state.composition = state.lastSegments.map((_, i) => i);
-        state.charComposition = state.charLevelData.map((_, i) => i);
-        state.hasEdited = false;
-        state.editedPlaying = false;
-        state.editedPlayPos = 0;
-        state.insertAfterIndex = null;
-        state.isSmartParagraphManuallyEdited = false;
-        state.smartParagraphGroups = [];
-        state.speakerNames = {};
-        state.speakerMerges = {};
-        state.ttsAudioMap = {};
-        state.ttsDurationMap = {};
-        state.ttsGeneratingMap = {};
-        state.inlineEditIndex = null;
-        // Clear history on reset
-        state._undoStack = [];
-        state._redoStack = [];
-      });
-    },
+  updateComposition: (nextComposition) => {
+    const current = get().composition;
+    const removed = current
+      .map((value, position) => ({ value, position }))
+      .filter(({ value }) => !nextComposition.includes(value))
+      .map(({ position }) => position);
+    if (removed.length) get().deleteMultiplePositions(removed);
+  },
+  updateCharComposition: (nextComposition) => {
+    const current = get().charComposition;
+    const removed = current
+      .map((value, position) => ({ value, position }))
+      .filter(({ value }) => !nextComposition.includes(value))
+      .map(({ position }) => position);
+    if (removed.length) get().deleteMultipleCharPositions(removed);
+  },
+  setSmartParagraphGroups: (smartParagraphGroups) => set({ smartParagraphGroups }),
+  setSmartParagraphManuallyEdited: (isSmartParagraphManuallyEdited) =>
+    set({ isSmartParagraphManuallyEdited }),
 
-    clearAll: () => {
-      set((state) => {
-        for (const url of Object.values(state.ttsAudioMap)) {
-          URL.revokeObjectURL(url);
-        }
-        state.lastFullText = '';
-        state.lastSegments = [];
-        state.charLevelData = [];
-        state.composition = [];
-        state.charComposition = [];
-        state.smartParagraphGroups = [];
-        state.isSmartParagraphManuallyEdited = false;
-        state.speakerNames = {};
-        state.speakerMerges = {};
-        state.isCharEditMode = false;
-        state.hasEdited = false;
-        state.insertAfterIndex = null;
-        state.editedPlaying = false;
-        state.editedPlayPos = 0;
-        state.dragSrcIdx = null;
-        state.ttsAudioMap = {};
-        state.ttsDurationMap = {};
-        state.ttsGeneratingMap = {};
-        state.inlineEditIndex = null;
-        // Clear history on clearAll
-        state._undoStack = [];
-        state._redoStack = [];
-      });
-    },
-
-    setDragSrcIdx: (index) => {
-      set((state) => {
-        state.dragSrcIdx = index;
-      });
-    },
-
-    setEditedPlaying: (playing) => {
-      set((state) => {
-        state.editedPlaying = playing;
-      });
-    },
-
-    setEditedPlayPos: (pos) => {
-      set((state) => {
-        state.editedPlayPos = pos;
-      });
-    },
-
-    updateComposition: (composition) => {
-      set((state) => {
-        state.composition = composition;
-        state.hasEdited = true;
-      });
-    },
-
-    updateCharComposition: (charComposition) => {
-      set((state) => {
-        state.charComposition = charComposition;
-        state.hasEdited = true;
-      });
-    },
-
-    setSmartParagraphGroups: (groups) => {
-      set((state) => {
-        state.smartParagraphGroups = groups;
-      });
-    },
-
-    setSmartParagraphManuallyEdited: (edited) => {
-      set((state) => {
-        state.isSmartParagraphManuallyEdited = edited;
-      });
-    },
-
-    deleteByText: (text) => {
-      set((state) => {
-        pushHistory(state);
-        // 去除末尾标点进行匹配
-        const normalizedText = text
+  deleteByText: (text) =>
+    queueEdit(
+      get,
+      set,
+      (state) => {
+        const normalized = text
           .replace(/[。，、！？；：""''（）【】《》,.!?;:()[\]<>]+$/g, '')
           .trim();
+        const ids = state.timelineClips
+          .filter(
+            (clip) =>
+              clip.transcript_text
+                .replace(/[。，、！？；：""''（）【】《》,.!?;:()[\]<>]+$/g, '')
+                .trim() === normalized
+          )
+          .map((clip) => clip.id);
+        return ids.length ? [{ op: 'delete_clips', clip_ids: ids }] : [];
+      },
+      'Web agent: delete matching segments'
+    ),
 
-        if (state.isCharEditMode) {
-          const toDelete: number[] = [];
-          for (let i = 0; i < state.charComposition.length; i++) {
-            const idx = state.charComposition[i];
-            const char = state.charLevelData[idx];
-            const charText = char?.char
-              ?.replace(/[。，、！？；：""''（）【】《》,.!?;:()[\]<>]+$/g, '')
-              .trim();
-            if (charText === normalizedText) {
-              toDelete.push(i);
-            }
-          }
-          const toDeleteSet = new Set(toDelete);
-          state.charComposition = state.charComposition.filter(
-            (_, i) => !toDeleteSet.has(i)
-          );
-        } else {
-          const toDelete: number[] = [];
-          for (let i = 0; i < state.composition.length; i++) {
-            const idx = state.composition[i];
-            const seg = state.lastSegments[idx];
-            const segText = seg?.text
-              ?.replace(/[。，、！？；：""''（）【】《》,.!?;:()[\]<>]+$/g, '')
-              .trim();
-            if (segText === normalizedText) {
-              toDelete.push(i);
-            }
-          }
-          const toDeleteSet = new Set(toDelete);
-          state.composition = state.composition.filter(
-            (_, i) => !toDeleteSet.has(i)
-          );
-        }
+  replaceText: (oldText, newText) =>
+    queueEdit(
+      get,
+      set,
+      (state) =>
+        state.timelineClips
+          .filter((clip) => clip.transcript_text.includes(oldText.trim()))
+          .map((clip) => ({
+            op: 'correct_transcript' as const,
+            clip_id: clip.id,
+            text: clip.transcript_text.replaceAll(oldText.trim(), newText),
+          })),
+      'Web agent: correct transcript'
+    ),
 
-        state.hasEdited = true;
-        if (state.displayMode === 'smart-paragraph') {
-          state.isSmartParagraphManuallyEdited = true;
-          state.smartParagraphGroups = [];
-        }
-      });
-    },
+  setSpeakerName: (speakerId, name) =>
+    queueEdit(
+      get,
+      set,
+      () => [
+        {
+          op: 'rename_speaker',
+          speaker_id: speakerStableId(speakerId),
+          name: name.trim(),
+        },
+      ],
+      'Web: rename speaker'
+    ),
 
-    replaceText: (oldText, newText) => {
-      set((state) => {
-        pushHistory(state);
-        // 不再规范化，直接使用原始文本进行部分匹配
-        const searchText = oldText.trim();
-        if (!searchText) {
-          console.warn('[replaceText] Empty search text, skipping');
-          return;
-        }
+  mergeSpeaker: (fromSpkId, toSpkId) =>
+    queueEdit(
+      get,
+      set,
+      () => [
+        {
+          op: 'merge_speakers',
+          from_speaker_id: speakerStableId(fromSpkId),
+          to_speaker_id: speakerStableId(toSpkId),
+        },
+      ],
+      'Web: merge speakers'
+    ),
+  getEffectiveSpeaker: (spkId) => getEffectiveSpeaker(spkId, get().speakerMerges),
 
-        console.log('[replaceText] Called with:', { oldText, newText, searchText });
-        console.log('[replaceText] isCharEditMode:', state.isCharEditMode);
+  undo: () => {
+    enqueue(async () => {
+      const before = get();
+      const target = before._undoStack.at(-1);
+      if (!before.projectId || target === undefined || before.isCommitting) return;
+      set({ isCommitting: true, lastError: null });
+      try {
+        await restoreRevision(before.projectId, before.revision, target);
+        const snapshot = await loadProjectEditor(before.projectId);
+        set({
+          ...snapshotView(snapshot),
+          isCommitting: false,
+          _undoStack: before._undoStack.slice(0, -1),
+          _redoStack: [...before._redoStack, before.revision],
+        });
+      } catch (error) {
+        setApiError(set, error);
+      }
+    });
+  },
 
-        let hasReplaced = false;
-        let replaceCount = 0;
+  redo: () => {
+    enqueue(async () => {
+      const before = get();
+      const target = before._redoStack.at(-1);
+      if (!before.projectId || target === undefined || before.isCommitting) return;
+      set({ isCommitting: true, lastError: null });
+      try {
+        await restoreRevision(before.projectId, before.revision, target);
+        const snapshot = await loadProjectEditor(before.projectId);
+        set({
+          ...snapshotView(snapshot),
+          isCommitting: false,
+          _undoStack: [...before._undoStack, before.revision],
+          _redoStack: before._redoStack.slice(0, -1),
+        });
+      } catch (error) {
+        setApiError(set, error);
+      }
+    });
+  },
+  canUndo: () => get()._undoStack.length > 0 && !get().isCommitting,
+  canRedo: () => get()._redoStack.length > 0 && !get().isCommitting,
 
-        if (state.isCharEditMode) {
-          // 逐字模式：替换 charLevelData 中包含 oldText 的 char
-          const newCharLevelData = [...state.charLevelData];
-          for (let i = 0; i < state.charComposition.length; i++) {
-            const idx = state.charComposition[i];
-            const char = newCharLevelData[idx];
-            if (!char) continue;
-
-            // 使用 includes 进行部分匹配
-            if (char.char.includes(searchText)) {
-              const newCharText = char.char.replaceAll(searchText, newText);
-              console.log('[replaceText] Char match found:', {
-                idx,
-                original: char.char,
-                replaced: newCharText,
-              });
-              newCharLevelData[idx] = {
-                ...char,
-                char: newCharText,
-              };
-              hasReplaced = true;
-              replaceCount++;
-            }
-          }
-          if (hasReplaced) {
-            state.charLevelData = newCharLevelData;
-          }
-        } else {
-          // 逐段模式：替换 lastSegments 中包含 oldText 的 text
-          const newSegments = [...state.lastSegments];
-          console.log('[replaceText] Checking', state.composition.length, 'segments in composition');
-
-          for (let i = 0; i < state.composition.length; i++) {
-            const idx = state.composition[i];
-            const seg = newSegments[idx];
-            if (!seg) continue;
-
-            // 使用 includes 进行部分匹配
-            if (seg.text.includes(searchText)) {
-              const newSegText = seg.text.replaceAll(searchText, newText);
-              console.log('[replaceText] Segment match found:', {
-                idx,
-                original: seg.text,
-                replaced: newSegText,
-              });
-              newSegments[idx] = {
-                ...seg,
-                text: newSegText,
-              };
-              hasReplaced = true;
-              replaceCount++;
-            }
-          }
-          if (hasReplaced) {
-            state.lastSegments = newSegments;
-          }
-        }
-
-        console.log('[replaceText] Result:', { hasReplaced, replaceCount });
-
-        if (hasReplaced) {
-          state.hasEdited = true;
-          if (state.displayMode === 'smart-paragraph') {
-            state.isSmartParagraphManuallyEdited = true;
-            state.smartParagraphGroups = [];
-          }
-        }
-      });
-    },
-
-    setSpeakerName: (speakerId, name) => {
-      set((state) => {
-        pushHistory(state);
-        if (name.trim()) {
-          state.speakerNames[speakerId] = name.trim();
-        } else {
-          delete state.speakerNames[speakerId];
-        }
-      });
-    },
-
-    mergeSpeaker: (fromSpkId, toSpkId) => {
-      set((state) => {
-        pushHistory(state);
-        // Update any existing merges that point to fromSpkId to point to toSpkId
-        // This keeps the mapping flat (no chains)
-        for (const key in state.speakerMerges) {
-          if (state.speakerMerges[Number(key)] === fromSpkId) {
-            state.speakerMerges[Number(key)] = toSpkId;
-          }
-        }
-        // Set the new merge
-        state.speakerMerges[fromSpkId] = toSpkId;
-        // Transfer custom name if fromSpkId has one and toSpkId doesn't
-        if (state.speakerNames[fromSpkId] && !state.speakerNames[toSpkId]) {
-          state.speakerNames[toSpkId] = state.speakerNames[fromSpkId];
-        }
-        // Remove fromSpkId's custom name
-        delete state.speakerNames[fromSpkId];
-        state.hasEdited = true;
-      });
-    },
-
-    getEffectiveSpeaker: (spkId) => {
-      // This is a getter, we need to access state differently
-      // Since immer doesn't support getters well, we'll handle this in components
-      return spkId;
-    },
-
-    // TTS actions
-    setTTSAudio: (segmentIndex, blobUrl, durationMs) => {
-      set((state) => {
-        state.ttsAudioMap[segmentIndex] = blobUrl;
-        if (durationMs !== undefined) {
-          state.ttsDurationMap[segmentIndex] = durationMs;
-        }
-        state.ttsGeneratingMap[segmentIndex] = false;
-      });
-    },
-
-    removeTTSAudio: (segmentIndex) => {
-      set((state) => {
-        const url = state.ttsAudioMap[segmentIndex];
-        if (url) {
-          URL.revokeObjectURL(url);
-        }
-        delete state.ttsAudioMap[segmentIndex];
-        delete state.ttsDurationMap[segmentIndex];
-        delete state.ttsGeneratingMap[segmentIndex];
-      });
-    },
-
-    clearAllTTSAudio: () => {
-      set((state) => {
-        for (const url of Object.values(state.ttsAudioMap)) {
-          URL.revokeObjectURL(url);
-        }
-        state.ttsAudioMap = {};
-        state.ttsDurationMap = {};
-        state.ttsGeneratingMap = {};
-      });
-    },
-
-    setTTSGenerating: (segmentIndex, generating) => {
-      set((state) => {
-        state.ttsGeneratingMap[segmentIndex] = generating;
-      });
-    },
-
-    setInlineEditIndex: (index) => {
-      set((state) => {
-        state.inlineEditIndex = index;
-      });
-    },
-
-    replaceSegmentTextByIndex: (segmentIndex, newText) => {
-      set((state) => {
-        pushHistory(state);
-        if (segmentIndex >= 0 && segmentIndex < state.lastSegments.length) {
-          state.lastSegments[segmentIndex].text = newText;
-        }
-      });
-    },
-
-    // Undo/Redo actions
-    undo: () => {
-      set((state) => {
-        if (state._undoStack.length === 0) return;
-        // Save current state to redo stack
-        state._redoStack.push(takeSnapshot(state));
-        // Pop from undo stack and restore
-        const snapshot = state._undoStack.pop()!;
-        restoreSnapshot(state, snapshot);
-      });
-    },
-
-    redo: () => {
-      set((state) => {
-        if (state._redoStack.length === 0) return;
-        // Save current state to undo stack
-        state._undoStack.push(takeSnapshot(state));
-        // Pop from redo stack and restore
-        const snapshot = state._redoStack.pop()!;
-        restoreSnapshot(state, snapshot);
-      });
-    },
-
-    canUndo: () => {
-      return get()._undoStack.length > 0;
-    },
-
-    canRedo: () => {
-      return get()._redoStack.length > 0;
-    },
-  }))
-);
+  setTTSAudio: (segmentIndex, blobUrl, durationMs) =>
+    set((state) => ({
+      ttsAudioMap: { ...state.ttsAudioMap, [segmentIndex]: blobUrl },
+      ttsDurationMap:
+        durationMs === undefined
+          ? state.ttsDurationMap
+          : { ...state.ttsDurationMap, [segmentIndex]: durationMs },
+      ttsGeneratingMap: { ...state.ttsGeneratingMap, [segmentIndex]: false },
+    })),
+  removeTTSAudio: (segmentIndex) => {
+    const url = get().ttsAudioMap[segmentIndex];
+    if (url) URL.revokeObjectURL(url);
+    set((state) => {
+      const ttsAudioMap = { ...state.ttsAudioMap };
+      const ttsDurationMap = { ...state.ttsDurationMap };
+      const ttsGeneratingMap = { ...state.ttsGeneratingMap };
+      delete ttsAudioMap[segmentIndex];
+      delete ttsDurationMap[segmentIndex];
+      delete ttsGeneratingMap[segmentIndex];
+      return { ttsAudioMap, ttsDurationMap, ttsGeneratingMap };
+    });
+  },
+  clearAllTTSAudio: () => {
+    for (const url of Object.values(get().ttsAudioMap)) URL.revokeObjectURL(url);
+    set({ ttsAudioMap: {}, ttsDurationMap: {}, ttsGeneratingMap: {} });
+  },
+  setTTSGenerating: (segmentIndex, generating) =>
+    set((state) => ({
+      ttsGeneratingMap: { ...state.ttsGeneratingMap, [segmentIndex]: generating },
+    })),
+  setInlineEditIndex: (inlineEditIndex) => set({ inlineEditIndex }),
+  replaceSegmentTextByIndex: (segmentIndex, newText) =>
+    queueEdit(
+      get,
+      set,
+      (state) => {
+        const clip = state.timelineClips[segmentIndex];
+        return clip
+          ? [{ op: 'correct_transcript', clip_id: clip.id, text: newText }]
+          : [];
+      },
+      'Web: edit transcript text'
+    ),
+}));

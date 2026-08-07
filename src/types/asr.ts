@@ -29,6 +29,10 @@ export interface Segment {
  * Represents a single token (character, word, or number) with timing information
  */
 export interface CharUnit {
+  /** Stable Headless token ID used by Edit Plan operations */
+  tokenId?: string;
+  /** Stable timeline clip ID containing this token */
+  clipId?: string;
   /** The character/word/token text */
   char: string;
   /** Start time in milliseconds */
