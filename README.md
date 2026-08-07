@@ -1,38 +1,56 @@
 # VoxFlow 1.0
 
-基于文本的多模态编辑器。使用 FunASR 中文语音识别引擎，支持音频/视频上传、说话人识别、智能分段、LLM 辅助编辑等功能。
+**让 Codex、Claude 或任意 Agent 安全地编辑本地音频和视频。**
 
-## 功能特性
+VoxFlow 不是另一个把聊天框塞进剪辑器的应用。Agent 负责理解“删掉口癖、交换两段、修正这句”这样的意图；VoxFlow 通过 CLI / MCP 提供稳定 ID、编辑预览、并发 revision 校验、撤销和 FFmpeg 导出，把自然语言意图变成可检查、可重放的媒体编辑。
 
-### 语音识别
-- 支持音频文件（mp3, wav, flac, m4a 等）
-- 支持视频文件（mp4, mkv, avi, mov 等），自动提取音频
-- 支持热词配置，提升专业术语识别准确率
-- 支持说话人识别（Speaker Diarization）
-- 服务端缓存，相同文件无需重复识别
+[![VoxFlow V1](https://github.com/jhuanxx44/voxflow/actions/workflows/ci.yml/badge.svg)](https://github.com/jhuanxx44/voxflow/actions/workflows/ci.yml)
+[![Security](https://github.com/jhuanxx44/voxflow/actions/workflows/security.yml/badge.svg)](https://github.com/jhuanxx44/voxflow/actions/workflows/security.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-### 编辑功能
-- **显示模式**：连续显示、逐行显示、智能分段
-- **编辑模式**：段落级编辑、逐字编辑（保留时间戳）
-- **说话人管理**：颜色高亮、编辑名称、合并说话人
-- **拖拽排序**：自由调整语句顺序
-- **口癖删除**：搜索并批量删除填充词
-- **播放同步**：点击文字跳转播放，播放时高亮当前语句
+```text
+你：删掉开场寒暄，把结论移到最前面，然后导出 MP4
+Agent：读取 transcript/timeline → 生成 Edit Plan → preview diff
+你或 Agent：确认 apply → VoxFlow 创建新 revision → FFmpeg 导出 artifact
+```
 
-### LLM 辅助
-- **快速删除口癖**：AI 分析并批量删除无意义填充词
-- **快速润色**：AI 识别同音字错误并提供修正建议
-- **概括总结**：对识别内容进行智能总结
-- **自由对话**：支持任意问答
+## 为什么是 VoxFlow
 
-## 技术栈
+| 能力 | 对 Agent 编辑的意义 |
+|---|---|
+| `clip_*` / `tok_*` 稳定 ID | Agent 引用确定对象，不靠易误删的模糊文本匹配 |
+| `edit_preview` → `edit_apply` | 写入前先看到精确 diff、时长变化和 warning |
+| `expected_revision` + project lock | Codex、Web 与 CLI 同时编辑时拒绝静默覆盖 |
+| 幂等请求 + 原子 manifest | 重试不会重复剪辑，失败不会留下半个 revision |
+| 线性 history + undo | 每次修改可追溯；撤销也创建新 revision，不改写历史 |
+| 持久化 jobs / artifacts | ASR、TTS、导出可轮询、恢复和再次下载 |
+| 本地媒体边界 | CLI/MCP 不向模型返回媒体 bytes；模型只处理所需结构化文本 |
 
-| 层级 | 技术 |
-|------|------|
-| 后端 | Python Flask + FunASR + DeepSeek LLM |
-| 前端 | React 18 + TypeScript + Vite + Tailwind CSS v4 |
-| 状态管理 | Zustand + Immer |
-| 音频处理 | ffmpeg（视频音频提取） |
+同一个 project 可由 MCP、CLI 和 Web 轮流编辑，三种入口共享 application/core、timeline 和 revision。VoxFlow 不绑定模型厂商：Codex、Claude、自建模型或普通脚本都可以使用同一份工具契约。
+
+## 一条完整工作流
+
+```mermaid
+flowchart LR
+    A["本地音频 / 视频"] --> B["VoxFlow project + ASR"]
+    B --> C["Agent 读取 transcript / timeline"]
+    C --> D["Edit Plan preview"]
+    D --> E{"diff 可接受?"}
+    E -- "修改计划" --> C
+    E -- "apply" --> F["新 revision"]
+    F --> G["MP4 / MP3 / WAV / SRT / VTT artifact"]
+```
+
+## 可用能力
+
+- 音频与视频导入；FunASR 本地识别、热词、说话人分离和内容寻址缓存。
+- 删除、裁剪、分割、词级删除、重排、文本修正、speaker 重命名/合并。
+- TTS replacement 候选、试听、duration policy、preview/apply 后进入正式 timeline。
+- MP4、MP3、WAV、SRT、VTT 真实导出；artifact 与 revision 持久化。
+- React Web 编辑器：字幕搜索、逐字/逐段编辑、拖拽、播放同步、Undo/Redo。
+- stdio MCP server 与稳定 JSON CLI；长任务使用 start/status 模式，不阻塞 Agent 调用。
+
+> 当前定位是单机、本地优先的编辑引擎。Web 默认只监听 loopback，未提供多租户认证，不应直接暴露到公网。安全边界见 [SECURITY.md](SECURITY.md)。
 
 ## 快速开始
 
@@ -63,14 +81,14 @@ pip install flask funasr modelscope
 # 启动后端（默认端口 8082）
 python app.py
 
-# 开发模式（前端热更新，端口 5173）
+# 开发模式（前端热更新，端口 3001）
 npm run dev
 
 # 或构建生产版本
 npm run build
 ```
 
-访问 `http://localhost:8082`
+开发时访问 `http://127.0.0.1:3001`；Flask API 默认位于 `http://127.0.0.1:8082`。
 
 ## Headless CLI / MCP
 
@@ -213,7 +231,7 @@ uv run python scripts/smoke_mcp_long.py
 uv run python scripts/stress_v1_long.py --minutes 30 --model advanced
 ```
 
-架构、协议、阶段验收和后续 Web/TTS 计划见 [CLI/MCP 实施方案](docs/CLI_MCP_IMPLEMENTATION_PLAN.md)。
+架构、协议和设计决策见 [CLI/MCP 实施方案](docs/CLI_MCP_IMPLEMENTATION_PLAN.md)。
 V1 发布证据、失败恢复、安全与长文件数据见 [V1 发布验收报告](docs/V1_RELEASE_TEST_REPORT.md)。
 
 ## 项目结构
@@ -232,9 +250,15 @@ V1 发布证据、失败恢复、安全与长文件数据见 [V1 发布验收报
 
 ## 文档
 
-- [组件文档](src/components/README.md) - React 组件结构和用法
-- [Store 架构](STORE_ARCHITECTURE.md) - 状态管理设计
-- [开发指南](CLAUDE.md) - 项目开发规范和架构说明
+- [CLI / MCP 设计与完整契约](docs/CLI_MCP_IMPLEMENTATION_PLAN.md)
+- [V1 发布验收报告](docs/V1_RELEASE_TEST_REPORT.md)
+- [可重复 Web Playwright 回归](docs/WEB_E2E.md)
+- [LLM provider 配置边界](docs/LLM_PROVIDER_GUIDE.md)
+- [安全策略与漏洞报告](SECURITY.md)
+- [公开仓库安全审计](docs/SECURITY_AUDIT.md)
+- [React 组件说明](src/components/README.md)
+- [Store 架构](STORE_ARCHITECTURE.md)
+- [贡献者开发约定](CLAUDE.md)
 
 ## License
 
