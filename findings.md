@@ -6,6 +6,18 @@
 - 原 `task_plan.md` 中的“Phase 7”只是 Phase 0–6 的完成审计，不是正式规划的 Web UI 迁移；已纠正命名和后续范围。
 - 当前 HEAD 仍为 `45ce38d`，Phase 0–6 全部实现位于未提交工作树；在开始 Phase 7 前应重新验证并作为独立大模块提交。
 - Web 回归不能以 `npm run build` 或 Flask smoke 代替；必须覆盖真实渲染、交互、console 和截图证据。
+- 当前 Web 仍完全调用 legacy `/asr`、`/export-media`；`package.json` 尚无 E2E 脚本或 Playwright 依赖。
+- `editorStore.ts` 仍以 segment/char 数组下标作为权威 composition，并在浏览器内维护 speaker 状态与 undo/redo；这正是 Phase 7 要迁移的边界。
+- UI 已存在段落/字符删除、拖拽、speaker rename/merge、undo/redo、编辑播放与导出交互，可优先保留组件外观，把状态动作替换为 project/revision application API。
+- Headless application 层已经具备 project create/get/list、transcript page/search/timeline、edit preview/apply/history/undo、export start/artifact lookup；Phase 7 后端主要是 Flask adapter、上传暂存和安全媒体下载，不应复制领域逻辑。
+- 当前 `ProjectService.create` 仅接受本地 `Path`；Web multipart adapter 可保存到受控临时目录后调用 managed ingest，完成后删除暂存文件。
+- Timeline 已持久化 `speaker_labels`/`speaker_merges`，Edit Plan 已支持 delete clip/token range、move、correct transcript、rename/merge speaker，能够覆盖目标 UI 动作。
+- 当前后端 undo 是“恢复目标 revision 并生成新 revision”；尚无 redo 专用 API。Web redo 可恢复 undo 前的 revision，同样生成新 revision，但 UI 需维护 redo target view state。
+- JobService 已支持 detached transcribe/export、状态查询、取消、重试；Web API 应返回 202 job 并由前端轮询，避免重建同步长请求。
+- Vite dev proxy 当前未包含 `/api/v1`，Phase 7 需要新增代理；Flask `app.py` 直接注册 Blueprints，无 app factory，可通过 lazy runtime + app config 测试注入保持 import 轻量。
+- Web artifact 下载需要经过受控 Flask `send_file` endpoint，浏览器不应接收/拼接本地绝对路径；source preview 同样应按 project ID 服务 managed media。
+- 正式 Phase 7 可拆成两个可独立验收的大模块提交：版本化 Flask adapter/contract tests；React/Zustand project/revision 迁移与浏览器证据。
+- Web API 视图必须净化 project `managed_path`、job `log_path`/result path、artifact path；浏览器统一使用受控 source/download URL，CLI/MCP 仍保留本地路径能力。
 
 ## 当前可复用能力
 

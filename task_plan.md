@@ -68,7 +68,7 @@ Phase 7：Web UI 迁移
 
 ### Phase 7: Web UI 迁移
 
-- [ ] 新增版本化 `/api/v1` project/job/edit/export adapters
+- [x] 新增版本化 `/api/v1` project/job/edit/export adapters
 - [ ] Zustand 改为 project revision + view cache + draft edit plan
 - [ ] 删除、词级删除、拖拽、speaker rename/merge、undo/redo、export 接入 application API
 - [ ] Web、CLI、MCP 轮流编辑同一 project，并验证 revision conflict
@@ -135,3 +135,9 @@ Phase 7：Web UI 迁移
 | fixture 时长补丁因 FFmpeg 参数实际写法不同未应用 | 1 | 读取 `tests/conftest.py` 后按实际参数精确修改；该次失败未产生部分修改 |
 | 旧 Flask smoke import `routes.chat` 时缺少 `openai` | 1 | `providers` extra 未完整声明旧 Web 运行依赖；补齐依赖并重同步后重跑 Web smoke |
 | `uv run pytest` 收集 legacy tests 时找不到顶层 `app`/`services` | 1 | 可安装 package 不包含迁移期 legacy modules；在 pytest 配置显式加入仓库根目录 `pythonpath` 后重跑 |
+| Phase 7 targeted ruff 首次检查发现 `app.py` 两处 import 排序 | 1 | 使用 ruff 安全自动整理 import，再继续 targeted contract tests |
+| Phase 7 API contract 首次运行引用了仓库不存在的 `runtime`/`project` fixtures | 1 | 改为沿用既有测试模式，由 `settings`/`wav_file` 在测试内显式创建 Runtime/project |
+| API edit contract 使用 legacy 数字 speaker ID 导致 preview 400 | 1 | Headless 规范 ID 为 `spk_<n>`；contract 改用 timeline 返回的稳定 speaker IDs，前端 adapter 负责显示编号映射 |
+| 首次 mypy versioned route 时发现 `config.py` 两个 legacy 共享 dict 缺类型 | 1 | 为 `export_tasks`/`uploaded_files` 添加显式 `dict[str, dict[str, Any]]`，并把 v1 route 纳入 Makefile typecheck |
+| 扩大 Makefile lint 范围后 `config.py` 不符合 ruff format | 1 | 对已纳入质量门的 config 执行一次机械格式化，随后重跑完整 gate |
+| `config.py` format 后仍有第三方 import 分组问题 | 1 | 使用 ruff `--fix` 仅整理 import block；不重复只跑 formatter |

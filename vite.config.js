@@ -14,6 +14,7 @@ export default defineConfig({
     port: 3001,
     open: true,
     proxy: {
+      '/api/v1': 'http://localhost:8082',
       '/asr': 'http://localhost:8082',
       '/chat': 'http://localhost:8082',
       '/materials': 'http://localhost:8082',

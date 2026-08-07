@@ -8,6 +8,13 @@
 - 下一步：重新执行 Phase 0–6 当前工作树质量门，形成独立基线 commit；随后审计现有 Web 架构并实施 Phase 7。
 - Phase 0–6 提交前质量门通过：`make check`（50 tests、ruff、mypy）、`npm run build`（242 modules）、`uv lock --check`、`git diff --check`。
 - 正在创建 Phase 0–6 独立基线 commit。
+- Phase 0–6 已提交为 `2b44672 feat: add headless editing engine and CLI MCP`（70 files，11439 insertions）。
+- 已进入正式 Phase 7：Web UI project/revision 迁移。
+- Phase 7 版本化 Flask adapter 首版已实现，包含 project upload/source、transcript/timeline/search、edit/restore、job/export/artifact API 和旧路由 deprecation headers。
+- 新增 `tests/contract/test_api_v1.py` 覆盖 Web adapter 主契约；首次 targeted ruff 仅发现 `app.py` import 排序问题，正在修正。
+- Phase 7 后端 adapter 完成：上传建 project、source range serving、transcript/timeline/search、edit preview/apply、restore、persistent jobs、五格式 export 与 artifact 下载均通过 `/api/v1` 暴露。
+- Web API 已净化所有 project/job/artifact 本地绝对路径；旧 `/asr`、`/export-media` 保持工作并返回 deprecation/successor headers。
+- 完整质量门通过：52 tests、ruff、mypy（含 v1 route）、`npm run build` 242 modules。
 
 ## 2026-08-04
 
