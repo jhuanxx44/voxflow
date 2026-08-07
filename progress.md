@@ -22,6 +22,7 @@
 - M11 远端已闭环：V1/Security/graph 全绿，可修 alerts 自动关闭；两条相同 Torch JIT manifest 告警按文档化边界、兼容性阻塞和 2026-09-07 到期日暂缓，open alerts 为 0。
 - M12 已加入 test-only deterministic ASR server、运行时音视频 fixture、Playwright desktop/mobile 场景、稳定定位符和 Ubuntu CI job；正在执行真实浏览器回归并修正场景级问题。
 - M12 本地完整矩阵已通过：desktop 完整编辑+五格式真实下载，mobile 音频上传+390×844 布局健康；全量 `make check` 70 tests、TypeScript、Vite build 与 npm production audit 全绿，准备独立提交并 push。
+- M12 已提交/push `952ddc3`。M13 README 首屏已改为 Agent/Codex/Claude + MCP 的确定性媒体编辑定位，加入能力矩阵、工作流、CI badge、本地媒体边界，并修复开发端口与文档导航；进入验证。
 
 ## 2026-08-07 Phase 9 发布加固
 

@@ -6,6 +6,7 @@
 - M12 采用测试专用进程 monkeypatch：`scripts/run_web_e2e_server.py` 在导入 Flask app 前设置临时 `VOXFLOW_HOME`、inline jobs，并替换 worker 模块已绑定的 `FunASRProvider`；正常 Web/CLI/MCP 配置不暴露 fake provider。fixture 在 `.e2e/` 运行时生成，媒体导出仍调用真实 FFmpeg。
 - Playwright 以 desktop 1600×900 跑完整视频编辑/五格式下载，以 mobile 390×844 跑音频上传与响应式健康；浏览器 console warning/error、pageerror、Vite overlay 与横向溢出均设为阻塞断言。
 - M12 完整本地矩阵通过：desktop 真实视频链路与五格式 export 均成功，MP4/MP3/WAV 经 ffprobe 验证，SRT/VTT 内容验证；mobile 音频链路无横向溢出、console warning/error、pageerror 或 overlay。随后 70 tests、Ruff、mypy、公开内容审计、TypeScript、Vite build 全绿。
+- M13 README 原首屏把项目定义成通用 FunASR 编辑器，并把 Agent/MCP 差异化埋到第 75 行；技术栈还误写 React 18、DeepSeek 为后端必选，开发端口误写 5173。已重构为 Agent 意图层 + VoxFlow 确定性执行层，首屏直接说明 stable ID、preview/apply、revision、undo、artifact 和本地媒体边界。
 
 - 当前 `dev_edit` 与远端同步且工作树干净，V1 基线 commit 为 `783a226`。
 - 法律硬缺口：仓库没有 `LICENSE`；README/pyproject 声明 MIT，而 `package.json` 声明 ISC；package repository 仍指向已迁移的旧地址。

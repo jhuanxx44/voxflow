@@ -37,16 +37,16 @@ M13 README 价值定位
 - [x] Playwright 自动覆盖上传、字幕/搜索、删除/重排、speaker、undo/redo、播放和五格式导出
 - [x] 覆盖 desktop/mobile、console/overlay、刷新持久性
 - [x] 接入本地脚本与 GitHub Actions
-- [ ] 独立 commit + push
-- **Status:** verification_complete
+- [x] 独立 commit + push（`952ddc3`）
+- **Status:** complete
 
 ### M13: README 价值定位
 
-- [ ] 首屏突出 Agent + MCP + preview/apply/revision 的独特价值
-- [ ] 提供清晰场景、能力矩阵、演示路径和差异化说明
-- [ ] 修复过期端口、仓库 URL 和文档导航
+- [x] 首屏突出 Agent + MCP + preview/apply/revision 的独特价值
+- [x] 提供清晰场景、能力矩阵、演示路径和差异化说明
+- [x] 修复过期端口、仓库 URL 和文档导航
 - [ ] 独立 commit + push
-- **Status:** pending
+- **Status:** in_progress
 
 ### M14: 首次安装路径统一
 
