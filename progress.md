@@ -17,6 +17,7 @@
 - Flask 3.1.3、pytest 9.1.1、Torch/Torchaudio 2.10.0 已同步；70 tests/Ruff/mypy/public audit/TypeScript/Vite 全绿。全 extras pip-audit 首次只因 PyPI read timeout 退出，切换 OSV batch service 后继续。
 - OSV 全 extras 剩两条 Torch 本地漏洞：一条修复版 2.13 无匹配 Torchaudio，另一条 upstream 无修复。已建立精确 ID、触发面、控制措施与 2026-09-07 到期复核的 accepted-risk；CI 只忽略这两个 ID，其余漏洞继续阻塞。
 - M11 remediation 最终验证：Torch 2.10 真实 FunASR→MCP→edit→export 成功；70 tests/Ruff/mypy/public audit 全绿；全 extras pip-audit 为 0 known + 2 documented ignores。准备补救提交并 push，随后复核 Dependabot 状态。
+- M11 remediation 已提交/push `7872895`；V1/Security/Dependabot graph 正在运行。首轮远端复核发现 legacy `requirements.txt` 仍产生旧 Flask/Torch alerts，需先同步安全版本，再等待 lock graph 自动关闭可修条目。
 
 ## 2026-08-07 Phase 9 发布加固
 

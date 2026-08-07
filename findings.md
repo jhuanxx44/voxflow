@@ -24,6 +24,7 @@
 - ASR adapter 的模型 ID 是代码内固定的官方 `iic/...`，外部用户不能通过 CLI/Web 请求注入任意模型路径；但当前两套 FunASR 初始化都设置 `trust_remote_code=True`，所以本地模型缓存和上游模型源必须视为受信任代码供应链，而非普通媒体输入。Torch deserialization accepted-risk 文档必须明确这点，不能泛称完全无触发面。
 - 进一步检查 FunASR 1.2.7 源码：`trust_remote_code` 没有任何读取点，缓存模型目录也无远程 `.py`；该参数只是误导性遗留，应删除。真正供应链风险是 FunASR 的 `model_revision`/VAD/punc/spk revisions 默认 `master`，需要从已验证缓存元数据找到可复现 revision 或至少记录 model source/禁用自动更新边界。
 - 本机缓存 `.mv` 显示四个 ModelScope 模型均来自 `master`，`.msc` 为 ModelScope 自有二进制缓存元数据；当前没有可直接复用的仓库 commit pin。M11 先删除无效 `trust_remote_code`、保持 FunASR `disable_update=True`、固定模型 ID，并把模型源/缓存列为信任边界；精确 revision pin 作为后续供应链增强而非伪造未知 tag。
+- `7872895` push 后 Dependabot 仍暂显 7 open，其中 Flask/Torch 的一组来自遗留 `requirements.txt`，另一组来自 `uv.lock`；pytest 只来自 uv.lock。Graph Update 正在处理新锁文件。M14 原计划才统一安装路径，但 security 必须先让 legacy requirements 不继续声明已知漏洞版本。
 
 ## 2026-08-07 完整本地 V1 续作
 
