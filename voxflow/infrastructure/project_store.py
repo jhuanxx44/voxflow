@@ -171,7 +171,12 @@ class ProjectStore:
     def resolve_input_path(self, path: Path) -> Path:
         resolved = path.expanduser().resolve(strict=True)
         roots = self.settings.allowed_input_roots
-        if roots and not any(resolved.is_relative_to(root) for root in roots):
+        internally_managed = resolved.is_relative_to(self.settings.home)
+        if (
+            roots
+            and not internally_managed
+            and not any(resolved.is_relative_to(root) for root in roots)
+        ):
             raise ValidationError(
                 "Input path is outside the configured allowed roots",
                 details={"path": str(resolved), "allowed_roots": [str(root) for root in roots]},

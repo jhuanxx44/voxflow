@@ -59,6 +59,10 @@ class Settings:
         return self.home / "asr-cache"
 
     @property
+    def web_uploads_dir(self) -> Path:
+        return self.home / "web-uploads"
+
+    @property
     def catalog_path(self) -> Path:
         return self.home / "catalog.sqlite"
 
@@ -66,3 +70,4 @@ class Settings:
         self.projects_dir.mkdir(parents=True, exist_ok=True)
         self.jobs_dir.mkdir(parents=True, exist_ok=True)
         self.asr_cache_dir.mkdir(parents=True, exist_ok=True)
+        self.web_uploads_dir.mkdir(parents=True, exist_ok=True)
