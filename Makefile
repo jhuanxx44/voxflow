@@ -7,11 +7,11 @@ test:
 	uv run pytest
 
 lint:
-	uv run ruff format --check voxflow tests scripts
-	uv run ruff check voxflow tests scripts
+	uv run ruff format --check voxflow tests scripts app.py routes/api_v1.py config.py
+	uv run ruff check voxflow tests scripts app.py routes/api_v1.py config.py
 
 typecheck:
-	uv run mypy voxflow
+	uv run mypy voxflow routes/api_v1.py
 
 check: lint typecheck test
 
