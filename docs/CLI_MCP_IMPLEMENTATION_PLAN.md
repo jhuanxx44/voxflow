@@ -1,5 +1,8 @@
 # VoxFlow CLI / MCP 完整实施方案
 
+> 本文保留立项时的设计与迁移记录。V1 已完成；当前权威模块和 legacy Web Sunset
+> 以 [ARCHITECTURE.md](ARCHITECTURE.md) 为准。
+
 > 状态：建议稿 1.0  
 > 日期：2026-08-04  
 > 目标版本：本地优先的 VoxFlow 1.0 Headless Editing Engine
@@ -61,15 +64,15 @@ VoxFlow 不应被改造成“内置 Codex 的聊天应用”，而应被改造�
 - MCP、CLI 和 Web 对同一项目产生相同的编辑结果。
 - 进程重启后项目和已完成 artifact 仍可访问；运行中的任务会明确标记为 interrupted 或恢复执行。
 
-## 3. 当前代码的复用与改造范围
+## 3. 实施前代码的复用与改造范围（历史记录）
 
 ### 3.1 可直接复用或抽取
 
-- `services/asr_service.py`：FunASR 初始化、模型锁和缓存思路。
-- `services/media_service.py`：视频抽取音频、FFmpeg trim/concat 基础能力。
-- `services/tts_service.py` 和 `routes/tts.py`：参考音频选择与 TTS 服务对接。
+- 原 `services/asr_service.py`：FunASR 初始化、模型锁和缓存思路。
+- 原 `services/media_service.py`：视频抽取音频、FFmpeg trim/concat 基础能力。
+- 原 `services/tts_service.py` 和 `routes/tts.py`：参考音频选择与 TTS 服务对接。
 - `src/stores/editorStore.ts`：删除、重排、替换、undo/redo 的产品语义。
-- `src/services/exportService.ts`：SRT/VTT 格式和前端导出交互经验。
+- 原 `src/services/exportService.ts`：SRT/VTT 格式和前端导出交互经验；迁移后已删除。
 
 ### 3.2 必须重构
 
@@ -170,7 +173,9 @@ pyproject.toml
 uv.lock
 ```
 
-原有 `routes/` 和 `services/` 在迁移期继续存在，但逐步变为 wrapper，最后再删除重复实现。
+迁移已完成：versioned Web adapter 位于 `voxflow/interfaces/web/`；尚未迁移的原始 Web
+provider/material 路由集中到 `legacy_web/`，统一发送 Deprecation/Sunset header，且禁止新增
+编辑业务。重复 React ASR/export/TTS clients 与旧 static bundle 已删除。
 
 ## 5. 项目和持久化模型
 

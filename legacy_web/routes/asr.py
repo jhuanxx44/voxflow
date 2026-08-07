@@ -11,13 +11,17 @@ from datetime import datetime
 from flask import Blueprint, request, jsonify
 
 from config import MATERIALS_DIR, UPLOADS_TEMP_DIR, RESULT_DIR, uploaded_files
-from services.asr_service import (
+from legacy_web.services.asr_service import (
     basic_model, advanced_model,
     basic_model_lock, advanced_model_lock,
     request_counter,
     get_cached_result, save_to_cache,
 )
-from services.media_service import is_video_file, extract_audio_from_video, cleanup_old_uploads
+from legacy_web.services.media_service import (
+    cleanup_old_uploads,
+    extract_audio_from_video,
+    is_video_file,
+)
 
 asr_bp = Blueprint('asr', __name__)
 

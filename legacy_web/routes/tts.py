@@ -11,7 +11,7 @@ from config import (
     MATERIALS_DIR, TTS_SERVICE_URL, TTS_DEFAULT_PROMPT_AUDIO,
     uploaded_files, tts_semaphore,
 )
-from services.tts_service import extract_ref_audio, upload_ref_audio_to_tts_server
+from legacy_web.services.tts_service import extract_ref_audio, upload_ref_audio_to_tts_server
 
 tts_bp = Blueprint('tts', __name__)
 

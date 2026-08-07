@@ -1,6 +1,8 @@
 """
 素材库路由：素材列表、下载、管理员上传/删除
 """
+"""Legacy local material-library endpoints retained for Web compatibility."""
+
 import os
 import mimetypes
 from datetime import datetime

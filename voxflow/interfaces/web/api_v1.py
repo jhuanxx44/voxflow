@@ -1,4 +1,4 @@
-"""Versioned HTTP adapters for the shared VoxFlow application services."""
+"""Versioned HTTP adapter for the shared VoxFlow application services."""
 
 from __future__ import annotations
 
