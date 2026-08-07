@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal, TypeAlias, cast
 
 import typer
 
@@ -16,6 +16,8 @@ from voxflow.domain.operations import EditPlan
 from voxflow.infrastructure.files import read_json
 from voxflow.interfaces.cli.output import Output
 from voxflow.settings import Settings
+
+DurationPolicy: TypeAlias = Literal["natural", "fit_source", "pad_or_trim"]
 
 app = typer.Typer(
     name="voxflow",
@@ -29,6 +31,7 @@ edit_app = typer.Typer(help="Preview and atomically apply structured Edit Plans.
 job_app = typer.Typer(help="Inspect and control long-running recognition/export jobs.")
 export_app = typer.Typer(help="Render edited media and subtitles into artifacts.")
 artifact_app = typer.Typer(help="Inspect exported or managed artifacts.")
+speech_app = typer.Typer(help="Generate and attach persistent speech replacement candidates.")
 raw_app = typer.Typer(help="Read canonical manifests when high-level commands are insufficient.")
 mcp_app = typer.Typer(help="Run the VoxFlow MCP server.")
 
@@ -40,6 +43,7 @@ for name, group in (
     ("job", job_app),
     ("export", export_app),
     ("artifact", artifact_app),
+    ("speech", speech_app),
     ("raw", raw_app),
     ("mcp", mcp_app),
 ):
@@ -76,16 +80,7 @@ def callback(
 ) -> None:
     settings = Settings.from_env()
     if home is not None:
-        settings = Settings(
-            home=home.expanduser().resolve(),
-            ffmpeg=settings.ffmpeg,
-            ffprobe=settings.ffprobe,
-            job_inline=settings.job_inline,
-            allowed_input_roots=settings.allowed_input_roots,
-            max_input_bytes=settings.max_input_bytes,
-            max_media_duration_ms=settings.max_media_duration_ms,
-            export_timeout_seconds=settings.export_timeout_seconds,
-        )
+        settings = replace(settings, home=home.expanduser().resolve())
     ctx.obj = CLIContext(settings=settings, output=Output(json_output))
 
 
@@ -297,6 +292,51 @@ def edit_undo(
                 ).diff.model_dump(mode="json"),
             }
         )
+
+
+@speech_app.command("replace-start")
+def speech_replace_start(
+    ctx: typer.Context,
+    project_id: str,
+    clip_id: str,
+    expected_revision: Annotated[int, typer.Option("--expected-revision", min=1)],
+    text: Annotated[str | None, typer.Option("--text")] = None,
+    text_file: Annotated[
+        Path | None, typer.Option("--text-file", exists=True, dir_okay=False)
+    ] = None,
+    duration_policy: Annotated[
+        str | None, typer.Option("--duration-policy", help="natural, fit_source, or pad_or_trim")
+    ] = None,
+    wait: Annotated[bool, typer.Option("--wait")] = False,
+    timeout: Annotated[float, typer.Option(min=1)] = 300,
+) -> None:
+    """Generate a candidate artifact; attach it later through an Edit Plan."""
+    state = _context(ctx)
+
+    def action() -> Any:
+        if (text is None) == (text_file is None):
+            raise ValueError("Provide exactly one of --text or --text-file")
+        if text is not None:
+            replacement_text = text
+        elif text_file is not None:
+            replacement_text = text_file.read_text(encoding="utf-8")
+        else:  # Guarded above; retained to keep static narrowing explicit.
+            raise ValueError("Provide exactly one of --text or --text-file")
+        if duration_policy not in {None, "natural", "fit_source", "pad_or_trim"}:
+            raise ValueError("Invalid --duration-policy")
+        submitted = state.runtime.speech.start(
+            project_id,
+            expected_revision=expected_revision,
+            clip_id=clip_id,
+            text=replacement_text,
+            duration_policy=cast(DurationPolicy | None, duration_policy),
+        )
+        if wait:
+            state.output.progress(f"Waiting for speech replacement job {submitted['id']}...")
+            return state.runtime.jobs.wait(submitted["id"], timeout=timeout)
+        return submitted
+
+    state.output.run(action)
 
 
 @job_app.command("get")

@@ -3,7 +3,7 @@
  * Width controlled by parent container (MainLayout), card-style container
  */
 
-import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { useChatHistory } from '@/hooks/useChatHistory';

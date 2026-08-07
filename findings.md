@@ -18,6 +18,14 @@
 - Web artifact 下载需要经过受控 Flask `send_file` endpoint，浏览器不应接收/拼接本地绝对路径；source preview 同样应按 project ID 服务 managed media。
 - 正式 Phase 7 可拆成两个可独立验收的大模块提交：版本化 Flask adapter/contract tests；React/Zustand project/revision 迁移与浏览器证据。
 - Web API 视图必须净化 project `managed_path`、job `log_path`/result path、artifact path；浏览器统一使用受控 source/download URL，CLI/MCP 仍保留本地路径能力。
+
+## Phase 8 TTS replacement 设计约束
+
+- 正式规划要求严格两阶段：speech job 只生成候选 artifact；`attach_speech_replacement` 经 preview/apply 后才改变 timeline 和最终导出。
+- 音频 project 默认使用 replacement 自然时长并 ripple 后续 clip；视频 project 默认 `fit_source` 保持画面时长，安全 stretch 比率 0.8–1.25，超限必须拒绝或显式 `pad_or_trim` warning，禁止静默截断。
+- 候选 artifact metadata 必须绑定 project、expected revision、clip fingerprint、原 clip/source 时长、文本、provider、voice reference、参数/版本与实际 ffprobe duration；attach 时重新核验 catalog metadata，不能信任客户端填写的 duration。
+- 现有 legacy `/tts` 同步返回浏览器 Blob，source 依赖旧 material/upload file ID，无法重启恢复且不进入 renderer；Phase 8 主链必须替换，旧路由仅保留兼容。
+- 当前 `TimelineClip.duration_ms` 固定取 source range；Phase 8 需增加持久化 replacement/render duration 与 policy，使 audio ripple 的 timeline duration 和视频 fit_source 时长均可确定计算。
 - 前端迁移可保留现有组件契约：每次从 server timeline 构造 `lastSegments` view cache，并令 `composition=[0..n)`；稳定 `clip_id`/`token_id` 由新增的 timeline/char 元数据承载，不能继续用数组下标作为写协议。
 - 客户端 localStorage ASR cache 应退出权威链路；Headless 已有 source hash + ASR config cache。Web 识别流程改为 create project → detached transcription job → poll → fetch transcript/timeline。
 - Undo/Redo 可用 revision target 双栈实现：普通 commit 记录 base revision；undo restore 目标 revision并把 undo 前 revision 放入 redo 栈；redo 再 restore该目标。每次 restore 都生成新的单调递增 revision。
@@ -27,6 +35,10 @@
 - 浏览器刷新只需恢复 committed project view；undo/redo 双栈是当前浏览器会话 UI 状态，不需要跨刷新持久化。revision history 仍完整保存在后端。
 - Web 支持 `/?project=<project_id>` 深链打开 CLI/MCP 创建的项目，并在成功 hydrate 后写入当前项目 localStorage；这是三入口共享 project 的直接用户入口，也便于隔离 E2E。
 - Browser 实证确认 restore-based undo/redo 的 revision 单调性：delete 1→2、undo 2→3（restore r1）、redo 3→4（restore r2）；刷新后 r4 保持且被删内容未回归。
+- Phase 8 最终采用两阶段候选：speech job 持久化 WAV/artifact metadata，只有带 artifact/fingerprint/duration policy 的 `attach_speech_replacement` Edit Plan 才产生新 revision。
+- 浏览器音频实证：artifact URL 候选播放 1.44 秒，attach 后 Revision 1→2，刷新后替换文本与相同 artifact URL 均恢复。
+- 浏览器视频实证：4.32 秒 replacement 对 1 秒 clip 的 fit ratio 为 0.231，UI 显示 warning 且禁用 apply；显式 pad_or_trim 后可提交，导出 MP4 音频 2.50 秒、视频 2.52 秒。
+- React 主 TTS hook 已完全退出 legacy `/tts` Blob 路径；legacy endpoint 仅保留一周期并返回 deprecation/successor headers。
 
 ## 当前可复用能力
 

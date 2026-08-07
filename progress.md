@@ -1,5 +1,27 @@
 # VoxFlow CLI / MCP 规划进度
 
+## 2026-08-07 Phase 8 恢复与续作
+
+- 已从 session catchup 恢复 Phase 8 未提交工作树，确认当前目标为持久化 TTS replacement 两阶段工作流。
+- 修复 `voxflow/interfaces/cli/main.py` 中 speech command 打断 `edit_undo` 分支导致的语法错误。
+- CLI 文本来源改为显式 `None` 分支，duration policy 经校验后 cast，移除两个临时 `type: ignore`。
+- 首次定向 gate 只发现 Ruff 要求格式化新增的长 `text_file` 参数；已记录，下一步机械格式化并重跑定向链路。
+- Ruff 格式化与 CLI lint 已通过；mypy 顺着 Runtime 导入发现 8 个 Phase 8 类型/结构问题。
+- 定位到 `_transcribe` 的 ASR cache/recognize/save 主体被误放在 `_speech_replace` 的 return 后，已恢复函数边界；同时修复 fake duration 参数收窄和 renderer replacement artifact 可空处理。
+- 新增 4 个 Phase 8 集成测试，覆盖 candidate/cache/restart、客户端 metadata 篡改、stale fingerprint、unsafe fit warning/apply reject、pad_or_trim warning 和音视频实渲染。
+- 首轮测试 1 passed / 3 failed，均定位为 attach reducer 逐字段赋值产生非法 replacement 中间态；已改为一次性构造完整 clip。
+- 修复后 Phase 8 speech targeted gate 通过：Ruff、mypy 全绿，4 个集成测试全部通过；已验证 WAV natural ripple 为 2.5 秒且含 replacement 波形，安全 fit_source MP4 音视频均约 2.0 秒。
+- 当前未提交、未 push。下一步更新 JSON Schema 与 CLI/MCP golden contract，再完成 Web artifact 试听/preview warning/apply 工作流。
+- canonical Schema 已重新生成并通过一致性测试；CLI/MCP golden contract 已加入 `speech_replace_start`，协议测试 8 passed。
+- Web TTS hook 已从 legacy `/tts` Blob 切换为 persistent speech job → artifact URL → edit preview → explicit attach；新增候选试听、warning、unsafe fit 禁止应用、pad/trim 重生成和放弃 UI。
+- committed replacement 在项目刷新后由 timeline artifact ID 重建播放映射；replacement artifact content 使用 inline disposition，导出 artifact 仍保持 attachment。
+- Web API 定向 mypy 首次发现 duration policy 类型未收窄，已在运行时枚举校验后显式 cast，等待重跑完整定向门。
+- Phase 8 全仓 gate 通过：59 tests、Ruff、34-source mypy、canonical schemas、`uv lock --check`、TypeScript strict typecheck、Vite build、`git diff --check`。
+- 新增官方 stdio cross-interface smoke：CLI speech candidate → MCP preview/apply → CLI WAV export，Revision 2，ffprobe 1.72 秒。
+- Browser 桌面 E2E 通过音频试听/apply/刷新恢复与视频 unsafe fit warning → pad_or_trim → apply → MP4 export；两个 tab console error/warn 均为空。
+- 视频 replacement MP4 artifact `art_4834731108c444ed9e6dacef48300644` 经 ffprobe：audio 2.500s、video/format 2.520s，与 2.5s timeline 容差一致。
+- Phase 8 代码与验收已闭环，下一步最终复核 diff 后提交独立大模块；仍不 push。
+
 ## 2026-08-07 完整本地 V1 Phase 7–9
 
 - 用户要求继续实现正式规划 Phase 7–9，完成 Web 核心链路回归，每个大模块完成后 commit，全部验收通过后 push。

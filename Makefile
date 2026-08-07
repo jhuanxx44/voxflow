@@ -1,7 +1,7 @@
 .PHONY: sync test lint typecheck check install-local install-local-lite
 
 sync:
-	uv sync --python 3.11 --extra dev --extra mcp --extra web --extra asr-local --extra providers
+	uv sync --python 3.11 --extra dev --extra mcp --extra web --extra asr-local --extra providers --extra tts
 
 test:
 	uv run pytest
@@ -16,7 +16,7 @@ typecheck:
 check: lint typecheck test
 
 install-local:
-	uv tool install --python 3.11 --force --editable '.[mcp,asr-local]'
+	uv tool install --python 3.11 --force --editable '.[mcp,asr-local,tts]'
 
 install-local-lite:
 	uv tool install --python 3.11 --force --editable '.[mcp]'

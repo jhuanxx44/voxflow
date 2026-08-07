@@ -5,7 +5,9 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
+from voxflow.application.runtime import Runtime
 from voxflow.interfaces.cli.main import app
+from voxflow.settings import Settings
 
 runner = CliRunner()
 GOLDEN_DIR = Path(__file__).with_name("golden")
@@ -39,8 +41,61 @@ def test_doctor_json_is_machine_readable_and_does_not_load_funasr(tmp_path: Path
 def test_help_discovers_major_capabilities() -> None:
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for command in ("project", "transcript", "timeline", "edit", "job", "export", "mcp"):
+    for command in (
+        "project",
+        "transcript",
+        "timeline",
+        "edit",
+        "speech",
+        "job",
+        "export",
+        "mcp",
+    ):
         assert command in result.stdout
+
+
+def test_speech_replace_start_emits_persistent_candidate_job(
+    tmp_path: Path, wav_file: Path
+) -> None:
+    settings = Settings(home=tmp_path / "voxflow-home", job_inline=True, tts_provider="fake")
+    runtime = Runtime.create(settings)
+    project = runtime.store.create(wav_file)
+    runtime.transcripts.import_payload(
+        project.id,
+        [
+            {
+                "text": "候选语音",
+                "sentence_info": [{"text": "候选语音", "start": 0, "end": 1000}],
+            }
+        ],
+    )
+    clip_id = runtime.store.get_timeline(project.id).clips[0].id
+    result = runner.invoke(
+        app,
+        [
+            "--json",
+            "--home",
+            str(settings.home),
+            "speech",
+            "replace-start",
+            project.id,
+            clip_id,
+            "--expected-revision",
+            "1",
+            "--text",
+            "新的语音",
+            "--wait",
+        ],
+        env={"VOXFLOW_TTS_PROVIDER": "fake", "VOXFLOW_JOB_INLINE": "1"},
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(result.stdout)
+    assert payload["ok"] is True
+    assert payload["data"]["kind"] == "speech_replace"
+    assert payload["data"]["status"] == "succeeded"
+    operation = payload["data"]["result"]["recommended_operation"]
+    assert operation["op"] == "attach_speech_replacement"
+    assert operation["clip_id"] == clip_id
 
 
 def test_json_error_uses_stable_error_envelope(tmp_path: Path) -> None:

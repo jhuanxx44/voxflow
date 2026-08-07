@@ -6,7 +6,6 @@
  */
 
 import { useRef, useEffect, useCallback, useState } from 'react';
-import { useASRStore } from '@/stores/asrStore';
 import { useEditorStore } from '@/stores/editorStore';
 
 // Time matching epsilon (30ms tolerance)
@@ -24,7 +23,6 @@ export const useAudioPlayer = (options: UseAudioPlayerOptions = {}) => {
   const highlightRAFRef = useRef<number | null>(null);
   const editedRAFRef = useRef<number | null>(null);
 
-  const { audioUrl } = useASRStore();
   const {
     lastSegments,
     composition,

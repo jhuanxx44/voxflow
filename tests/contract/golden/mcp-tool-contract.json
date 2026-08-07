@@ -22,6 +22,10 @@
   },
   "project_get": {"properties": ["project_id"], "required": ["project_id"]},
   "project_list": {"properties": ["limit", "offset"], "required": []},
+  "speech_replace_start": {
+    "properties": ["clip_id", "duration_policy", "expected_revision", "project_id", "text"],
+    "required": ["clip_id", "expected_revision", "project_id", "text"]
+  },
   "timeline_get": {
     "properties": ["limit", "offset", "project_id"],
     "required": ["project_id"]

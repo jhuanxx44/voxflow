@@ -112,6 +112,106 @@ def build_ffmpeg_args(plan: RenderPlan, output_path: Path, ffmpeg: str = "ffmpeg
     ]
 
 
+def build_mixed_ffmpeg_args(
+    timeline: TimelineRevision,
+    *,
+    source_path: Path,
+    source_has_video: bool,
+    source_has_audio: bool,
+    replacement_paths: dict[str, Path],
+    output_format: str,
+    output_path: Path,
+    ffmpeg: str = "ffmpeg",
+) -> list[str]:
+    """Build a normalized multi-input graph for source and replacement clips."""
+    include_video = output_format == "mp4" and source_has_video
+    include_audio = output_format in {"mp4", "mp3", "wav"}
+    if output_format == "mp4" and not source_has_video:
+        raise ValidationError("MP4 export requires a video source")
+
+    inputs = ["-i", str(source_path)]
+    replacement_input: dict[str, int] = {}
+    for artifact_id, path in replacement_paths.items():
+        replacement_input[artifact_id] = len(replacement_input) + 1
+        inputs.extend(["-i", str(path)])
+
+    filters: list[str] = []
+    for index, clip in enumerate(timeline.clips):
+        source_start = clip.source_in_ms / 1000
+        source_end = clip.source_out_ms / 1000
+        duration = clip.duration_ms / 1000
+        if include_video:
+            filters.append(
+                f"[0:v]trim=start={source_start:.6f}:end={source_end:.6f},"
+                f"setpts=PTS-STARTPTS[v{index}]"
+            )
+        if not include_audio:
+            continue
+        normalize = "aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo"
+        if clip.kind == "replacement":
+            replacement_artifact_id = clip.replacement_artifact_id
+            if not replacement_artifact_id or replacement_artifact_id not in replacement_input:
+                raise ValidationError(
+                    "Replacement artifact is unavailable to renderer", details={"clip_id": clip.id}
+                )
+            input_index = replacement_input[replacement_artifact_id]
+            replacement_duration = (clip.replacement_duration_ms or clip.duration_ms) / 1000
+            chain = (
+                f"[{input_index}:a]atrim=start=0:end={replacement_duration:.6f},"
+                "asetpts=PTS-STARTPTS"
+            )
+            if clip.duration_policy == "fit_source":
+                tempo = replacement_duration / duration
+                chain += (
+                    f",atempo={tempo:.9f},apad=whole_dur={duration:.6f},"
+                    f"atrim=duration={duration:.6f}"
+                )
+            elif clip.duration_policy == "pad_or_trim":
+                chain += f",apad=whole_dur={duration:.6f},atrim=duration={duration:.6f}"
+            chain += f",{normalize}[a{index}]"
+            filters.append(chain)
+        elif source_has_audio:
+            filters.append(
+                f"[0:a]atrim=start={source_start:.6f}:end={source_end:.6f},"
+                f"asetpts=PTS-STARTPTS,{normalize}[a{index}]"
+            )
+        else:
+            filters.append(f"anullsrc=r=44100:cl=stereo,atrim=duration={duration:.6f}[a{index}]")
+
+    clip_count = len(timeline.clips)
+    if include_video and include_audio:
+        concat_inputs = "".join(f"[v{i}][a{i}]" for i in range(clip_count))
+        filters.append(f"{concat_inputs}concat=n={clip_count}:v=1:a=1[outv][outa]")
+        maps = ["-map", "[outv]", "-map", "[outa]"]
+        codecs = ["-c:v", "libx264", "-preset", "fast", "-crf", "23", "-c:a", "aac"]
+    elif include_video:
+        concat_inputs = "".join(f"[v{i}]" for i in range(clip_count))
+        filters.append(f"{concat_inputs}concat=n={clip_count}:v=1:a=0[outv]")
+        maps = ["-map", "[outv]"]
+        codecs = ["-c:v", "libx264", "-preset", "fast", "-crf", "23"]
+    else:
+        concat_inputs = "".join(f"[a{i}]" for i in range(clip_count))
+        filters.append(f"{concat_inputs}concat=n={clip_count}:v=0:a=1[outa]")
+        maps = ["-map", "[outa]"]
+        codecs = (
+            ["-c:a", "libmp3lame", "-b:a", "192k"]
+            if output_format == "mp3"
+            else ["-c:a", "pcm_s16le", "-ar", "44100"]
+        )
+    return [
+        ffmpeg,
+        "-y",
+        "-v",
+        "error",
+        *inputs,
+        "-filter_complex",
+        ";".join(filters),
+        *maps,
+        *codecs,
+        str(output_path),
+    ]
+
+
 def _format_timestamp(milliseconds: int, *, vtt: bool) -> str:
     hours, remainder = divmod(milliseconds, 3_600_000)
     minutes, remainder = divmod(remainder, 60_000)
@@ -189,16 +289,49 @@ def execute_export_job(job: Job, runtime: Runtime) -> dict[str, Any]:
         kind = ArtifactKind.SUBTITLE
         mime_type = "text/vtt" if output_format == "vtt" else "application/x-subrip"
     else:
-        plan = compile_render_plan(
-            project.id,
-            timeline,
-            source_path=source,
-            source_has_video=project.source.media.has_video,
-            source_has_audio=project.source.media.has_audio,
-            output_format=output_format,
-        )
         runtime.jobs.update(job, phase="rendering", progress=0.2)
-        args = build_ffmpeg_args(plan, temporary_path, runtime.settings.ffmpeg)
+        replacement_paths: dict[str, Path] = {}
+        for clip in timeline.clips:
+            if clip.kind != "replacement":
+                continue
+            replacement_artifact_id = clip.replacement_artifact_id
+            if replacement_artifact_id is None:
+                raise ValidationError(
+                    "Timeline replacement clip has no artifact", details={"clip_id": clip.id}
+                )
+            artifact = runtime.catalog.get_artifact(replacement_artifact_id)
+            if not artifact or artifact.project_id != project.id:
+                raise ValidationError(
+                    "Timeline replacement artifact is missing", details={"clip_id": clip.id}
+                )
+            artifact_path = Path(artifact.path)
+            if not artifact_path.is_file() or sha256_file(artifact_path) != artifact.sha256:
+                raise ValidationError(
+                    "Timeline replacement artifact changed after attachment",
+                    details={"artifact_id": artifact.id},
+                )
+            replacement_paths[artifact.id] = artifact_path
+        if replacement_paths:
+            args = build_mixed_ffmpeg_args(
+                timeline,
+                source_path=source,
+                source_has_video=project.source.media.has_video,
+                source_has_audio=project.source.media.has_audio,
+                replacement_paths=replacement_paths,
+                output_format=output_format,
+                output_path=temporary_path,
+                ffmpeg=runtime.settings.ffmpeg,
+            )
+        else:
+            plan = compile_render_plan(
+                project.id,
+                timeline,
+                source_path=source,
+                source_has_video=project.source.media.has_video,
+                source_has_audio=project.source.media.has_audio,
+                output_format=output_format,
+            )
+            args = build_ffmpeg_args(plan, temporary_path, runtime.settings.ffmpeg)
         _run_ffmpeg(job, runtime, args)
         kind = ArtifactKind.EXPORT_VIDEO if output_format == "mp4" else ArtifactKind.EXPORT_AUDIO
         mime_type = {

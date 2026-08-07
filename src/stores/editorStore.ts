@@ -3,8 +3,10 @@
 import { create } from 'zustand';
 import type { CharUnit, DisplayMode, Segment } from '@/types';
 import type {
+  AttachSpeechReplacementV1,
   EditOperationV1,
   ProjectEditorSnapshot,
+  SpeechReplacementCandidateV1,
   TimelineClipV1,
   TranscriptTokenV1,
 } from '@/types/project';
@@ -47,6 +49,7 @@ interface EditorState {
   ttsAudioMap: Record<number, string>;
   ttsDurationMap: Record<number, number>;
   ttsGeneratingMap: Record<number, boolean>;
+  ttsCandidateMap: Record<number, SpeechReplacementCandidateV1>;
   inlineEditIndex: number | null;
 
   _undoStack: number[];
@@ -92,6 +95,12 @@ interface EditorState {
   removeTTSAudio: (segmentIndex: number) => void;
   clearAllTTSAudio: () => void;
   setTTSGenerating: (segmentIndex: number, generating: boolean) => void;
+  setTTSCandidate: (segmentIndex: number, candidate: SpeechReplacementCandidateV1) => void;
+  removeTTSCandidate: (segmentIndex: number) => void;
+  applySpeechCandidate: (
+    segmentIndex: number,
+    operation: AttachSpeechReplacementV1
+  ) => Promise<void>;
   setInlineEditIndex: (index: number | null) => void;
   replaceSegmentTextByIndex: (segmentIndex: number, newText: string) => void;
 }
@@ -104,8 +113,13 @@ type SetEditorState = (
 
 let mutationQueue: Promise<void> = Promise.resolve();
 
-function enqueue(task: () => Promise<void>): void {
+function enqueue(task: () => Promise<void>): Promise<void> {
   mutationQueue = mutationQueue.then(task, task);
+  return mutationQueue;
+}
+
+function revokeBlobUrl(url: string | undefined): void {
+  if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
 }
 
 function speakerNumber(speakerId: string | null): number | null {
@@ -176,6 +190,16 @@ function snapshotView(snapshot: ProjectEditorSnapshot): Partial<EditorState> {
     }
   }
 
+  const ttsAudioMap: Record<number, string> = {};
+  const ttsDurationMap: Record<number, number> = {};
+  snapshot.timeline.items.forEach((clip, index) => {
+    if (!clip.replacement_artifact_id) return;
+    ttsAudioMap[index] = `/api/v1/artifacts/${clip.replacement_artifact_id}/content`;
+    if (clip.replacement_duration_ms) {
+      ttsDurationMap[index] = clip.replacement_duration_ms;
+    }
+  });
+
   return {
     projectId: snapshot.project.id,
     projectName: snapshot.project.name,
@@ -197,6 +221,10 @@ function snapshotView(snapshot: ProjectEditorSnapshot): Partial<EditorState> {
     insertAfterIndex: null,
     revisionConflict: false,
     lastError: null,
+    ttsAudioMap,
+    ttsDurationMap,
+    ttsGeneratingMap: {},
+    ttsCandidateMap: {},
   };
 }
 
@@ -285,6 +313,7 @@ const initialState = {
   ttsAudioMap: {},
   ttsDurationMap: {},
   ttsGeneratingMap: {},
+  ttsCandidateMap: {},
   inlineEditIndex: null,
   _undoStack: [],
   _redoStack: [],
@@ -326,6 +355,9 @@ const initialState = {
   | 'removeTTSAudio'
   | 'clearAllTTSAudio'
   | 'setTTSGenerating'
+  | 'setTTSCandidate'
+  | 'removeTTSCandidate'
+  | 'applySpeechCandidate'
   | 'setInlineEditIndex'
   | 'replaceSegmentTextByIndex'
 >;
@@ -508,7 +540,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   clearAll: () => {
-    for (const url of Object.values(get().ttsAudioMap)) URL.revokeObjectURL(url);
+    for (const url of Object.values(get().ttsAudioMap)) revokeBlobUrl(url);
     localStorage.removeItem(CURRENT_PROJECT_KEY);
     set({ ...initialState, displayMode: get().displayMode });
   },
@@ -646,17 +678,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   canRedo: () => get()._redoStack.length > 0 && !get().isCommitting,
 
   setTTSAudio: (segmentIndex, blobUrl, durationMs) =>
-    set((state) => ({
+    set((state) => {
+      revokeBlobUrl(state.ttsAudioMap[segmentIndex]);
+      return {
       ttsAudioMap: { ...state.ttsAudioMap, [segmentIndex]: blobUrl },
       ttsDurationMap:
         durationMs === undefined
           ? state.ttsDurationMap
           : { ...state.ttsDurationMap, [segmentIndex]: durationMs },
       ttsGeneratingMap: { ...state.ttsGeneratingMap, [segmentIndex]: false },
-    })),
+      };
+    }),
   removeTTSAudio: (segmentIndex) => {
     const url = get().ttsAudioMap[segmentIndex];
-    if (url) URL.revokeObjectURL(url);
+    revokeBlobUrl(url);
     set((state) => {
       const ttsAudioMap = { ...state.ttsAudioMap };
       const ttsDurationMap = { ...state.ttsDurationMap };
@@ -668,13 +703,64 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
   clearAllTTSAudio: () => {
-    for (const url of Object.values(get().ttsAudioMap)) URL.revokeObjectURL(url);
-    set({ ttsAudioMap: {}, ttsDurationMap: {}, ttsGeneratingMap: {} });
+    for (const url of Object.values(get().ttsAudioMap)) revokeBlobUrl(url);
+    set({
+      ttsAudioMap: {},
+      ttsDurationMap: {},
+      ttsGeneratingMap: {},
+      ttsCandidateMap: {},
+    });
   },
   setTTSGenerating: (segmentIndex, generating) =>
     set((state) => ({
       ttsGeneratingMap: { ...state.ttsGeneratingMap, [segmentIndex]: generating },
     })),
+  setTTSCandidate: (segmentIndex, candidate) =>
+    set((state) => ({
+      ttsCandidateMap: { ...state.ttsCandidateMap, [segmentIndex]: candidate },
+    })),
+  removeTTSCandidate: (segmentIndex) =>
+    set((state) => {
+      const ttsCandidateMap = { ...state.ttsCandidateMap };
+      delete ttsCandidateMap[segmentIndex];
+      return { ttsCandidateMap };
+    }),
+  applySpeechCandidate: (segmentIndex, operation) =>
+    enqueue(async () => {
+      const before = get();
+      if (!before.projectId || before.isCommitting) return;
+      const projectId = before.projectId;
+      const baseRevision = before.revision;
+      set({ isCommitting: true, lastError: null, revisionConflict: false });
+      try {
+        await applyEdit(projectId, baseRevision, [operation], 'Web: attach speech replacement');
+        const snapshot = await loadProjectEditor(projectId);
+        const latest = get();
+        set({
+          ...snapshotView(snapshot),
+          isCommitting: false,
+          _undoStack: [...latest._undoStack, baseRevision].slice(-latest._maxHistory),
+          _redoStack: [],
+        });
+      } catch (error) {
+        setApiError(set, error);
+        if (error instanceof ProjectApiError && error.code === 'REVISION_CONFLICT') {
+          try {
+            const snapshot = await loadProjectEditor(projectId);
+            set({ ...snapshotView(snapshot), revisionConflict: true });
+          } catch (refreshError) {
+            setApiError(set, refreshError);
+          }
+        }
+        throw error;
+      } finally {
+        set((state) => {
+          const ttsGeneratingMap = { ...state.ttsGeneratingMap };
+          delete ttsGeneratingMap[segmentIndex];
+          return { ttsGeneratingMap };
+        });
+      }
+    }),
   setInlineEditIndex: (inlineEditIndex) => set({ inlineEditIndex }),
   replaceSegmentTextByIndex: (segmentIndex, newText) =>
     queueEdit(

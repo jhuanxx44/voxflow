@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-Phase 7：Web UI 迁移
+Phase 8：TTS replacement 成片
 
 ## 阶段
 
@@ -77,11 +77,11 @@ Phase 7：Web UI 迁移
 
 ### Phase 8: TTS replacement 成片
 
-- [ ] TTS provider interface、缓存与持久化 replacement artifact
-- [ ] `replace_speech` preview/start/apply 和 CLI/MCP/Web 试听工作流
-- [ ] 音频 ripple、视频 `fit_source` renderer 和 duration policy/warnings
-- [ ] 重启持久性、无静默截断、三入口一致性测试
-- **Status:** pending
+- [x] TTS provider interface、缓存与持久化 replacement artifact
+- [x] `replace_speech` preview/start/apply 和 CLI/MCP/Web 试听工作流
+- [x] 音频 ripple、视频 `fit_source` renderer 和 duration policy/warnings
+- [x] 重启持久性、无静默截断、三入口一致性测试
+- **Status:** complete
 
 ### Phase 9: 发布加固
 
@@ -145,3 +145,12 @@ Phase 7：Web UI 迁移
 | Browser runtime 不支持 `waitForLoadState(networkidle)` | 1 | 改用受支持的 `domcontentloaded`，随后以 DOM 中 project revision 的具体状态作为异步 hydrate 完成信号 |
 | CUA 两种 pointer path 均未触发 HTML5 drop | 2 | 保留原 drag/drop，并补 Alt+方向键可访问重排作为可靠 UI/E2E 入口；最终另用支持原生 dragTo 的 Playwright 回归真实拖拽 |
 | Browser 点击 speaker rename 后原生 `window.prompt` 未提供可控 dialog | 1 | 将 prompt/confirm 改为应用内可访问 rename/merge dialogs，提升真实 UI 可测性与可用性 |
+| Phase 8 CLI speech 命令误插入 `edit_undo` 的 `if/else` 之间 | 1 | 恢复相邻分支并将 speech 命令移到函数结束后；同时移除两个临时 `type: ignore` |
+| Phase 8 CLI 首次定向检查停在 Ruff format check | 1 | 对新增长参数声明执行 Ruff 机械格式化后重跑 lint、mypy、py_compile 和命令帮助 smoke |
+| Phase 8 定向 mypy 发现 speech/renderer/worker 共 8 项错误 | 1 | 收窄 fake provider 参数类型与 replacement artifact 可空值；发现 ASR 主体被误移到 speech return 后，恢复到 `_transcribe` 中 |
+| Phase 8 首轮 speech 集成测试 3/4 失败于 replacement clip 中间态校验 | 1 | reducer 改为通过完整 payload 一次性校验并替换 clip，避免 validate-assignment 观察到缺 artifact metadata 的非法中间态 |
+| Phase 8 Web API 定向 mypy 发现 duration policy 未收窄 | 1 | 路由完成枚举校验后显式 cast 到共享语义的 Literal 类型，不使用 `type: ignore` |
+| 首次启用独立 `tsc --noEmit` 发现 16 个既有严格类型问题 | 1 | 升级浏览器 target 到 ES2022，清理未使用符号、收窄 RefObject 可空签名并消除 utility 重复导出；继续重跑直到成为有效门禁 |
+| Phase 8 首次全仓 `make check` 停在 2 个 Ruff 问题 | 1 | 合并 speech job 的嵌套空文本判断并整理 Runtime application import 顺序，然后从头重跑全门 |
+| Browser 刷新后两次动态 audio `evaluate` 定位超时 | 2 | 改用稳定 `audio.hidden[src]` 属性核验，确认同一 persistent artifact URL 恢复；首次生成时已有实际 currentTime/duration 播放证据 |
+| Browser runtime 不支持 `tab.playwright.screenshot` 和 viewport resize | 2 | 使用受支持的 `tab.screenshot()` 收集桌面证据；移动 viewport 留到最终支持视口控制的 Web E2E |

@@ -70,7 +70,7 @@ function App() {
   } = useUIStore();
 
   // Hooks
-  const { performRecognition, error: recognitionError } = useASRRecognition({
+  const { performRecognition } = useASRRecognition({
     onSuccess: () => {
       console.log('识别成功');
     },

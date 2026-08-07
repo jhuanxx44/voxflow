@@ -24,6 +24,7 @@ def test_mcp_exposes_bounded_high_level_tools() -> None:
         "timeline_get",
         "edit_preview",
         "edit_apply",
+        "speech_replace_start",
         "export_start",
         "job_get",
         "artifact_get",
@@ -51,6 +52,15 @@ def test_mcp_exposes_bounded_high_level_tools() -> None:
         "srt",
         "vtt",
     ]
+    speech_schema = by_name["speech_replace_start"].inputSchema
+    assert sorted(speech_schema["required"]) == [
+        "clip_id",
+        "expected_revision",
+        "project_id",
+        "text",
+    ]
+    policy_schema = speech_schema["properties"]["duration_policy"]["anyOf"][0]
+    assert policy_schema["enum"] == ["natural", "fit_source", "pad_or_trim"]
     edit_schema = by_name["edit_preview"].inputSchema["$defs"]["EditPlan"]
     assert edit_schema["properties"]["operations"]["minItems"] == 1
     assert "discriminator" in edit_schema["properties"]["operations"]["items"]
