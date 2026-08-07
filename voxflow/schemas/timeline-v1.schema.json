@@ -1,0 +1,183 @@
+{
+  "$defs": {
+    "TimelineClip": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "kind": {
+          "default": "source",
+          "enum": [
+            "source",
+            "replacement"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "replacement_artifact_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Replacement Artifact Id"
+        },
+        "source_in_ms": {
+          "minimum": 0,
+          "title": "Source In Ms",
+          "type": "integer"
+        },
+        "source_out_ms": {
+          "minimum": 0,
+          "title": "Source Out Ms",
+          "type": "integer"
+        },
+        "source_segment_id": {
+          "title": "Source Segment Id",
+          "type": "string"
+        },
+        "speaker_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Speaker Id"
+        },
+        "token_ids": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Token Ids",
+          "type": "array"
+        },
+        "transcript_text": {
+          "title": "Transcript Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source_segment_id",
+        "source_in_ms",
+        "source_out_ms",
+        "transcript_text"
+      ],
+      "title": "TimelineClip",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "client_request_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Client Request Id"
+    },
+    "clips": {
+      "items": {
+        "$ref": "#/$defs/TimelineClip"
+      },
+      "title": "Clips",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "title": "Metadata",
+      "type": "object"
+    },
+    "operation_digest": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Operation Digest"
+    },
+    "parent_revision": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Revision"
+    },
+    "project_id": {
+      "title": "Project Id",
+      "type": "string"
+    },
+    "reason": {
+      "default": "",
+      "title": "Reason",
+      "type": "string"
+    },
+    "revision": {
+      "minimum": 0,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source": {
+      "default": "system",
+      "title": "Source",
+      "type": "string"
+    },
+    "speaker_labels": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Speaker Labels",
+      "type": "object"
+    },
+    "speaker_merges": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Speaker Merges",
+      "type": "object"
+    }
+  },
+  "required": [
+    "project_id",
+    "revision",
+    "clips"
+  ],
+  "title": "TimelineRevision",
+  "type": "object"
+}

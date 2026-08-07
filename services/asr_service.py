@@ -4,27 +4,46 @@ ASR 服务：FunASR 模型初始化、请求计数、缓存逻辑
 import os
 import json
 import threading
-from funasr import AutoModel
 from config import CACHE_DIR
 
 
 # ====== 模型初始化 ======
 
-# 初始化基础模型（支持热词）
-basic_model = AutoModel(
-    model="iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
-    trust_remote_code=True,
-    disable_update=True
-)
+class LazyAutoModel:
+    """Keep legacy Flask imports cheap; load FunASR only on the first generate call."""
 
-# 初始化带 VAD、标点、说话人识别的完整模型（支持热词+时间戳+说话人）
-advanced_model = AutoModel(
-    model="iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    def __init__(self, **model_kwargs):
+        self.model_kwargs = model_kwargs
+        self._instance = None
+        self._init_lock = threading.Lock()
+
+    def _get(self):
+        if self._instance is not None:
+            return self._instance
+        with self._init_lock:
+            if self._instance is None:
+                from funasr import AutoModel
+
+                self._instance = AutoModel(**self.model_kwargs)
+        return self._instance
+
+    def generate(self, **kwargs):
+        return self._get().generate(**kwargs)
+
+
+_base_model_args = {
+    "model": "iic/speech_seaco_paraformer_large_asr_nat-zh-cn-16k-common-vocab8404-pytorch",
+    "trust_remote_code": True,
+    "disable_update": True,
+}
+
+# 基础模型（支持热词）和高级模型均惰性初始化。
+basic_model = LazyAutoModel(**_base_model_args)
+advanced_model = LazyAutoModel(
+    **_base_model_args,
     vad_model="fsmn-vad",
     punc_model="ct-punc",
     spk_model="cam++",
-    trust_remote_code=True,
-    disable_update=True
 )
 
 # 创建线程锁，保护模型调用

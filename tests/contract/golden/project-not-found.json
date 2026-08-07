@@ -1,0 +1,15 @@
+{
+  "ok": false,
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "Project not found",
+    "retryable": false,
+    "details": {
+      "project_id": "prj_00000000000000000000000000000000"
+    }
+  },
+  "meta": {
+    "request_id": "<request_id>",
+    "schema_version": 1
+  }
+}
