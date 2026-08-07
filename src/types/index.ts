@@ -3,6 +3,7 @@
  */
 
 export * from './asr';
+export * from './project';
 export * from './editor';
 export * from './chat';
 export * from './ui';

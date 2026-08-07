@@ -33,10 +33,10 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const { currentFile, currentMaterial, mediaType, setCurrentFile, setAudioUrl, setMediaType, clearCurrentAudio } = useASRStore();
-  const { clearAll } = useEditorStore();
+  const { clearAll, projectId, projectName } = useEditorStore();
 
   // Check if there's any audio source selected
-  const hasAudioSource = currentFile !== null || currentMaterial !== null;
+  const hasAudioSource = currentFile !== null || currentMaterial !== null || projectId !== null;
 
   const handleFileChange = useCallback(
     (file: File | null) => {
@@ -193,6 +193,15 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
                   </div>
                   <div className="text-xs text-[var(--text-muted)]">
                     来自素材库
+                  </div>
+                </div>
+              ) : projectId ? (
+                <div>
+                  <div className="text-sm font-medium text-[var(--text-primary)]">
+                    {projectName || 'VoxFlow project'}
+                  </div>
+                  <div className="text-xs text-[var(--text-muted)]">
+                    已恢复持久化项目
                   </div>
                 </div>
               ) : (

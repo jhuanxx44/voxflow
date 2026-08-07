@@ -27,8 +27,6 @@ export const RecognitionSettings: React.FC<RecognitionSettingsProps> = ({
     setRecognitionMode,
     hotwords,
     setHotwords,
-    cacheEnabled,
-    toggleCache,
     serverStatus,
   } = useASRStore();
 
@@ -109,27 +107,9 @@ export const RecognitionSettings: React.FC<RecognitionSettingsProps> = ({
         />
       </div>
 
-      {/* Cache Toggle */}
-      <div>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={cacheEnabled}
-            onChange={toggleCache}
-            disabled={isRecognizing}
-            className="w-4 h-4 rounded border-[var(--border-input)]
-                     text-[var(--highlight-color)] focus:ring-2
-                     focus:ring-[var(--highlight-color)] focus:ring-offset-0
-                     bg-[var(--bg-input)] cursor-pointer
-                     disabled:opacity-50 disabled:cursor-not-allowed"
-          />
-          <span className="text-sm font-medium text-[var(--text-primary)]">
-            启用缓存
-          </span>
-          <span className="text-xs text-[var(--text-muted)]">
-            （自动保存识别结果到本地）
-          </span>
-        </label>
+      {/* Cache is authoritative and content-addressed on the local backend. */}
+      <div className="text-xs text-[var(--text-muted)]">
+        识别缓存由本地服务按源媒体与识别参数自动复用
       </div>
 
       {/* Server Status Display */}

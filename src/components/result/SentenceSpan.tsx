@@ -41,6 +41,8 @@ interface SentenceSpanProps {
   onDragLeave: () => void;
   /** Callback for drop */
   onDrop: (index: number) => void;
+  /** Keyboard-accessible segment reorder callback */
+  onReorder?: (fromIndex: number, toIndex: number) => void;
   /** Callback for right-click context menu */
   onContextMenu: (e: React.MouseEvent, index: number, originalIndex?: number) => void;
 
@@ -69,6 +71,7 @@ export const SentenceSpan: React.FC<SentenceSpanProps> = ({
   onDragOver,
   onDragLeave,
   onDrop,
+  onReorder,
   onContextMenu,
   isInlineEditing = false,
   onInlineEditConfirm,
@@ -130,6 +133,17 @@ export const SentenceSpan: React.FC<SentenceSpanProps> = ({
     e.preventDefault();
     setIsDraggedOver(false);
     onDrop(renderIndex);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (!onReorder || !('text' in data) || !e.altKey) return;
+    if (e.key === 'ArrowLeft' && renderIndex > 0) {
+      e.preventDefault();
+      onReorder(renderIndex, renderIndex - 1);
+    } else if (e.key === 'ArrowRight') {
+      e.preventDefault();
+      onReorder(renderIndex, renderIndex + 1);
+    }
   };
 
   // Handle context menu — pass originalIndex
@@ -200,16 +214,20 @@ export const SentenceSpan: React.FC<SentenceSpanProps> = ({
       className={classNames}
       style={style}
       draggable={!isDeleted}
+      tabIndex={isDeleted ? -1 : 0}
+      aria-label={`${text}，Alt 加方向键调整顺序`}
       data-start={start}
       data-end={end}
       data-idx={originalIndex}
       data-comp-index={renderIndex}
       data-spk={typeof spk === 'number' ? spk : undefined}
+      data-testid={'char' in data ? `token-${renderIndex}` : `segment-${renderIndex}`}
       onClick={handleClick}
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      onKeyDown={handleKeyDown}
       onContextMenu={handleContextMenu}
     >
       {text}
