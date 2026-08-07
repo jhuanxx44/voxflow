@@ -18,6 +18,32 @@
 - Phase 9 功能与验收报告均已完成，当前阶段切换为 Web 核心链路真实浏览器回归；先完成独立 Phase 9 commit，仍不 push。
 - 发布 wheel 留下的根目录 `build/` 是本轮 22:12 生成的 340 KB staging output，不是用户源码；补入 `.gitignore` 并移入 Trash，避免后续发布构建反复污染工作树。
 - Phase 9 首次 commit 为 `755b7e1 feat(release): harden VoxFlow 1.0`；staged check 同时提示新报告 3 行尾随空格，但组合命令未 fail-fast，已定向修复并准备 amend，不产生额外模块 commit。
+- Phase 9 已 amend 为最终 commit `32ecb99 feat(release): harden VoxFlow 1.0`，工作树 clean，未 push。
+
+## 2026-08-07 Web 核心链路真实浏览器回归
+
+- 目标流：`http://127.0.0.1:3001` 首屏 → 上传真实音频/视频并完成 ASR → 字幕编辑/搜索/播放/导出 → 刷新后 committed revision 恢复，且桌面/移动端无框架错误层或相关 console error。
+- QA inventory：页面身份/非空/overlay/console；音频与视频上传；advanced ASR；字幕与搜索；句段删除、稳定 token 词级删除、真实 HTML5 drag；speaker rename/merge；Undo/Redo 全周期；HTML5 media 播放进度同步；MP4/MP3/WAV/SRT/VTT 五种下载及 ffprobe/文本校验；刷新持久化；桌面 1600×900、移动 390×844 的 viewport fit 与截图。
+- 探索场景：空搜索/无匹配结果；编辑 commit 期间重复操作或刷新恢复；导出菜单连续切换格式；移动端致密结果区有无横向溢出/控件遮挡。
+- 预期证据：每次关键操作后的 visible revision/DOM 状态、下载事件与产物探测、desktop/mobile 截图、console warn/error 清单。
+- 应用内浏览器首屏页面身份/非空通过，但隔离后端下浏览器残留 project 指针产生两条 `Transcript not found` console error；逻辑已清 key，只是把预期恢复失败错误化。已最小修改为 saved pointer 失败记 info，显式 URL 深链失败仍记 error，等待 reload 新 tab 验证。
+- 新 tab 已验证修复：title/URL、服务器空闲、非空首屏、无 overlay，warn/error logs 均为空。隐藏 file input 强制 click 在应用内浏览器超时并重置控制会话；下一次从可见上传区域触发 chooser，不重复失败 locator。
+- 可见上传区域 + chooser 成功载入 20 秒自然中文 WAV；advanced ASR 得到 Revision 1、9 segments、101+ token precision 字符。服务端字幕搜索“过程”命中 1 条。
+- 词级删除 token“程”提交为 Revision 2；Undo Revision 3 恢复“过程”，Redo Revision 4 再次删除，完整周期通过。
+- 应用内浏览器两条真实 pointer drag 路径均未触发 HTML5 drop（Revision 4、顺序不变），按技能切换 standalone Playwright；bundled package 可加载但默认 Chromium revision 未下载，改显式复用本机 Google Chrome，不安装新依赖。
+- standalone Chrome 原生 `dragTo` 成功把目标段移动到开头（Revision 5），句段右键删除使 10→9 段（Revision 6）。刷新/深链后 Revision 6、拖拽顺序、词级删除和句段删除全部持久化。
+- 双说话人 Web 工程：说话人 1 重命名“主讲人”至 Revision 2，说话人 2 合并后 Revision 3、badge 2→1。
+- 真实 MP4 浏览器上传→advanced ASR 完成（Revision 1/9 segments）；点击 segment-2 后 video currentTime 5.96s、paused=false、active=segment-2，证明播放/字幕同步。应用内浏览器的 currentTime=0 属其媒体策略差异，不是产品 bug。
+- MP4/MP3/WAV/SRT/VTT 五种 UI download 成功；ffprobe：MP4 H.264+AAC 17.960s，MP3 17.915s，WAV PCM 17.915s；SRT/VTT UTF-8 且时码连续。
+- 干净页面唯一 console error 定位为浏览器自动请求 `/favicon.ico` 404；已增加内联 SVG favicon，等待 reload 后 console health 复核。媒体 source 的 `ERR_ABORTED` 发生于导航替换旧 media 请求，无页面错误。
+- favicon 修复 reload 后 console/request failures 均为空。桌面 1600×900 截图通过；390×844 截图发现 fixed 双栏被内部裁切，即使 `scrollWidth=390`。已将 `<1024px` MainLayout 改为单列、100% 宽并隐藏桌面 resize handles，等待相同 viewport 复测。
+- 移动复测通过：390×844 无横向滚动、0 clipped controls，主编辑区和 Copilot 单列截图完整，console 为空。
+- 探索测试发现切换连续/逐行模式会调用 legacy `resetEdits()`，两次生成 Restore r1 并清空 committed edits；已移除显示模式的破坏性副作用，显式“重置编辑”按钮仍保留。
+- 修复后冷启动复测连续→逐行→智能分段→连续、主题双切换、0 结果/空搜索，revision 12 前后不变且 console 为空。
+- 最终 desktop revision 12、mobile revision 12、speaker merge revision 3 截图均完成视觉复核；无裁切、遮挡、横向溢出或 framework overlay。
+- standalone Playwright browser 已关闭；遗留的精确 task profile root PID 39482 已 TERM 并确认全部 helper 退出。Vite/Flask 会话已 Ctrl-C 停止，端口 3001/8082 无 listener。
+- V1 报告已补全真实 Web 浏览器回归环境、媒体 hash、逐项交互、导出探测、responsive 和四项修复；开始最后全量质量门。
+- 最终本地发布门全绿：`make check` 为 69 tests、Ruff、mypy 38 files；schema regenerate 零差异；`npx tsc --noEmit`、Vite build、CLI/MCP/TTS smoke、`uv lock --check`、`git diff --check` 均通过。准备提交独立 Web E2E 回归收口 commit。
 
 - Phase 8 已提交：`dc7846e feat(tts): persist and render speech replacements`（48 files，2202 insertions，250 deletions）。
 - 未 push；开始按正式规划审计 Phase 9 的诊断、迁移、清理、失败恢复、并发、安装与安全验收缺口。

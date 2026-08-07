@@ -38,6 +38,7 @@ const GAP = 20;     // gap-5 = 20px
 export const MainLayout: React.FC<MainLayoutProps> = ({ children, chatPanel }) => {
   // 窗口宽度监听
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const isCompact = windowWidth < 1024;
 
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
@@ -88,6 +89,8 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, chatPanel }) =
 
   // 当窗口缩小导致总宽度超出时，等比例缩小两个区域
   useEffect(() => {
+    if (isCompact) return;
+
     const currentMain = mainWidthRef.current;
     const currentPanel = panelWidthRef.current;
     const totalWidth = currentMain + currentPanel;
@@ -115,7 +118,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, chatPanel }) =
         }
       }
     }
-  }, [availableWidth]);
+  }, [availableWidth, isCompact]);
 
   const [isResizing, setIsResizing] = useState(false);
   const [resizeTarget, setResizeTarget] = useState<'main' | 'panel' | null>(null);
@@ -205,48 +208,56 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, chatPanel }) =
   }, [isResizing, handleMouseMove, handleMouseUp]);
 
   return (
-    <div className="w-full px-6 py-6 overflow-hidden">
-      <div className="flex gap-5 justify-center">
+    <div className="w-full overflow-x-hidden px-4 py-4 sm:px-6 sm:py-6">
+      <div className={isCompact ? 'flex flex-col gap-5' : 'flex justify-center gap-5'}>
         {/* 左侧主内容区 */}
         <div
           ref={mainRef}
-          className="flex-shrink-0 flex"
-          style={{ width: mainWidth }}
+          className={isCompact ? 'flex w-full min-w-0' : 'flex flex-shrink-0'}
+          style={isCompact ? undefined : { width: mainWidth }}
         >
           <div className="flex-1 min-w-0">{children}</div>
           {/* 右侧拖拽把手 */}
-          <div
-            onMouseDown={handleMouseDownMain}
-            className={`
-              w-1 flex-shrink-0 cursor-ew-resize
-              bg-transparent hover:bg-[var(--highlight-color)]
-              transition-colors duration-150
-              ${isResizing && resizeTarget === 'main' ? 'bg-[var(--highlight-color)]' : ''}
-            `}
-            title="拖拽调整宽度"
-          />
+          {!isCompact && (
+            <div
+              onMouseDown={handleMouseDownMain}
+              className={`
+                w-1 flex-shrink-0 cursor-ew-resize
+                bg-transparent hover:bg-[var(--highlight-color)]
+                transition-colors duration-150
+                ${isResizing && resizeTarget === 'main' ? 'bg-[var(--highlight-color)]' : ''}
+              `}
+              title="拖拽调整宽度"
+            />
+          )}
         </div>
 
         {/* 右侧对话框面板 */}
         {chatPanel && (
           <div
             ref={panelRef}
-            className="flex-shrink-0 sticky top-6 h-[calc(100vh-120px)] flex"
-            style={{ width: panelWidth }}
+            className={
+              isCompact
+                ? 'flex h-auto w-full min-w-0'
+                : 'sticky top-6 flex h-[calc(100vh-120px)] flex-shrink-0'
+            }
+            style={isCompact ? undefined : { width: panelWidth }}
           >
             {/* 对话框内容 */}
             <div className="flex-1 min-w-0">{chatPanel}</div>
             {/* 右侧拖拽把手 */}
-            <div
-              onMouseDown={handleMouseDownPanel}
-              className={`
-                w-1 flex-shrink-0 cursor-ew-resize
-                bg-transparent hover:bg-[var(--highlight-color)]
-                transition-colors duration-150
-                ${isResizing && resizeTarget === 'panel' ? 'bg-[var(--highlight-color)]' : ''}
-              `}
-              title="拖拽调整宽度"
-            />
+            {!isCompact && (
+              <div
+                onMouseDown={handleMouseDownPanel}
+                className={`
+                  w-1 flex-shrink-0 cursor-ew-resize
+                  bg-transparent hover:bg-[var(--highlight-color)]
+                  transition-colors duration-150
+                  ${isResizing && resizeTarget === 'panel' ? 'bg-[var(--highlight-color)]' : ''}
+                `}
+                title="拖拽调整宽度"
+              />
+            )}
           </div>
         )}
       </div>

@@ -93,15 +93,15 @@ Web 核心链路浏览器回归
 
 ### Web 核心链路浏览器回归
 
-- [ ] 上传音频/视频 → ASR
-- [ ] 字幕渲染与搜索
-- [ ] 句段/词级删除与拖拽排序
-- [ ] 说话人重命名与合并
-- [ ] Undo/Redo
-- [ ] 播放进度同步
-- [ ] MP4/MP3/WAV/SRT/VTT 导出
-- [ ] 页面身份、非空、无框架错误层、console health、截图与交互证据
-- **Status:** pending
+- [x] 上传音频/视频 → ASR
+- [x] 字幕渲染与搜索
+- [x] 句段/词级删除与拖拽排序
+- [x] 说话人重命名与合并
+- [x] Undo/Redo
+- [x] 播放进度同步
+- [x] MP4/MP3/WAV/SRT/VTT 导出
+- [x] 页面身份、非空、无框架错误层、console health、截图与交互证据
+- **Status:** complete
 
 ### 提交与发布门
 
@@ -109,8 +109,9 @@ Web 核心链路浏览器回归
 - [x] 提交 Phase 7 Web 迁移
 - [x] 提交 Phase 8 TTS replacement
 - [x] 提交 Phase 9 发布加固
-- [ ] 提交 Web E2E 回归与最终文档
-- [ ] 全部验收通过后 push 当前分支
+- [x] 最终本地全量门通过
+- [x] 提交 Web E2E 回归与最终文档
+- [ ] push 当前分支并确认 Ubuntu/macOS CI
 - **Status:** in_progress
 
 ## 已确认决策
@@ -144,6 +145,12 @@ Web 核心链路浏览器回归
 | Lima 2.2 `list` 不支持探查时使用的 `--all` 参数 | 1 | 改用 `limactl list`；确认唯一实例是本轮 `voxflow-v1-linux`，不影响 VM 或产品状态 |
 | 临时环境清理命令因包含 `rm -f`/`rm -rf` 被安全策略整体拒绝 | 1 | 命令在执行前被拒绝，无部分清理；改为先用 Lima 自身删除 VM，再将精确临时文件/缓存移动到 macOS Trash，保持可恢复 |
 | 首次 Phase 9 commit 的 staged diff check 报告 3 行 Markdown 尾随空格，但组合 shell 未 `set -e` 仍继续 commit | 1 | 去掉报告尾随空格、补计划提交状态，重新 staged check 后 amend 到同一个 Phase 9 commit |
+| Web 首屏在隔离后端遇到浏览器残留 project 指针，console 记录两条 `Transcript not found` error | 1 | 恢复逻辑原本已清除 stale key；将非 URL 的预期本地恢复失败降为 info，显式 `?project=` 深链失败仍保留 error |
+| 应用内浏览器对唯一隐藏 file input 的强制 click 超时，并使浏览器控制会话重置 | 1 | 不重试隐藏 locator；重新连接后改点可见上传区域触发 chooser。真实 HTML5 drag 若仍缺 API，则按 Web QA 技能切换 standalone Playwright 并明确记录 fallback |
+| 应用内浏览器两条 CUA drag 路径均未触发 HTML5 drop；bundled Playwright 的默认 Chromium revision 未下载 | 2 | 保留 revision/order 未变化的失败证据；standalone Playwright 复用 Codex bundled package 并显式启动本机已安装 Google Chrome，不安装或改项目依赖 |
+| standalone 持久化截图组合步骤超过 30 秒导致会话重置；干净导航发现 `/favicon.ico` 404 | 1 | 改 headless Chrome 并拆成短步骤，Revision 6/持久编辑已验证；为页面增加内联 SVG favicon，消除可控的首屏 console 404 |
+| 390×844 截图显示双栏固定最小宽度被 `overflow-hidden` 裁切，数值 scrollWidth 未暴露视觉缺陷 | 1 | `<1024px` 改为主编辑区/Copilot 单列堆叠、宽度 100%、隐藏桌面 resize handles；保留桌面可调双栏 |
+| 切换“连续/逐行”显示模式两次生成两个 `Restore revision 1`，把持久编辑清空 | 1 | 定位为 legacy `handleDisplayModeChange` 调用 `resetEdits()`；移除该破坏性副作用，显示模式只改 view state，显式重置按钮不变 |
 | `uv sync --extra dev --extra mcp` 移除了旧 `.venv` 的 ASR/Web 包 | 1 | Makefile 改为同步 dev/mcp/web/asr-local/providers，并恢复环境；发布 base 仍保持轻量 |
 | 首次 ruff 检查发现 33 个 import/格式/未使用变量问题 | 1 | 使用 ruff 自动整理 30 项，并手工修复长模型名、未使用变量和 FFmpeg 临时扩展名 |
 | 首次 mypy 检查发现 6 个动态字符串/惰性可选依赖/类内 `list` 名称冲突 | 1 | 收窄 Literal、标注可选 FunASR import、显式 builtins.list 并对已验证格式做 cast |
