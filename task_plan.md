@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-M11 公开仓库安全清理
+M12 可重复 Web E2E
 
 ## 阶段
 
@@ -21,12 +21,13 @@ M11 公开仓库安全清理
 
 ### M11: 公开仓库安全清理
 
-- [ ] 清理当前树中的内部地址、用户结果与系统垃圾文件
-- [ ] 增加 `SECURITY.md`、安全边界和凭据轮换/历史清理说明
-- [ ] 增加自动 secret/dependency/security 检查
-- [ ] 审计 Git 历史；不在未授权下 force-rewrite 公共历史
-- [ ] 独立 commit + push
-- **Status:** in_progress
+- [x] 清理当前树中的内部地址、用户结果与系统垃圾文件
+- [x] 增加 `SECURITY.md`、安全边界和凭据轮换/历史清理说明
+- [x] 增加自动 secret/dependency/security 检查
+- [x] 审计 Git 历史；不在未授权下 force-rewrite 公共历史
+- [x] 启用 GitHub alerts、automated fixes 与 private reporting
+- [x] 独立 commit + push
+- **Status:** complete
 
 ### M12: 可重复 Web E2E
 
@@ -35,7 +36,7 @@ M11 公开仓库安全清理
 - [ ] 覆盖 desktop/mobile、console/overlay、刷新持久性
 - [ ] 接入本地脚本与 GitHub Actions
 - [ ] 独立 commit + push
-- **Status:** pending
+- **Status:** in_progress
 
 ### M13: README 价值定位
 
@@ -188,6 +189,10 @@ M11 公开仓库安全清理
 | 错误 | 尝试 | 处理 |
 |---|---:|---|
 | Open-source readiness 首个计划补丁假设 `progress.md` 标题为 `Progress Log` | 1 | 原子 patch 未产生部分修改；读取实际标题后拆分为定向补丁 |
+| M11 定向 Ruff 误把完整 legacy `routes/chat.py`/`utils/llm.py` 纳入当前门，报告 27 个既有风格项 | 1 | 不做跨模块格式化；只修新审计脚本 import，legacy 风格债在 M15 收敛时处理，正式 Makefile 范围不变 |
+| M11 公开内容审计把工作树已删除但 index 尚未 staged 的旧文档当作不可读文件 | 1 | 扫描目标改为拟提交工作树；明确跳过不存在的待删除路径，再重跑敏感内容检查 |
+| M11 首次 Python dependency audit 在 uv Python 3.12 临时 venv `ensurepip` SIGABRT | 1 | 不是漏洞结果；锁文件已含传递依赖，改用 Python 3.11 + `--no-deps --disable-pip` 直接审计 pinned requirements |
+| M11 npm audit 报告 PostCSS 1 个 high advisory | 1 | 在现有 semver 范围内运行标准 `npm audit fix` 更新锁定版本，随后重跑 production audit |
 | Phase 9 计划更新 patch 上下文未匹配 | 1 | 重新读取精确段落，按现有 Markdown 的 `- **Status:**` 形式重做定向 patch |
 | Phase 9 首次 lint 停在 import 排序与嵌套 context manager | 1 | 使用定向 patch 调整 Runtime import 顺序，并合并 telemetry 的两个上下文管理器 |
 | Phase 9 首次 mypy 发现 cleanup 局部变量类型被前序循环收窄 | 1 | 将删除阶段变量改为独立名称，避免 `artifact_id: str` 与 `Any | None` 复用 |

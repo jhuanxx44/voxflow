@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 
-const TTS_SERVICE_URL = process.env.TTS_SERVICE_URL || 'http://cn212000360.bilibili.local:8000';
+const TTS_SERVICE_URL = process.env.TTS_SERVICE_URL || 'http://127.0.0.1:8000';
 const TTS_BASE_URL = `${TTS_SERVICE_URL}/api/v1/tts`;
 const PROJECTS_DIR = path.join(__dirname, '../projects');
 

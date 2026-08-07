@@ -7,6 +7,12 @@
 - 已完成首轮仓库审计并把 M10–M15、最终门和外部权限边界写入任务计划；当前进入 M10 法律合规。
 - M10 已新增标准 MIT `LICENSE` 与 `THIRD_PARTY_NOTICES.md`，统一 Python/npm/README 许可证和新仓库 URL；首次 wheel 验证确认 SPDX 和 LICENSE，但 notices 未自动进入 wheel，已补 PEP 639 `license-files` 后重验。
 - M10 最终验证通过：wheel metadata 为 `License-Expression: MIT`，同时包含 LICENSE 与 THIRD_PARTY_NOTICES；npm metadata 为 MIT 且所有 repository/homepage/issues URL 指向新仓库。准备独立提交并 push。
+- M10 已提交并 push：`540d444 docs: establish open-source licensing`。
+- M11 历史复核确认没有 `.env` blob，纠正先前误判；当前树确认有内部配置痕迹、`.DS_Store`、157 KB 识别结果和默认 `0.0.0.0` Flask 开发绑定，开始定向净化。
+- M11 已删除跟踪的 `.DS_Store` 与真实识别结果；新增 SECURITY、公开内容审计、Dependabot/Gitleaks/CodeQL/dependency audit，并把 Flask/Vite 默认网络边界收紧到 loopback。首次手工 Ruff 范围误纳 legacy 文件，未做大范围格式化，仅继续验证本模块和正式质量门。
+- M11 公开内容审计 228 files 通过、内部标记零命中。首次 pip-audit 卡在本机 uv Python 3.12 ensurepip 而非漏洞；npm audit 真实发现 PostCSS high advisory，正在升级锁定版本并重跑两端审计。
+- M11 依赖审计闭环：npm 0 vulnerabilities，pip-audit no known vulnerabilities；GitHub Dependabot alerts/security updates/private vulnerability reporting 已启用，secret scanning/push protection 保持开启。
+- M11 最终门全绿：70 tests、Ruff、mypy、229-file public audit、TypeScript、Vite build、npm audit 0、pip-audit 0；准备独立提交并 push 后观察 V1/Security workflows。
 
 ## 2026-08-07 Phase 9 发布加固
 

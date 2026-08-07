@@ -76,11 +76,11 @@ TTS_UPLOAD_ENABLED = _env_bool("TTS_UPLOAD_ENABLED", True)
 
 # ====== LLM 配置 ======
 
-# 文本对话 LLM（personal- 前缀 key）
+# 文本对话 LLM
 LLM_API_KEY = _env("LLM_API_KEY")
 LLM_BASE_URL = _env("LLM_BASE_URL")
-LLM_MODEL = _env("LLM_MODEL", "gemini-3.1-pro")
-# 图像生成封面（bsk- 前缀 key）
+LLM_MODEL = _env("LLM_MODEL", "gemini-2.5-flash")
+# 图像生成封面
 IMAGE_API_KEY = _env("IMAGE_API_KEY")
 
 # ====== 共享可变状态 ======

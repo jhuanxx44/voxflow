@@ -4,12 +4,19 @@
 
 - 当前 `dev_edit` 与远端同步且工作树干净，V1 基线 commit 为 `783a226`。
 - 法律硬缺口：仓库没有 `LICENSE`；README/pyproject 声明 MIT，而 `package.json` 声明 ISC；package repository 仍指向已迁移的旧地址。
-- 安全硬缺口：`.env` 在历史中出现过；当前 `.env.example` 暴露组织内部域名/服务形态；`.DS_Store` 和一个 `result/*.json` 被跟踪。凭据轮换与公共历史彻底清除需要仓库所有者权限，不能由普通 commit 完成。
+- 安全硬缺口：当前 `.env.example` 和若干 legacy 文档/示例暴露组织内部域名或 key 形态；`.DS_Store` 和一个 157 KB `result/*.json` 被跟踪。重新用 `git log --all -- .env` 与 blob 路径核验后，历史中没有 `.env`，先前哈希来自相邻命令输出，已纠正，不能误报凭据历史泄漏。
 - QA 硬缺口：真实浏览器回归证据只在 `/tmp`，项目没有 Playwright 依赖、脚本或 CI job；Vite build 不能代替 UI 回归。
 - 传播硬缺口：README 首屏仍把项目描述为泛化编辑器，Agent/MCP 的 preview/apply、revision、持久 artifact 等差异化能力埋在中段。
 - 安装硬缺口：README 手工 pip、`start.sh` requirements、Makefile uv extras 三套路径并存；README 端口与 Vite 实际 3001 不一致。
 - 架构硬缺口：`voxflow/` 新核心与根目录 legacy routes/services、前端 legacy service/store、静态/示例目录并存，外部贡献者难以判断权威入口。
 - M10 采用 MIT：Python PEP 639 `License-Expression: MIT`、npm metadata、README 和根许可证统一；canonical repository 为 `https://github.com/jhuanxx44/voxflow`。第三方 notices 明确 FFmpeg build、依赖和模型权重不被 VoxFlow MIT 重新许可。
+- M11 当前树敏感面：内部痕迹文件包括 `.env.example`、`config.py`、旧 LLM/TTS 示例与 `docs/BILIBILI_LLM_API.md`；结果 JSON 不适合作为公开仓库 fixture，应删除并由测试运行时生成匿名 fixture。Flask 开发入口当前绑定 `0.0.0.0:8082`，公开文档必须声明无认证的本地 Web 不应直接暴露公网，默认启动应收紧到 loopback。
+- 高置信凭据模式扫描只命中 `.env.example` 的示例字段，没有发现 AWS/GitHub/OpenAI/Google 私钥形态；legacy 文档仍明确记录内部域名和 key 前缀，必须删除或泛化。`config.py` 已从环境读取，没有硬编码值，但注释/默认模型仍带 provider 内部约定。
+- `result/yuhua2_advanced_20251225_163423_747.json` 是单条 157,669-byte 识别结果而非测试 fixture；`.DS_Store` 也是已跟踪二进制。两者应从当前树删除，历史彻底抹除不应在无协调情况下 force rewrite。
+- GitHub 仓库当前为 public，secret scanning 与 push protection 已开启；Dependabot vulnerability alerts/security updates 关闭。当前 token 有 repo 权限，可在 M11 内启用 alerts、automated fixes 与 private vulnerability reporting，不需要用户交互。
+- Flask 当前 `CORS(app)` 全开放且开发入口绑定 `0.0.0.0`。VoxFlow 没有多租户认证边界，公开安全默认应为 `127.0.0.1` + loopback origins；需要局域网访问时由 `VOXFLOW_WEB_HOST`/`VOXFLOW_CORS_ORIGINS` 显式 opt-in。
+- M11 dependency audit：npm 原锁定 PostCSS 命中 1 个 high advisory，标准 audit fix 后 production tree 为 0 vulnerabilities；Python base runtime pinned requirements 经 pip-audit 为 no known vulnerabilities。CI 使用 Python 3.11 + `--no-deps --disable-pip`，避免本机 uv Python 3.12 ensurepip 崩溃且仍逐项审计完整 pinned transitive set。
+- GitHub repository settings 已成功启用 Dependabot vulnerability alerts、automated security fixes 和 private vulnerability reporting；secret scanning/push protection 原本已开启。内部非 provider pattern/validity checks 当前平台仍显示 disabled，不影响提交侧 Gitleaks 和自有 hygiene gate。
 
 ## 2026-08-07 完整本地 V1 续作
 
