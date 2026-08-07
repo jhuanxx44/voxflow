@@ -1,0 +1,58 @@
+{
+  "ok": true,
+  "data": {
+    "status": "healthy",
+    "version": "0.1.0",
+    "offline": true,
+    "auth_required": false,
+    "checks": {
+      "python": {
+        "ok": true,
+        "version": "<python_version>",
+        "required": ">=3.11,<3.13"
+      },
+      "ffmpeg": {
+        "ok": true,
+        "command": "ffmpeg"
+      },
+      "ffprobe": {
+        "ok": true,
+        "command": "ffprobe"
+      },
+      "codecs": {
+        "ok": true,
+        "required": [
+          "aac",
+          "libmp3lame",
+          "libx264",
+          "pcm_s16le"
+        ],
+        "missing": []
+      },
+      "storage": {
+        "ok": true,
+        "path": "<home>",
+        "free_bytes": "<free_bytes>"
+      },
+      "schemas": {
+        "ok": true,
+        "count": 7,
+        "invalid": []
+      },
+      "mcp": {
+        "ok": "<optional_available>",
+        "optional": true
+      },
+      "funasr": {
+        "ok": "<optional_available>",
+        "optional": true,
+        "loaded": false,
+        "provider": "local-funasr"
+      }
+    }
+  },
+  "meta": {
+    "request_id": "<request_id>",
+    "schema_version": 1
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "artifact_get": {"properties": ["artifact_id"], "required": ["artifact_id"]},
+  "doctor": {"properties": [], "required": []},
+  "edit_apply": {"properties": ["plan"], "required": ["plan"]},
+  "edit_history": {"properties": ["limit", "project_id"], "required": ["project_id"]},
+  "edit_preview": {"properties": ["plan"], "required": ["plan"]},
+  "edit_undo_apply": {
+    "properties": ["client_request_id", "expected_revision", "project_id", "to_revision"],
+    "required": ["client_request_id", "expected_revision", "project_id", "to_revision"]
+  },
+  "edit_undo_preview": {
+    "properties": ["expected_revision", "project_id", "to_revision"],
+    "required": ["expected_revision", "project_id", "to_revision"]
+  },
+  "export_start": {"properties": ["output_format", "project_id"], "required": ["project_id"]},
+  "job_cancel": {"properties": ["job_id"], "required": ["job_id"]},
+  "job_get": {"properties": ["job_id"], "required": ["job_id"]},
+  "job_retry": {"properties": ["job_id"], "required": ["job_id"]},
+  "project_create": {
+    "properties": ["name", "reference_source", "source_path"],
+    "required": ["source_path"]
+  },
+  "project_get": {"properties": ["project_id"], "required": ["project_id"]},
+  "project_list": {"properties": ["limit", "offset"], "required": []},
+  "timeline_get": {
+    "properties": ["limit", "offset", "project_id"],
+    "required": ["project_id"]
+  },
+  "transcript_get": {
+    "properties": ["limit", "offset", "project_id"],
+    "required": ["project_id"]
+  },
+  "transcript_import": {
+    "properties": ["input_path", "language", "model", "project_id"],
+    "required": ["input_path", "project_id"]
+  },
+  "transcript_search": {
+    "properties": ["context", "limit", "project_id", "query"],
+    "required": ["project_id", "query"]
+  },
+  "transcript_start": {
+    "properties": ["hotwords", "model", "project_id"],
+    "required": ["project_id"]
+  }
+}

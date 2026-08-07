@@ -1,0 +1,310 @@
+{
+  "$defs": {
+    "CorrectTranscript": {
+      "additionalProperties": false,
+      "properties": {
+        "clip_id": {
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "correct_transcript",
+          "title": "Op",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "text"
+      ],
+      "title": "CorrectTranscript",
+      "type": "object"
+    },
+    "DeleteClips": {
+      "additionalProperties": false,
+      "properties": {
+        "clip_ids": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Clip Ids",
+          "type": "array"
+        },
+        "op": {
+          "const": "delete_clips",
+          "title": "Op",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "clip_ids"
+      ],
+      "title": "DeleteClips",
+      "type": "object"
+    },
+    "DeleteRanges": {
+      "additionalProperties": false,
+      "properties": {
+        "clip_id": {
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "end_token_id": {
+          "title": "End Token Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "delete_ranges",
+          "title": "Op",
+          "type": "string"
+        },
+        "start_token_id": {
+          "title": "Start Token Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "start_token_id",
+        "end_token_id"
+      ],
+      "title": "DeleteRanges",
+      "type": "object"
+    },
+    "MergeSpeakers": {
+      "additionalProperties": false,
+      "properties": {
+        "from_speaker_id": {
+          "title": "From Speaker Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "merge_speakers",
+          "title": "Op",
+          "type": "string"
+        },
+        "to_speaker_id": {
+          "title": "To Speaker Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "from_speaker_id",
+        "to_speaker_id"
+      ],
+      "title": "MergeSpeakers",
+      "type": "object"
+    },
+    "MoveClip": {
+      "additionalProperties": false,
+      "properties": {
+        "anchor_clip_id": {
+          "title": "Anchor Clip Id",
+          "type": "string"
+        },
+        "clip_id": {
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "move_clip",
+          "title": "Op",
+          "type": "string"
+        },
+        "position": {
+          "default": "after",
+          "enum": [
+            "before",
+            "after"
+          ],
+          "title": "Position",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "anchor_clip_id"
+      ],
+      "title": "MoveClip",
+      "type": "object"
+    },
+    "RenameSpeaker": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "op": {
+          "const": "rename_speaker",
+          "title": "Op",
+          "type": "string"
+        },
+        "speaker_id": {
+          "title": "Speaker Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "speaker_id",
+        "name"
+      ],
+      "title": "RenameSpeaker",
+      "type": "object"
+    },
+    "SplitClip": {
+      "additionalProperties": false,
+      "properties": {
+        "at_ms": {
+          "minimum": 0,
+          "title": "At Ms",
+          "type": "integer"
+        },
+        "clip_id": {
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "split_clip",
+          "title": "Op",
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "at_ms"
+      ],
+      "title": "SplitClip",
+      "type": "object"
+    },
+    "TrimClip": {
+      "additionalProperties": false,
+      "properties": {
+        "clip_id": {
+          "title": "Clip Id",
+          "type": "string"
+        },
+        "op": {
+          "const": "trim_clip",
+          "title": "Op",
+          "type": "string"
+        },
+        "source_in_ms": {
+          "minimum": 0,
+          "title": "Source In Ms",
+          "type": "integer"
+        },
+        "source_out_ms": {
+          "minimum": 0,
+          "title": "Source Out Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "op",
+        "clip_id",
+        "source_in_ms",
+        "source_out_ms"
+      ],
+      "title": "TrimClip",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "client_request_id": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Client Request Id",
+      "type": "string"
+    },
+    "expected_revision": {
+      "minimum": 0,
+      "title": "Expected Revision",
+      "type": "integer"
+    },
+    "operations": {
+      "items": {
+        "discriminator": {
+          "mapping": {
+            "correct_transcript": "#/$defs/CorrectTranscript",
+            "delete_clips": "#/$defs/DeleteClips",
+            "delete_ranges": "#/$defs/DeleteRanges",
+            "merge_speakers": "#/$defs/MergeSpeakers",
+            "move_clip": "#/$defs/MoveClip",
+            "rename_speaker": "#/$defs/RenameSpeaker",
+            "split_clip": "#/$defs/SplitClip",
+            "trim_clip": "#/$defs/TrimClip"
+          },
+          "propertyName": "op"
+        },
+        "oneOf": [
+          {
+            "$ref": "#/$defs/DeleteClips"
+          },
+          {
+            "$ref": "#/$defs/DeleteRanges"
+          },
+          {
+            "$ref": "#/$defs/MoveClip"
+          },
+          {
+            "$ref": "#/$defs/TrimClip"
+          },
+          {
+            "$ref": "#/$defs/SplitClip"
+          },
+          {
+            "$ref": "#/$defs/CorrectTranscript"
+          },
+          {
+            "$ref": "#/$defs/RenameSpeaker"
+          },
+          {
+            "$ref": "#/$defs/MergeSpeakers"
+          }
+        ]
+      },
+      "maxItems": 1000,
+      "minItems": 1,
+      "title": "Operations",
+      "type": "array"
+    },
+    "project_id": {
+      "title": "Project Id",
+      "type": "string"
+    },
+    "reason": {
+      "default": "",
+      "maxLength": 1000,
+      "title": "Reason",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "project_id",
+    "expected_revision",
+    "client_request_id",
+    "operations"
+  ],
+  "title": "EditPlan",
+  "type": "object"
+}

@@ -1,0 +1,74 @@
+{
+  "$defs": {
+    "ArtifactKind": {
+      "enum": [
+        "source",
+        "export_video",
+        "export_audio",
+        "subtitle",
+        "transcript",
+        "replacement_audio"
+      ],
+      "title": "ArtifactKind",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "id": {
+      "title": "Id",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/ArtifactKind"
+    },
+    "metadata": {
+      "additionalProperties": true,
+      "title": "Metadata",
+      "type": "object"
+    },
+    "mime_type": {
+      "title": "Mime Type",
+      "type": "string"
+    },
+    "path": {
+      "title": "Path",
+      "type": "string"
+    },
+    "project_id": {
+      "title": "Project Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sha256": {
+      "title": "Sha256",
+      "type": "string"
+    },
+    "size_bytes": {
+      "minimum": 0,
+      "title": "Size Bytes",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "project_id",
+    "kind",
+    "path",
+    "mime_type",
+    "size_bytes",
+    "sha256"
+  ],
+  "title": "Artifact",
+  "type": "object"
+}

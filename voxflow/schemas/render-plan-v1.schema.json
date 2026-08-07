@@ -1,0 +1,85 @@
+{
+  "$defs": {
+    "RenderRange": {
+      "additionalProperties": false,
+      "properties": {
+        "source_in_ms": {
+          "minimum": 0,
+          "title": "Source In Ms",
+          "type": "integer"
+        },
+        "source_out_ms": {
+          "minimum": 0,
+          "title": "Source Out Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_in_ms",
+        "source_out_ms"
+      ],
+      "title": "RenderRange",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "output_format": {
+      "enum": [
+        "mp4",
+        "mp3",
+        "wav",
+        "srt",
+        "vtt"
+      ],
+      "title": "Output Format",
+      "type": "string"
+    },
+    "project_id": {
+      "title": "Project Id",
+      "type": "string"
+    },
+    "ranges": {
+      "items": {
+        "$ref": "#/$defs/RenderRange"
+      },
+      "minItems": 1,
+      "title": "Ranges",
+      "type": "array"
+    },
+    "revision": {
+      "minimum": 0,
+      "title": "Revision",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source_has_audio": {
+      "default": true,
+      "title": "Source Has Audio",
+      "type": "boolean"
+    },
+    "source_has_video": {
+      "title": "Source Has Video",
+      "type": "boolean"
+    },
+    "source_path": {
+      "title": "Source Path",
+      "type": "string"
+    }
+  },
+  "required": [
+    "project_id",
+    "revision",
+    "source_path",
+    "source_has_video",
+    "ranges",
+    "output_format"
+  ],
+  "title": "RenderPlan",
+  "type": "object"
+}
