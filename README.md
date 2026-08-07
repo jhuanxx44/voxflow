@@ -238,4 +238,4 @@ V1 发布证据、失败恢复、安全与长文件数据见 [V1 发布验收报
 
 ## License
 
-MIT
+VoxFlow 源码采用 [MIT License](LICENSE)。依赖、FFmpeg、模型权重、托管服务和用户媒体仍受各自条款约束，详见 [Third-party notices](THIRD_PARTY_NOTICES.md)。
