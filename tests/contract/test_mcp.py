@@ -81,7 +81,10 @@ def test_mcp_exposes_discovery_resources() -> None:
     }
 
 
-def test_mcp_maps_local_file_errors_to_structured_envelope() -> None:
+def test_mcp_maps_local_file_errors_to_structured_envelope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("VOXFLOW_HOME", str(tmp_path))
     result = transcript_import(
         "prj_00000000000000000000000000000000",
         "/definitely/missing/voxflow-transcript.json",
@@ -90,3 +93,6 @@ def test_mcp_maps_local_file_errors_to_structured_envelope() -> None:
     assert payload["ok"] is False
     assert payload["error"]["code"] == "VALIDATION_ERROR"
     assert payload["error"]["retryable"] is False
+    events = (tmp_path / "logs" / "events.jsonl").read_text(encoding="utf-8")
+    assert payload["meta"]["request_id"] in events
+    assert '"interface":"mcp"' in events

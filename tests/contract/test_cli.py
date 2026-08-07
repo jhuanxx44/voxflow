@@ -50,8 +50,27 @@ def test_help_discovers_major_capabilities() -> None:
         "job",
         "export",
         "mcp",
+        "diagnostics",
+        "maintenance",
+        "version",
     ):
         assert command in result.stdout
+
+
+def test_version_and_release_commands_are_machine_discoverable(tmp_path: Path) -> None:
+    untouched_home = tmp_path / "version-must-not-create-home"
+    version = runner.invoke(app, ["--json", "--home", str(untouched_home), "version"])
+    assert version.exit_code == 0, version.output
+    payload = json.loads(version.stdout)
+    assert payload["data"] == {"version": "1.0.0", "project_schema_version": 1}
+    assert not untouched_home.exists()
+    for command in (
+        ["project", "migrate", "--help"],
+        ["diagnostics", "create", "--help"],
+        ["maintenance", "cleanup", "--help"],
+    ):
+        result = runner.invoke(app, command)
+        assert result.exit_code == 0, result.output
 
 
 def test_speech_replace_start_emits_persistent_candidate_job(

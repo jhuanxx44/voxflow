@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import time
+from bisect import bisect_left
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -65,6 +66,8 @@ def build_ffmpeg_args(plan: RenderPlan, output_path: Path, ffmpeg: str = "ffmpeg
     include_audio = plan.source_has_audio
     if not include_audio and not include_video:
         raise ValidationError("The requested output requires an audio stream")
+    if not include_video and len(plan.ranges) >= 16 and _ranges_do_not_overlap(plan.ranges):
+        return _build_segmented_audio_args(plan, output_path, ffmpeg)
     filters: list[str] = []
     for index, item in enumerate(plan.ranges):
         start = item.source_in_ms / 1000
@@ -107,6 +110,63 @@ def build_ffmpeg_args(plan: RenderPlan, output_path: Path, ffmpeg: str = "ffmpeg
         "-filter_complex",
         ";".join(filters),
         *maps,
+        *codecs,
+        str(output_path),
+    ]
+
+
+def _ranges_do_not_overlap(ranges: list[RenderRange]) -> bool:
+    ordered = sorted(ranges, key=lambda item: (item.source_in_ms, item.source_out_ms))
+    return all(
+        previous.source_out_ms <= current.source_in_ms
+        for previous, current in zip(ordered, ordered[1:], strict=False)
+    )
+
+
+def _build_segmented_audio_args(plan: RenderPlan, output_path: Path, ffmpeg: str) -> list[str]:
+    """Decode once, split at all edit boundaries, then concatenate selected segments."""
+    boundaries = sorted(
+        {
+            value
+            for item in plan.ranges
+            for value in (item.source_in_ms, item.source_out_ms)
+            if value > 0
+        }
+    )
+    segment_labels = [f"s{index}" for index in range(len(boundaries) + 1)]
+    timestamps = "|".join(f"{value / 1000:.6f}" for value in boundaries)
+    filters = [
+        f"[0:a]asegment=timestamps={timestamps}" + "".join(f"[{label}]" for label in segment_labels)
+    ]
+    selected_segments: dict[int, int] = {}
+    for range_index, item in enumerate(plan.ranges):
+        segment_index = (
+            0 if item.source_in_ms == 0 else bisect_left(boundaries, item.source_in_ms) + 1
+        )
+        selected_segments[segment_index] = range_index
+        filters.append(f"[{segment_labels[segment_index]}]asetpts=PTS-STARTPTS[a{range_index}]")
+    for segment_index, label in enumerate(segment_labels):
+        if segment_index not in selected_segments:
+            filters.append(f"[{label}]anullsink")
+    inputs = "".join(f"[a{index}]" for index in range(len(plan.ranges)))
+    filters.append(f"{inputs}concat=n={len(plan.ranges)}:v=0:a=1[outa]")
+    if plan.output_format == "mp3":
+        codecs = ["-c:a", "libmp3lame", "-b:a", "192k"]
+    elif plan.output_format == "wav":
+        codecs = ["-c:a", "pcm_s16le", "-ar", "44100"]
+    else:
+        raise ValidationError("Audio-only render plan requires mp3 or wav output")
+    return [
+        ffmpeg,
+        "-y",
+        "-v",
+        "error",
+        "-i",
+        plan.source_path,
+        "-filter_complex",
+        ";".join(filters),
+        "-map",
+        "[outa]",
         *codecs,
         str(output_path),
     ]

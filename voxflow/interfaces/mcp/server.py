@@ -17,6 +17,8 @@ from voxflow.domain.errors import InternalError, ValidationError, VoxFlowError
 from voxflow.domain.ids import new_request_id
 from voxflow.domain.models import StrictModel
 from voxflow.domain.operations import EditPlan
+from voxflow.infrastructure.telemetry import EventLogger
+from voxflow.settings import Settings
 
 PageLimit: TypeAlias = Annotated[int, Field(ge=1, le=200)]
 SearchLimit: TypeAlias = Annotated[int, Field(ge=1, le=100)]
@@ -67,6 +69,21 @@ def _envelope(
     action: Callable[[], Any], *, recommended_next_tool: str | None = None
 ) -> MCPEnvelope:
     request_id = new_request_id()
+
+    def record(status: str, *, code: str | None = None) -> None:
+        try:
+            settings = Settings.from_env()
+            EventLogger(settings.events_log_path).emit(
+                "interface_request_completed",
+                level="error" if code else "info",
+                interface="mcp",
+                request_id=request_id,
+                status=status,
+                code=code,
+            )
+        except OSError:
+            return
+
     try:
         value = action()
         if hasattr(value, "model_dump"):
@@ -74,8 +91,10 @@ def _envelope(
         meta: dict[str, Any] = {"request_id": request_id, "schema_version": 1}
         if recommended_next_tool:
             meta["recommended_next_tool"] = recommended_next_tool
+        record("succeeded")
         return MCPSuccessEnvelope(data=value, meta=meta)
     except VoxFlowError as error:
+        record("failed", code=error.code)
         return MCPErrorEnvelope(
             error=MCPErrorData.model_validate(error.as_dict()),
             meta={"request_id": request_id, "schema_version": 1},
@@ -85,12 +104,14 @@ def _envelope(
             "Input does not match the required schema",
             details={"errors": error.errors(include_url=False, include_input=False)},
         )
+        record("failed", code=converted.code)
         return MCPErrorEnvelope(
             error=MCPErrorData.model_validate(converted.as_dict()),
             meta={"request_id": request_id, "schema_version": 1},
         )
     except (OSError, ValueError, json.JSONDecodeError) as error:
         converted = ValidationError(str(error))
+        record("failed", code=converted.code)
         return MCPErrorEnvelope(
             error=MCPErrorData.model_validate(converted.as_dict()),
             meta={"request_id": request_id, "schema_version": 1},
@@ -99,6 +120,7 @@ def _envelope(
         internal_error = InternalError(
             "Unexpected internal error", details={"error_type": type(error).__name__}
         )
+        record("failed", code=internal_error.code)
         return MCPErrorEnvelope(
             error=MCPErrorData.model_validate(internal_error.as_dict()),
             meta={"request_id": request_id, "schema_version": 1},

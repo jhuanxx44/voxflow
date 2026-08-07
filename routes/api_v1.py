@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import mimetypes
 import threading
+import time
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Literal, TypeAlias, cast
 from uuid import uuid4
 
-from flask import Blueprint, Response, current_app, jsonify, request, send_file
+from flask import Blueprint, Response, current_app, g, jsonify, request, send_file
 from pydantic import ValidationError as PydanticValidationError
 from werkzeug.utils import secure_filename
 
@@ -24,6 +25,7 @@ from voxflow.domain.errors import (
     ValidationError,
     VoxFlowError,
 )
+from voxflow.domain.ids import new_request_id
 from voxflow.domain.models import ArtifactKind
 from voxflow.domain.operations import EditPlan
 
@@ -48,7 +50,43 @@ def _runtime() -> Runtime:
 
 
 def _data(value: Any, status: int = 200) -> tuple[Response, int]:
-    return jsonify({"data": value}), status
+    return jsonify(
+        {
+            "data": value,
+            "meta": {"request_id": _request_id(), "schema_version": 1},
+        }
+    ), status
+
+
+def _request_id() -> str:
+    value = getattr(g, "voxflow_request_id", None)
+    if not isinstance(value, str):
+        value = new_request_id()
+        g.voxflow_request_id = value
+    return value
+
+
+@api_v1_bp.before_request
+def begin_request() -> None:
+    g.voxflow_request_id = new_request_id()
+    g.voxflow_started = time.monotonic()
+
+
+@api_v1_bp.after_request
+def finish_request(response: Response) -> Response:
+    request_id = _request_id()
+    response.headers["X-Request-ID"] = request_id
+    started = getattr(g, "voxflow_started", time.monotonic())
+    _runtime().jobs.events.emit(
+        "interface_request_completed",
+        level="error" if response.status_code >= 400 else "info",
+        interface="web",
+        request_id=request_id,
+        status="failed" if response.status_code >= 400 else "succeeded",
+        exit_code=response.status_code,
+        duration_ms=round((time.monotonic() - started) * 1000),
+    )
+    return response
 
 
 def _web_project(value: dict[str, Any]) -> dict[str, Any]:
@@ -98,7 +136,12 @@ def _error_status(error: VoxFlowError) -> int:
 
 @api_v1_bp.errorhandler(VoxFlowError)
 def handle_voxflow_error(error: VoxFlowError) -> tuple[Response, int]:
-    return jsonify({"error": error.as_dict()}), _error_status(error)
+    return jsonify(
+        {
+            "error": error.as_dict(),
+            "meta": {"request_id": _request_id(), "schema_version": 1},
+        }
+    ), _error_status(error)
 
 
 @api_v1_bp.errorhandler(PydanticValidationError)
@@ -106,7 +149,12 @@ def handle_schema_error(error: PydanticValidationError) -> tuple[Response, int]:
     payload = ValidationError(
         "Request does not match the v1 schema", details={"errors": error.errors()}
     )
-    return jsonify({"error": payload.as_dict()}), 400
+    return jsonify(
+        {
+            "error": payload.as_dict(),
+            "meta": {"request_id": _request_id(), "schema_version": 1},
+        }
+    ), 400
 
 
 def _json_body() -> dict[str, Any]:
