@@ -1,4 +1,4 @@
-# VoxFlow
+# VoxFlow 1.0
 
 基于文本的多模态编辑器。使用 FunASR 中文语音识别引擎，支持音频/视频上传、说话人识别、智能分段、LLM 辅助编辑等功能。
 
@@ -37,7 +37,7 @@
 ## 快速开始
 
 ### 环境要求
-- Python 3.8+
+- Python 3.11（支持范围 `>=3.11,<3.13`）
 - Node.js 18+
 - ffmpeg（用于视频处理）
 
@@ -97,6 +97,29 @@ voxflow --json doctor
 默认项目数据位于系统应用数据目录，可用 `VOXFLOW_HOME=/path` 覆盖。
 
 可用 `VOXFLOW_ALLOWED_INPUT_ROOTS=/media:/another/root` 限制 CLI/MCP 可导入的本地目录；路径会先解析 realpath，因此指向根目录外的 symlink 也会被拒绝。媒体大小、时长和导出超时还可分别通过 `VOXFLOW_MAX_INPUT_BYTES`、`VOXFLOW_MAX_MEDIA_DURATION_MS`、`VOXFLOW_EXPORT_TIMEOUT_SECONDS` 配置。ASR 缓存按源文件 SHA-256、provider、模型和 hotwords 内容寻址，存放在 `VOXFLOW_HOME/asr-cache/`。
+
+### 版本、诊断与维护
+
+```bash
+# 不创建数据目录的轻量版本查询
+voxflow --json version
+
+# Python、FFmpeg/ffprobe、codec、磁盘、Schema 与 provider 诊断
+voxflow --json doctor
+
+# 默认只预览；--apply 前会备份所有发生变化的 manifest
+voxflow --json project migrate <project-id> --dry-run
+voxflow --json project migrate <project-id> --apply
+
+# 生成脱敏支持包：不含媒体、transcript、prompt、job request 或原始日志
+voxflow --json diagnostics create --out /absolute/path/diagnostics.zip
+
+# mark-and-sweep 默认只预览；source、正式 export 和任何 revision 引用均不会删除
+voxflow --json maintenance cleanup --dry-run
+voxflow --json maintenance cleanup --apply
+```
+
+VoxFlow 明确拒绝高于当前 v1 的持久化 Schema；缺失版本号的早期 manifest 可通过 `project migrate` 升级。清理 TTL 可用 `VOXFLOW_CANDIDATE_TTL_SECONDS`、`VOXFLOW_CACHE_TTL_SECONDS` 和 `VOXFLOW_TEMPORARY_TTL_SECONDS` 配置；`VOXFLOW_MIN_FREE_BYTES` 控制 job 启动的最小剩余空间。CLI、MCP、Web 和 worker 的结构化 JSONL 事件写入 `VOXFLOW_HOME/logs/events.jsonl`，只记录受控 ID、phase、duration、status 和错误码，不记录用户文本或路径。
 
 ### Agent 工作流
 
@@ -186,9 +209,12 @@ uv run python scripts/smoke_speech.py
 uv run python scripts/smoke_mcp_asr.py
 # 601 秒 / 1202 segments 的长素材 MCP 验证
 uv run python scripts/smoke_mcp_long.py
+# 30–120 分钟自然语音 ASR + 12 operations + export 压测
+uv run python scripts/stress_v1_long.py --minutes 30 --model advanced
 ```
 
 架构、协议、阶段验收和后续 Web/TTS 计划见 [CLI/MCP 实施方案](docs/CLI_MCP_IMPLEMENTATION_PLAN.md)。
+V1 发布证据、失败恢复、安全与长文件数据见 [V1 发布验收报告](docs/V1_RELEASE_TEST_REPORT.md)。
 
 ## 项目结构
 

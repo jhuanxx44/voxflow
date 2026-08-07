@@ -2,7 +2,7 @@
   "ok": true,
   "data": {
     "status": "healthy",
-    "version": "0.1.0",
+    "version": "1.0.0",
     "offline": true,
     "auth_required": false,
     "checks": {
@@ -32,7 +32,8 @@
       "storage": {
         "ok": true,
         "path": "<home>",
-        "free_bytes": "<free_bytes>"
+        "free_bytes": "<free_bytes>",
+        "min_free_bytes": 268435456
       },
       "schemas": {
         "ok": true,
@@ -48,6 +49,12 @@
         "optional": true,
         "loaded": false,
         "provider": "local-funasr"
+      },
+      "tts": {
+        "ok": false,
+        "optional": true,
+        "provider": "indextts",
+        "service_configured": false
       }
     }
   },

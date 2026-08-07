@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, TypeVar
 
 import typer
@@ -12,6 +12,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from voxflow.domain.errors import InternalError, ValidationError, VoxFlowError
 from voxflow.domain.ids import new_request_id
+from voxflow.infrastructure.telemetry import EventLogger
 
 T = TypeVar("T")
 
@@ -19,21 +20,40 @@ T = TypeVar("T")
 @dataclass
 class Output:
     json_mode: bool = False
+    events: EventLogger | None = None
+    request_id: str = field(default_factory=new_request_id)
 
     def success(self, data: Any) -> None:
         envelope = {
             "ok": True,
             "data": data,
-            "meta": {"request_id": new_request_id(), "schema_version": 1},
+            "meta": {"request_id": self.request_id, "schema_version": 1},
         }
+        if self.events:
+            self.events.emit(
+                "interface_request_completed",
+                interface="cli",
+                request_id=self.request_id,
+                status="succeeded",
+            )
         self._write(envelope, compact=self.json_mode)
 
     def error(self, error: VoxFlowError) -> None:
         envelope = {
             "ok": False,
             "error": error.as_dict(),
-            "meta": {"request_id": new_request_id(), "schema_version": 1},
+            "meta": {"request_id": self.request_id, "schema_version": 1},
         }
+        if self.events:
+            self.events.emit(
+                "interface_request_completed",
+                level="error",
+                interface="cli",
+                request_id=self.request_id,
+                status="failed",
+                code=error.code,
+                exit_code=error.exit_code,
+            )
         self._write(envelope, compact=self.json_mode)
 
     @staticmethod

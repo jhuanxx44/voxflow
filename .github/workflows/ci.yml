@@ -1,0 +1,49 @@
+name: VoxFlow V1
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test-and-install:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-14]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+      - name: Install FFmpeg on Ubuntu
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - name: Install FFmpeg on macOS
+        if: runner.os == 'macOS'
+        run: brew install ffmpeg
+      - name: Sync test dependencies
+        run: uv sync --python 3.11 --extra dev --extra mcp --extra web --extra providers --extra tts
+      - name: Python quality gate
+        run: make check
+      - name: Frontend quality gate
+        run: npm ci && npm run build
+      - name: Build wheel
+        run: uv build --wheel
+      - name: Fresh wheel install and end-to-end smoke
+        shell: bash
+        run: |
+          python -m venv /tmp/voxflow-release-venv
+          /tmp/voxflow-release-venv/bin/pip install \
+            "voxflow[mcp] @ file://$GITHUB_WORKSPACE/dist/voxflow-1.0.0-py3-none-any.whl"
+          cd /tmp
+          PATH=/tmp/voxflow-release-venv/bin:$PATH python "$GITHUB_WORKSPACE/scripts/smoke_cli.py"
+          /tmp/voxflow-release-venv/bin/voxflow --json \
+            --home /tmp/voxflow-release-version version

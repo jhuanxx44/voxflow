@@ -29,6 +29,22 @@ class ValidationError(VoxFlowError):
     exit_code = 2
 
 
+class SchemaCompatibilityError(ValidationError):
+    code = "SCHEMA_VERSION_UNSUPPORTED"
+
+
+class StorageError(VoxFlowError):
+    code = "INSUFFICIENT_STORAGE"
+    retryable = True
+    exit_code = 6
+
+
+class ProviderTimeoutError(VoxFlowError):
+    code = "PROVIDER_TIMEOUT"
+    retryable = True
+    exit_code = 6
+
+
 class NotFoundError(VoxFlowError):
     code = "NOT_FOUND"
     exit_code = 3

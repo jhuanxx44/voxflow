@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from voxflow.application.runtime import Runtime
-from voxflow.domain.errors import JobCancelledError, ValidationError
+from voxflow.domain.errors import JobCancelledError, StorageError, ValidationError
 from voxflow.domain.ids import new_artifact_id
 from voxflow.domain.models import Artifact, ArtifactKind, Job, utc_now
 from voxflow.infrastructure.asr import FunASRProvider, normalize_asr_result
@@ -136,12 +136,16 @@ def _speech_replace(job: Job, runtime: Runtime) -> dict[str, Any]:
         if runtime.jobs.get(job.id).cancel_requested:
             raise JobCancelledError("Speech replacement was cancelled")
         runtime.jobs.update(job, phase="synthesizing", progress=0.3)
-        provider.synthesize(
-            text=str(job.request["text"]),
-            output_path=partial_path,
-            reference_path=reference_path,
-            parameters=parameters,
-        )
+        try:
+            provider.synthesize(
+                text=str(job.request["text"]),
+                output_path=partial_path,
+                reference_path=reference_path,
+                parameters=parameters,
+            )
+        except Exception:
+            partial_path.unlink(missing_ok=True)
+            raise
         cache.put(cache_key, partial_path, config=cache_config)
     media = runtime.store.probe.inspect(partial_path)
     if not media.has_audio or media.duration_ms <= 0:
@@ -226,6 +230,15 @@ def _speech_replace(job: Job, runtime: Runtime) -> dict[str, Any]:
 
 
 def _dispatch(job: Job, runtime: Runtime) -> dict[str, Any]:
+    free_bytes = shutil.disk_usage(runtime.settings.home).free
+    if free_bytes < runtime.settings.min_free_bytes:
+        raise StorageError(
+            "Insufficient free space to run job",
+            details={
+                "free_bytes": free_bytes,
+                "min_free_bytes": runtime.settings.min_free_bytes,
+            },
+        )
     if job.kind == "transcribe":
         try:
             return _transcribe(job, runtime)

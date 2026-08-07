@@ -20,6 +20,7 @@ from voxflow.domain.errors import (
 from voxflow.domain.ids import new_job_id
 from voxflow.domain.models import Job, JobStatus, utc_now
 from voxflow.infrastructure.catalog import Catalog
+from voxflow.infrastructure.telemetry import EventLogger
 from voxflow.settings import Settings
 
 JobHandler = Callable[[Job, "JobService"], dict[str, Any]]
@@ -29,6 +30,7 @@ class JobService:
     def __init__(self, settings: Settings, catalog: Catalog) -> None:
         self.settings = settings
         self.catalog = catalog
+        self.events = EventLogger(settings.events_log_path)
 
     def submit(
         self,
@@ -61,6 +63,14 @@ class JobService:
             log_path=str(log_path),
         )
         self.catalog.upsert_job(job)
+        self.events.emit(
+            "job_submitted",
+            job_id=job.id,
+            project_id=project_id,
+            kind=kind,
+            phase=job.phase,
+            status=job.status.value,
+        )
         inline = self.settings.job_inline if run_inline is None else run_inline
         if inline:
             from voxflow.worker import execute_job
@@ -68,7 +78,7 @@ class JobService:
             execute_job(job.id, settings=self.settings)
         else:
             environment = os.environ.copy()
-            environment["VOXFLOW_HOME"] = str(self.settings.home)
+            environment.update(self.settings.worker_environment())
             with log_path.open("ab") as log:
                 subprocess.Popen(
                     [sys.executable, "-m", "voxflow.worker", job.id],
@@ -166,6 +176,15 @@ class JobService:
         return job
 
     def run_claimed(self, job: Job, handler: JobHandler) -> Job:
+        started = time.monotonic()
+        self.events.emit(
+            "job_started",
+            job_id=job.id,
+            project_id=job.project_id,
+            kind=job.kind,
+            phase=job.phase,
+            status=job.status.value,
+        )
         try:
             if job.cancel_requested:
                 job.status = JobStatus.CANCELLED
@@ -203,6 +222,17 @@ class JobService:
         job.finished_at = utc_now()
         job.heartbeat_at = job.finished_at
         self.catalog.upsert_job(job)
+        self.events.emit(
+            "job_finished",
+            level="error" if job.status == JobStatus.FAILED else "info",
+            job_id=job.id,
+            project_id=job.project_id,
+            kind=job.kind,
+            phase=job.phase,
+            status=job.status.value,
+            code=job.error.get("code") if job.error else None,
+            duration_ms=round((time.monotonic() - started) * 1000),
+        )
         return job
 
 

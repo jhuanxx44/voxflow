@@ -9,9 +9,9 @@ import subprocess
 import time
 import wave
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
-from voxflow.domain.errors import DependencyError, ValidationError
+from voxflow.domain.errors import DependencyError, ProviderTimeoutError, ValidationError
 from voxflow.settings import Settings
 
 
@@ -90,10 +90,20 @@ class IndexTTSProvider:
                 "IndexTTS provider requires the 'tts' dependency extra"
             ) from error
 
+        def request(method: str, url: str, **kwargs: Any) -> Any:
+            try:
+                return requests.request(method, url, **kwargs)
+            except requests.Timeout as error:
+                raise ProviderTimeoutError(
+                    "TTS provider request timed out",
+                    details={"timeout_seconds": self.settings.tts_timeout_seconds},
+                ) from error
+
         prompt_audio = self.settings.tts_default_prompt_audio
         if reference_path is not None:
             with reference_path.open("rb") as handle:
-                upload = requests.post(
+                upload = request(
+                    "post",
                     f"{self.settings.tts_service_url}/api/v1/upload-prompt",
                     files={"file": (reference_path.name, handle, "audio/wav")},
                     timeout=30,
@@ -101,7 +111,8 @@ class IndexTTSProvider:
             if upload.ok:
                 prompt_audio = str(upload.json().get("path") or prompt_audio)
 
-        response = requests.post(
+        response = request(
+            "post",
             f"{self.settings.tts_service_url}/api/v1/tts/tasks",
             json={"text": text, "prompt_audio": prompt_audio, "return_audio": True},
             timeout=self.settings.tts_timeout_seconds,
@@ -119,11 +130,12 @@ class IndexTTSProvider:
             raise ValidationError("TTS provider returned neither audio nor task_id")
         deadline = time.monotonic() + self.settings.tts_timeout_seconds
         while time.monotonic() < deadline:
-            status = requests.get(
-                f"{self.settings.tts_service_url}/api/v1/tts/tasks/{task_id}", timeout=10
+            status = request(
+                "get", f"{self.settings.tts_service_url}/api/v1/tts/tasks/{task_id}", timeout=10
             )
             if status.ok and status.json().get("status") == "completed":
-                result = requests.get(
+                result = request(
+                    "get",
                     f"{self.settings.tts_service_url}/api/v1/tts/tasks/{task_id}/result",
                     timeout=30,
                 )
@@ -136,7 +148,7 @@ class IndexTTSProvider:
                     details={"message": status.json().get("message", "unknown")},
                 )
             time.sleep(1)
-        raise ValidationError(
+        raise ProviderTimeoutError(
             "TTS generation timed out",
             details={"timeout_seconds": self.settings.tts_timeout_seconds},
         )

@@ -4,6 +4,7 @@
 # Node.js
 node_modules/
 dist/
+/build/
 __pycache__/
 *.pyc
 *.egg-info/

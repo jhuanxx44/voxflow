@@ -14,6 +14,7 @@ from voxflow.application.runtime import Runtime
 from voxflow.domain.errors import DependencyError
 from voxflow.domain.operations import EditPlan
 from voxflow.infrastructure.files import read_json
+from voxflow.infrastructure.telemetry import EventLogger
 from voxflow.interfaces.cli.output import Output
 from voxflow.settings import Settings
 
@@ -34,6 +35,8 @@ artifact_app = typer.Typer(help="Inspect exported or managed artifacts.")
 speech_app = typer.Typer(help="Generate and attach persistent speech replacement candidates.")
 raw_app = typer.Typer(help="Read canonical manifests when high-level commands are insufficient.")
 mcp_app = typer.Typer(help="Run the VoxFlow MCP server.")
+diagnostics_app = typer.Typer(help="Create privacy-preserving support bundles.")
+maintenance_app = typer.Typer(help="Preview or apply safe local storage maintenance.")
 
 for name, group in (
     ("project", project_app),
@@ -46,6 +49,8 @@ for name, group in (
     ("speech", speech_app),
     ("raw", raw_app),
     ("mcp", mcp_app),
+    ("diagnostics", diagnostics_app),
+    ("maintenance", maintenance_app),
 ):
     app.add_typer(group, name=name)
 
@@ -81,7 +86,21 @@ def callback(
     settings = Settings.from_env()
     if home is not None:
         settings = replace(settings, home=home.expanduser().resolve())
-    ctx.obj = CLIContext(settings=settings, output=Output(json_output))
+    ctx.obj = CLIContext(
+        settings=settings,
+        output=Output(json_output, events=EventLogger(settings.events_log_path)),
+    )
+
+
+@app.command("version")
+def version(ctx: typer.Context) -> None:
+    """Print VoxFlow and persisted-schema versions."""
+    from voxflow import __version__
+
+    state = _context(ctx)
+    # Capability discovery must not create VOXFLOW_HOME merely to write telemetry.
+    state.output.events = None
+    state.output.run(lambda: {"version": __version__, "project_schema_version": 1})
 
 
 @app.command()
@@ -128,6 +147,43 @@ def project_rebuild_index(ctx: typer.Context) -> None:
     """Rebuild project and artifact catalog rows from canonical manifests."""
     state = _context(ctx)
     state.output.run(state.runtime.projects.rebuild_index)
+
+
+@project_app.command("migrate")
+def project_migrate(
+    ctx: typer.Context,
+    project_id: str,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run/--apply", help="Preview by default; --apply writes with backup."),
+    ] = True,
+) -> None:
+    """Validate and migrate all canonical manifests for one project."""
+    state = _context(ctx)
+    state.output.run(lambda: state.runtime.migrations.migrate(project_id, dry_run=dry_run))
+
+
+@diagnostics_app.command("create")
+def diagnostics_create(
+    ctx: typer.Context,
+    out: Annotated[Path, typer.Option("--out", help="Destination .zip file.")],
+) -> None:
+    """Create a redacted bundle without media, transcripts, prompts, or job requests."""
+    state = _context(ctx)
+    state.output.run(lambda: state.runtime.diagnostics.create(out))
+
+
+@maintenance_app.command("cleanup")
+def maintenance_cleanup(
+    ctx: typer.Context,
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run/--apply", help="Preview by default; --apply deletes safe items."),
+    ] = True,
+) -> None:
+    """Mark references, then reclaim only expired disposable files."""
+    state = _context(ctx)
+    state.output.run(lambda: state.runtime.cleanup.run(dry_run=dry_run))
 
 
 @transcript_app.command("start")

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from voxflow.application.diagnostics import DiagnosticsService
 from voxflow.application.edits import EditService
 from voxflow.application.exports import ExportService
 from voxflow.application.jobs import JobService
+from voxflow.application.maintenance import CleanupService, MigrationService
 from voxflow.application.projects import ProjectService
 from voxflow.application.speech import SpeechService
 from voxflow.application.transcripts import TranscriptService
@@ -26,6 +28,9 @@ class Runtime:
     jobs: JobService
     exports: ExportService
     speech: SpeechService
+    diagnostics: DiagnosticsService
+    migrations: MigrationService
+    cleanup: CleanupService
 
     @classmethod
     def create(cls, settings: Settings | None = None) -> Runtime:
@@ -45,4 +50,7 @@ class Runtime:
             jobs=jobs,
             exports=ExportService(store, jobs, catalog),
             speech=SpeechService(store, jobs, catalog),
+            diagnostics=DiagnosticsService(selected, jobs),
+            migrations=MigrationService(store),
+            cleanup=CleanupService(store),
         )

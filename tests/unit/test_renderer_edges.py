@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -56,6 +58,44 @@ def test_large_timeline_compiles_without_truncation() -> None:
     plan = _compile(ranges)
     assert len(plan.ranges) == 1000
     assert plan.duration_ms == 1000
+
+
+def test_large_audio_graph_decodes_once_and_preserves_reordered_duration(
+    wav_file: Path, tmp_path: Path
+) -> None:
+    ranges = [(index * 200, index * 200 + 100) for index in range(20)]
+    ranges.reverse()
+    plan = compile_render_plan(
+        "prj_renderer",
+        _timeline(ranges),
+        source_path=wav_file,
+        source_has_video=False,
+        source_has_audio=True,
+        output_format="wav",
+    )
+    output = tmp_path / "segmented.wav"
+    args = build_ffmpeg_args(plan, output)
+    graph = args[args.index("-filter_complex") + 1]
+    assert graph.count("asegment=") == 1
+    assert "atrim=" not in graph
+    subprocess.run(args, check=True, timeout=30)
+    probe = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "json",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    duration = float(json.loads(probe.stdout)["format"]["duration"])
+    assert abs(duration - 2.0) <= 0.01
 
 
 def test_video_only_ffmpeg_graph_never_references_audio_stream() -> None:

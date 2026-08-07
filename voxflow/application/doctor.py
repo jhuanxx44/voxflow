@@ -33,9 +33,14 @@ def doctor(settings: Settings) -> dict[str, Any]:
         },
         "codecs": _codec_check(settings.ffmpeg) if ffmpeg_available else {"ok": False},
         "storage": {
-            "ok": settings.home.is_dir() and _writable(settings.home),
+            "ok": (
+                settings.home.is_dir()
+                and _writable(settings.home)
+                and disk.free >= settings.min_free_bytes
+            ),
             "path": str(settings.home),
             "free_bytes": disk.free,
+            "min_free_bytes": settings.min_free_bytes,
         },
         "schemas": _schema_check(),
         "mcp": {"ok": importlib.util.find_spec("mcp") is not None, "optional": True},
@@ -44,6 +49,12 @@ def doctor(settings: Settings) -> dict[str, Any]:
             "optional": True,
             "loaded": "funasr" in sys.modules,
             "provider": "local-funasr",
+        },
+        "tts": {
+            "ok": settings.tts_provider == "fake" or bool(settings.tts_service_url),
+            "optional": True,
+            "provider": settings.tts_provider,
+            "service_configured": bool(settings.tts_service_url),
         },
     }
     required_ok = all(
