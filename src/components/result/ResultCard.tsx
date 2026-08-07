@@ -385,11 +385,6 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
   const handleDisplayModeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const mode = e.target.value as DisplayMode;
     setDisplayMode(mode);
-
-    // Reset edits when switching modes
-    if (lastSegments.length > 0) {
-      resetEdits();
-    }
   };
 
   /**

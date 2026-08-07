@@ -104,6 +104,43 @@ Linux 本地全新安装：
 
 本机 Docker Desktop backend 曾对 `/version`、`/info` 返回 HTTP 500，因此未把 Docker 失败虚报成 Linux 产品失败；本地 Linux 证据改由上述独立 VM 获得。Ubuntu CI 仍需在 push 后实际运行成功，workflow 文件本身不算 CI 运行证据。
 
+## Web 核心链路浏览器回归
+
+环境：隔离 `VOXFLOW_HOME`，Flask `127.0.0.1:8082` + Vite `127.0.0.1:3001`。先使用 Codex 应用内浏览器完成首屏、上传、ASR、搜索和词级编辑；其两种 pointer drag 路径未触发 HTML5 drop 后，按 QA fallback 规则使用 bundled Playwright + 本机 Google Chrome 150 完成原生 `dragTo`、media、download 与 responsive 验证，未安装项目依赖。
+
+测试媒体来自上述 FunASR 官方自然中文样本的前 20 秒：
+
+- WAV：20.000 秒 / 640,112 bytes / SHA-256 `542236c2c63e214e61f9a1e3b4517018c40ea33a654f83842b8d75f71ce4fca1`。
+- MP4：H.264 + AAC / 20.000 秒 / 191,620 bytes / SHA-256 `729a648c3b5ea363b986ad499e038d49e431e9f10f796708a339778f396db3b1`。
+
+| 场景 | 浏览器实证 |
+|---|---|
+| 页面身份与首屏 | title/URL 正确；服务器空闲；非空；无框架 overlay；修复 favicon 后冷启动 console warn/error 为空 |
+| 音频上传 → ASR | 可见上传区 + file chooser 载入 WAV；advanced FunASR 得到 revision 1、9 segments 和 token precision 字幕 |
+| 字幕与搜索 | “过程”服务端搜索命中 1 条；无匹配词返回 0；空 query 禁用搜索 |
+| 词级删除 | 稳定 token“程”删除后 revision 2，文本从“过程”变“过”；无数组位置写协议 |
+| Undo / Redo | undo revision 3 恢复“过程”；redo revision 4 再次删除；revision 单调递增 |
+| 真实拖拽 | Chrome 原生 `dragTo` 把目标段移到开头，revision 5，DOM 顺序和刷新后顺序一致 |
+| 句段删除 | 右键删除后 10 → 9 segments，revision 6，文本消失且刷新后保持 |
+| 说话人 | 双 speaker project 中重命名为“主讲人”至 revision 2；merge 后 revision 3、badge 2 → 1 |
+| 播放同步 | 视频点击 segment-2 后 `currentTime=5.96s`、`paused=false`、active test id 仍为 segment-2 |
+| 视频上传 → ASR | MP4 上传后 advanced ASR 得到 revision 1 / 9 segments，页面使用受控 video source URL |
+| 五格式下载 | UI download 事件实际取得 MP4/MP3/WAV/SRT/VTT；见下方 ffprobe 结果 |
+| 刷新持久性 | 深链刷新恢复拖拽、词级删除和句段删除；最终隔离工程 revision 12 保持目标时间线 |
+| Responsive | 1600×900 桌面双栏通过；390×844 单列无横向滚动、0 clipped controls，主编辑区与 Copilot 均完整 |
+
+导出探测：
+
+- MP4：173,116 bytes，H.264 video + AAC audio，17.960 秒。
+- MP3：360,868 bytes，MP3 audio，17.915 秒。
+- WAV：1,580,182 bytes，PCM s16le mono，17.915 秒。
+- SRT：614 bytes，UTF-8，编号与 `HH:MM:SS,mmm` 时码有效。
+- VTT：604 bytes，UTF-8，以 `WEBVTT` 开头并使用点号毫秒时码。
+
+真实回归发现并修复四项 Web 问题：浏览器 stale project 指针的预期恢复失败不再污染 error console；补内联 SVG favicon；`<1024px` 固定双栏改为单列；切换连续/逐行/智能分段不再调用 `resetEdits()` 破坏 committed revision。最后一项在隔离测试工程产生的临时 restore revisions 已通过 preview-first 恢复，不涉及用户数据。
+
+截图与下载证据保存在隔离目录 `/tmp/voxflow-web-e2e-20260807`，未写入仓库。
+
 ## 安全审计
 
 - 所有输入路径仍经过 realpath / allowed roots；symlink escape 有测试。
@@ -116,6 +153,5 @@ Linux 本地全新安装：
 ## 最终发布前剩余门
 
 - push 后 Ubuntu CI fresh install / E2E 必须实际成功；push 前已有独立 Linux VM fresh-install/E2E 证据。
-- 完成真实浏览器 Web 核心链路回归：上传音频/视频 → ASR、字幕/搜索、句段/词级删除、真实拖拽、speaker rename/merge、Undo/Redo、播放同步、MP4/MP3/WAV/SRT/VTT 下载。
-- Web 回归完成后再执行一次最终 Python、TypeScript、Vite、schemas、CLI/MCP smoke、`uv lock --check`、`git diff --check`，防止回归测试/文档收口引入变化。
-- 上述全部通过后才允许 push。
+- 2026-08-07 最终本地门已通过：69 tests、Ruff、mypy（38 files）、schema 零差异、TypeScript、Vite build、CLI/MCP/TTS smoke、`uv lock --check` 与 `git diff --check` 全绿。
+- 本地发布条件已经满足；提交 Web 回归收口后允许 push，远端闭环仍以 Ubuntu/macOS CI 实际成功为准。

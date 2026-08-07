@@ -107,8 +107,12 @@ function App() {
         setMediaType(snapshot.project.source.media.has_video ? 'video' : 'audio');
       })
       .catch((loadError) => {
-        console.error('恢复 VoxFlow project 失败:', loadError);
         localStorage.removeItem('voxflow.currentProjectId');
+        if (queryProjectId) {
+          console.error('恢复 URL 指定的 VoxFlow project 失败:', loadError);
+        } else {
+          console.info('已清除不可恢复的本地 VoxFlow project 指针');
+        }
       });
   }, [projectId, loadProject, setAudioUrl, setMediaType]);
 
