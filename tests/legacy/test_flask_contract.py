@@ -24,3 +24,13 @@ def test_legacy_flask_health_contract_and_lazy_models() -> None:
     assert server_status.status_code == 200
     payload = server_status.get_json()
     assert set(payload) >= {"basic", "advanced", "total_active"}
+
+
+def test_legacy_flask_cors_defaults_to_loopback_origins() -> None:
+    client = app.test_client()
+
+    allowed = client.get("/health", headers={"Origin": "http://127.0.0.1:3001"})
+    assert allowed.headers["Access-Control-Allow-Origin"] == "http://127.0.0.1:3001"
+
+    denied = client.get("/health", headers={"Origin": "https://untrusted.example"})
+    assert "Access-Control-Allow-Origin" not in denied.headers

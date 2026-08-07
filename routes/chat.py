@@ -20,11 +20,11 @@ _image_client = None
 
 
 def _get_image_client():
-    """获取图像生成客户端（需要 bsk- 前缀 key）"""
+    """获取图像生成客户端。"""
     global _image_client
     if _image_client is None:
         if not IMAGE_API_KEY:
-            raise ValueError("IMAGE_API_KEY 未设置，请在 .env 中配置（bsk- 前缀 key）")
+            raise ValueError("IMAGE_API_KEY 未设置，请在 .env 中配置")
         if not LLM_BASE_URL:
             raise ValueError("LLM_BASE_URL 未设置，请在 .env 中配置")
         _image_client = openai.OpenAI(
@@ -86,7 +86,7 @@ def chat():
 
 @chat_bp.route('/generate-cover', methods=['POST'])
 def generate_cover():
-    """生成视频封面图片 (使用 nano-banana-pro，需要 bsk- API key)"""
+    """使用已配置的图像模型生成视频封面。"""
     try:
         data = request.get_json()
         prompt = data.get('prompt', '')

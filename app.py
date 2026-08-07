@@ -10,7 +10,15 @@ from flask_cors import CORS
 from config import STATIC_DIR
 
 app = Flask(__name__)
-CORS(app)
+cors_origins = [
+    origin.strip()
+    for origin in os.environ.get(
+        "VOXFLOW_CORS_ORIGINS",
+        "http://127.0.0.1:3001,http://localhost:3001",
+    ).split(",")
+    if origin.strip()
+]
+CORS(app, resources={r"/*": {"origins": cors_origins}})
 
 # 设置最大上传文件大小为 300MB
 app.config["MAX_CONTENT_LENGTH"] = 300 * 1024 * 1024
@@ -84,4 +92,6 @@ if __name__ == "__main__":
     print("  - POST /export-media : Export edited media")
     print("  - POST /tts : Text-to-speech")
     print("\n并发模式: 多线程 (使用锁保护模型调用)")
-    app.run(host="0.0.0.0", port=8082, debug=False, threaded=True)
+    host = os.environ.get("VOXFLOW_WEB_HOST", "127.0.0.1")
+    port = int(os.environ.get("VOXFLOW_WEB_PORT", "8082"))
+    app.run(host=host, port=port, debug=False, threaded=True)

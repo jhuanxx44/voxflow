@@ -1,4 +1,4 @@
-.PHONY: sync test lint typecheck check install-local install-local-lite
+.PHONY: sync test lint typecheck security-audit check install-local install-local-lite
 
 sync:
 	uv sync --python 3.11 --extra dev --extra mcp --extra web --extra asr-local --extra providers --extra tts
@@ -13,7 +13,10 @@ lint:
 typecheck:
 	uv run mypy voxflow routes/api_v1.py
 
-check: lint typecheck test
+security-audit:
+	uv run python scripts/check_public_repo.py
+
+check: lint typecheck security-audit test
 
 install-local:
 	uv tool install --python 3.11 --force --editable '.[mcp,asr-local,tts]'

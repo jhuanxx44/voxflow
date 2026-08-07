@@ -101,7 +101,7 @@ npm run build  # 构建生产版本
 |------|------|------|
 | `/asr` | POST | 语音识别（支持音频/视频上传，视频自动提取音频） |
 | `/chat` | POST | LLM 对话（SSE 流式响应） |
-| `/generate-cover` | POST | 生成视频封面（调用 nano-banana-pro，需 bsk- API key） |
+| `/generate-cover` | POST | 通过已配置的图像 provider 生成视频封面 |
 | `/materials` | GET | 获取素材库列表 |
 | `/materials/<filename>` | GET | 下载素材文件 |
 | `/admin/upload` | POST | 上传素材（需密码） |
@@ -156,4 +156,4 @@ npm run build  # 构建生产版本
 - [README.md](README.md) - 项目简介和快速开始
 - [src/components/README.md](src/components/README.md) - React 组件结构和用法
 - [STORE_ARCHITECTURE.md](STORE_ARCHITECTURE.md) - Zustand Store 架构和数据流
-- [docs/BILIBILI_LLM_API.md](docs/BILIBILI_LLM_API.md) - B站 LLM API 集成指南（API Key 权限、图像生成响应处理）
+- [docs/LLM_PROVIDER_GUIDE.md](docs/LLM_PROVIDER_GUIDE.md) - 可选 LLM / 图像 provider 配置与安全边界

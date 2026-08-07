@@ -55,7 +55,7 @@ else
 
     FRONTEND_LOG="$SCRIPT_DIR/.vite.log"
     echo "启动前端 (port 3001)，日志: .vite.log"
-    npx vite --host > "$FRONTEND_LOG" 2>&1 &
+    npx vite --host 127.0.0.1 > "$FRONTEND_LOG" 2>&1 &
     FRONTEND_PID=$!
 
     echo ""
