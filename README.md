@@ -215,20 +215,22 @@ V1 发布证据、失败恢复、安全与长文件数据见 [V1 发布验收报
 ## 项目结构
 
 ```
-├── app.py              # Flask 后端
-├── src/                # React 前端源码
-│   ├── components/     # UI 组件
-│   ├── hooks/          # 自定义 Hooks
-│   ├── stores/         # Zustand 状态管理
-│   ├── services/       # API 服务
-│   └── types/          # TypeScript 类型
-├── dist/               # 构建输出
-└── result/             # 识别结果保存
+├── voxflow/
+│   ├── domain/          # Edit Plan、稳定 ID 与纯 timeline 规则
+│   ├── application/     # project/transcript/edit/job/export 用例
+│   ├── infrastructure/  # 持久化、provider、FFmpeg
+│   └── interfaces/      # CLI、MCP、versioned Web API
+├── src/                 # React Web adapter
+├── legacy_web/          # 有 Sunset 日期的旧 Web 兼容层
+├── tests/               # unit/contract/integration/property/legacy
+├── e2e/                 # Playwright desktop/mobile 回归
+└── app.py               # 仓库 Web composition root
 ```
 
 ## 文档
 
 - [CLI / MCP 设计与完整契约](docs/CLI_MCP_IMPLEMENTATION_PLAN.md)
+- [权威架构与 legacy Web 兼容边界](docs/ARCHITECTURE.md)
 - [CLI、MCP、Web 与贡献者安装](docs/INSTALLATION.md)
 - [V1 发布验收报告](docs/V1_RELEASE_TEST_REPORT.md)
 - [可重复 Web Playwright 回归](docs/WEB_E2E.md)

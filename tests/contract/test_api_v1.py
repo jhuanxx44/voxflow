@@ -156,6 +156,8 @@ def test_api_v1_revision_conflict_and_legacy_deprecation(
 
     legacy = client.post("/export-media", json={})
     assert legacy.headers["Deprecation"] == "true"
+    assert legacy.headers["Sunset"] == "Thu, 31 Dec 2026 23:59:59 GMT"
+    assert 'rel="deprecation"' in legacy.headers["Link"]
     assert "successor-version" in legacy.headers["Link"]
     legacy_tts = client.post("/tts", json={})
     assert legacy_tts.headers["Deprecation"] == "true"

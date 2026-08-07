@@ -17,7 +17,6 @@ load_dotenv(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env"))
 # ====== 目录配置 ======
 
 RESULT_DIR = "result"
-STATIC_DIR = "static"
 MATERIALS_DIR = os.path.expanduser("~/funasr_server/materials")
 CACHE_DIR = os.path.expanduser("~/funasr_server/cache")
 EXPORT_TEMP_DIR = os.path.expanduser("~/funasr_server/exports")
@@ -27,7 +26,6 @@ TTS_CACHE_DIR = os.path.expanduser("~/funasr_server/tts_cache")
 # 确保所有目录存在
 for _dir in [
     RESULT_DIR,
-    STATIC_DIR,
     MATERIALS_DIR,
     CACHE_DIR,
     EXPORT_TEMP_DIR,
@@ -45,11 +43,8 @@ UPLOAD_FILE_TTL = 8 * 3600  # 上传文件保留时间（8小时）
 
 
 def _env(name: str, default: str = "") -> str:
-    """读取字符串环境变量，未设置且无默认值时打印警告"""
-    value = os.environ.get(name, default)
-    if not value and not default:
-        print(f"[config] 警告：未设置环境变量 {name}，请在 .env 中配置（参考 .env.example）")
-    return value
+    """Read an optional legacy-provider setting without noisy import-time warnings."""
+    return os.environ.get(name, default)
 
 
 def _env_bool(name: str, default: bool = False) -> bool:

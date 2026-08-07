@@ -12,7 +12,7 @@ from config import (
     MATERIALS_DIR, EXPORT_TEMP_DIR,
     uploaded_files, export_tasks, export_semaphore,
 )
-from services.media_service import (
+from legacy_web.services.media_service import (
     is_video_file, build_ffmpeg_concat_filter,
     cleanup_old_exports,
 )

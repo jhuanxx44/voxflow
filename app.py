@@ -4,10 +4,8 @@ VoxFlow 入口：创建 Flask app、注册 Blueprint、启动服务
 
 import os
 
-from flask import Flask, request, send_file
+from flask import Flask, jsonify, request
 from flask_cors import CORS
-
-from config import STATIC_DIR
 
 app = Flask(__name__)
 cors_origins = [
@@ -25,12 +23,12 @@ app.config["MAX_CONTENT_LENGTH"] = 300 * 1024 * 1024
 
 # ====== 注册 Blueprint ======
 
-from routes.api_v1 import api_v1_bp  # noqa: E402
-from routes.asr import asr_bp  # noqa: E402
-from routes.chat import chat_bp  # noqa: E402
-from routes.materials import materials_bp  # noqa: E402
-from routes.media import media_bp  # noqa: E402
-from routes.tts import tts_bp  # noqa: E402
+from legacy_web.routes.asr import asr_bp  # noqa: E402
+from legacy_web.routes.chat import chat_bp  # noqa: E402
+from legacy_web.routes.materials import materials_bp  # noqa: E402
+from legacy_web.routes.media import media_bp  # noqa: E402
+from legacy_web.routes.tts import tts_bp  # noqa: E402
+from voxflow.interfaces.web.api_v1 import api_v1_bp  # noqa: E402
 
 app.register_blueprint(asr_bp)
 app.register_blueprint(chat_bp)
@@ -42,56 +40,42 @@ app.register_blueprint(api_v1_bp)
 
 @app.after_request
 def mark_legacy_api_deprecation(response):
-    """Keep the original Web API for one compatibility cycle."""
+    """Advertise the repository-only Web compatibility surface and its sunset."""
     legacy_successors = {
         "/asr": "/api/v1/projects/{project_id}/transcriptions",
         "/export-media": "/api/v1/projects/{project_id}/exports",
         "/tts": "/api/v1/projects/{project_id}/speech-replacements",
     }
-    successor = legacy_successors.get(request.path)
-    if successor:
+    if request.blueprint in {"asr", "chat", "materials", "media", "tts"}:
         response.headers["Deprecation"] = "true"
-        response.headers["Link"] = f'<{successor}>; rel="successor-version"'
+        response.headers["Sunset"] = "Thu, 31 Dec 2026 23:59:59 GMT"
+        links = [
+            "<https://github.com/jhuanxx44/voxflow/blob/dev_edit/docs/ARCHITECTURE.md>"
+            '; rel="deprecation"'
+        ]
+        successor = legacy_successors.get(request.path)
+        if successor:
+            links.append(f'<{successor}>; rel="successor-version"')
+        response.headers["Link"] = ", ".join(links)
     return response
-
-
-# ====== 静态文件路由 ======
 
 
 @app.route("/")
 def index():
-    try:
-        return send_file(os.path.join(STATIC_DIR, "index.html"))
-    except FileNotFoundError:
-        return """
-            <h1>FunASR 语音识别服务</h1>
-            <p>服务运行正常！</p>
-            <p>请将你的前端页面放在 <code>static/</code> 目录下，命名为 <code>index.html</code></p>
-            <p>API 端点: <code>/asr</code></p>
-            """
-
-
-@app.route("/<path:filename>")
-def serve_static_files(filename):
-    try:
-        return send_file(os.path.join(STATIC_DIR, filename))
-    except FileNotFoundError:
-        return "File not found", 404
+    return jsonify(
+        {
+            "name": "VoxFlow",
+            "version": "1.0.0",
+            "api": "/api/v1/capabilities",
+            "frontend": "http://127.0.0.1:3001",
+        }
+    )
 
 
 if __name__ == "__main__":
-    print("Starting FunASR service...")
-    print("Available endpoints:")
-    print("  - GET  / : Serve frontend page")
-    print("  - POST /asr : Speech recognition API")
-    print("  - GET  /health : Health check")
-    print("  - GET  /materials : List materials")
-    print("  - POST /admin/upload : Upload material (admin)")
-    print("  - POST /chat : LLM chat")
-    print("  - POST /generate-cover : Generate cover image")
-    print("  - POST /export-media : Export edited media")
-    print("  - POST /tts : Text-to-speech")
-    print("\n并发模式: 多线程 (使用锁保护模型调用)")
+    print("Starting VoxFlow local Web API...")
+    print("Versioned API: /api/v1/capabilities")
+    print("Legacy compatibility endpoints are deprecated; see docs/ARCHITECTURE.md")
     host = os.environ.get("VOXFLOW_WEB_HOST", "127.0.0.1")
     port = int(os.environ.get("VOXFLOW_WEB_PORT", "8082"))
     app.run(host=host, port=port, debug=False, threaded=True)

@@ -1,6 +1,8 @@
 """
 LLM 对话路由：聊天、封面生成
 """
+"""Deprecated provider-backed chat endpoints for the legacy Web UI."""
+
 import json
 import openai
 from flask import Blueprint, request, jsonify, Response

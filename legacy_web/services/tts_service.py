@@ -7,7 +7,7 @@ import hashlib
 import subprocess
 
 from config import TTS_CACHE_DIR, TTS_SERVICE_URL, TTS_UPLOAD_ENABLED
-from services.media_service import build_ffmpeg_concat_filter
+from legacy_web.services.media_service import build_ffmpeg_concat_filter
 
 
 def extract_ref_audio(source_path, ref_segments):

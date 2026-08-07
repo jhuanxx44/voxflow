@@ -1,4 +1,4 @@
-from services.media_service import build_ffmpeg_concat_filter, is_video_file
+from legacy_web.services.media_service import build_ffmpeg_concat_filter, is_video_file
 
 
 def test_legacy_ffmpeg_concat_filter_contract_is_preserved() -> None:

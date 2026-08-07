@@ -19,11 +19,14 @@ def test_legacy_flask_health_contract_and_lazy_models() -> None:
     health = client.get("/health")
     server_status = client.get("/server-status")
     assert root.status_code == 200
+    assert root.get_json()["name"] == "VoxFlow"
     assert health.status_code == 200
     assert health.get_json() == {"status": "healthy", "message": "FunASR service is running"}
     assert server_status.status_code == 200
     payload = server_status.get_json()
     assert set(payload) >= {"basic", "advanced", "total_active"}
+    assert health.headers["Deprecation"] == "true"
+    assert health.headers["Sunset"] == "Thu, 31 Dec 2026 23:59:59 GMT"
 
 
 def test_legacy_flask_cors_defaults_to_loopback_origins() -> None:
