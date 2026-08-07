@@ -7,9 +7,9 @@ Project / Transcript / Timeline / Artifact / Job / Edit Plan Schema：`v1`
 
 ## 当前结论
 
-Phase 7 Web project/revision 迁移和 Phase 8 speech replacement 已完成并分别提交。Phase 9 的诊断、迁移、清理、失败恢复、结构化日志、长文件性能、macOS/Linux 安装和发布文档已通过本地验收。
+Phase 7 Web project/revision 迁移、Phase 8 speech replacement、Phase 9 发布加固和原 Web 核心链路真实浏览器回归均已完成并独立提交。最终本地发布门全部通过，`dev_edit` 已 push。
 
-本报告会在最终 Web 浏览器回归后补充完整 UI 证据。Ubuntu fresh install 已固化为 CI 硬门；发布前的 Linux 本地实跑使用 Alpine 3.23.4 arm64 临时 VM 完成，push 后再以 Ubuntu CI 结果做第二平台闭环。
+GitHub Actions run [`31191618850`](https://github.com/jhuanxx44/voxflow/actions/runs/31191618850) 对 commit `6112bd27fec1b49955f0ca810c840410c8702870` 的 macOS 14 与 Ubuntu latest 均成功；两个平台都完成 Python/前端质量门、wheel build、全新 venv 安装和仓库外 E2E smoke。完整本地 V1 验收闭环。
 
 ## 自动化质量门
 
@@ -150,8 +150,9 @@ Linux 本地全新安装：
 - MCP 不返回媒体 bytes；Web job/artifact 响应移除 managed path/log path。
 - migration 先完整验证再加锁备份和原子写；cleanup 只操作 `VOXFLOW_HOME` 内受管文件并拒绝 symlink/outside path。
 
-## 最终发布前剩余门
+## 最终发布门
 
-- push 后 Ubuntu CI fresh install / E2E 必须实际成功；push 前已有独立 Linux VM fresh-install/E2E 证据。
 - 2026-08-07 最终本地门已通过：69 tests、Ruff、mypy（38 files）、schema 零差异、TypeScript、Vite build、CLI/MCP/TTS smoke、`uv lock --check` 与 `git diff --check` 全绿。
-- 本地发布条件已经满足；提交 Web 回归收口后允许 push，远端闭环仍以 Ubuntu/macOS CI 实际成功为准。
+- 发布前已有独立 Alpine Linux VM fresh-install/E2E 证据；push 后 Ubuntu latest fresh wheel install / E2E 也已实际成功。
+- macOS 14 CI 同步通过同一套 Python、前端、构建、fresh install 与 E2E 门。
+- 当前规划内没有剩余发布门。
