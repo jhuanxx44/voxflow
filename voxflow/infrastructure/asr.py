@@ -181,7 +181,6 @@ class FunASRProvider:
             )
             arguments: dict[str, Any] = {
                 "model": model_name,
-                "trust_remote_code": True,
                 "disable_update": True,
             }
             if key == "advanced":
