@@ -1,5 +1,16 @@
 # VoxFlow CLI / MCP 规划调研结论
 
+## 2026-08-07 开源发布就绪审计
+
+- 当前 `dev_edit` 与远端同步且工作树干净，V1 基线 commit 为 `783a226`。
+- 法律硬缺口：仓库没有 `LICENSE`；README/pyproject 声明 MIT，而 `package.json` 声明 ISC；package repository 仍指向已迁移的旧地址。
+- 安全硬缺口：`.env` 在历史中出现过；当前 `.env.example` 暴露组织内部域名/服务形态；`.DS_Store` 和一个 `result/*.json` 被跟踪。凭据轮换与公共历史彻底清除需要仓库所有者权限，不能由普通 commit 完成。
+- QA 硬缺口：真实浏览器回归证据只在 `/tmp`，项目没有 Playwright 依赖、脚本或 CI job；Vite build 不能代替 UI 回归。
+- 传播硬缺口：README 首屏仍把项目描述为泛化编辑器，Agent/MCP 的 preview/apply、revision、持久 artifact 等差异化能力埋在中段。
+- 安装硬缺口：README 手工 pip、`start.sh` requirements、Makefile uv extras 三套路径并存；README 端口与 Vite 实际 3001 不一致。
+- 架构硬缺口：`voxflow/` 新核心与根目录 legacy routes/services、前端 legacy service/store、静态/示例目录并存，外部贡献者难以判断权威入口。
+- M10 采用 MIT：Python PEP 639 `License-Expression: MIT`、npm metadata、README 和根许可证统一；canonical repository 为 `https://github.com/jhuanxx44/voxflow`。第三方 notices 明确 FFmpeg build、依赖和模型权重不被 VoxFlow MIT 重新许可。
+
 ## 2026-08-07 完整本地 V1 续作
 
 - 新目标明确扩大到正式规划 Phase 7–9，并要求完成 Web 核心链路浏览器回归。

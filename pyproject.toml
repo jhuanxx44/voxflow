@@ -8,13 +8,19 @@ version = "1.0.0"
 description = "Deterministic headless audio/video editing engine with CLI and MCP interfaces"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 dependencies = [
   "filelock>=3.16,<4",
   "platformdirs>=4.3,<5",
   "pydantic>=2.10,<3",
   "typer>=0.15,<1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/jhuanxx44/voxflow"
+Repository = "https://github.com/jhuanxx44/voxflow"
+Issues = "https://github.com/jhuanxx44/voxflow/issues"
 
 [project.optional-dependencies]
 mcp = ["mcp>=1.9,<2"]

@@ -1,5 +1,13 @@
 # VoxFlow CLI / MCP 规划进度
 
+## 2026-08-07 开源发布就绪
+
+- 用户授权在当前 `dev_edit` 连续完成法律、安全、可重复 Web E2E、README、安装统一和架构收敛；每个模块完成后独立 commit + push。
+- 已读取 `planning-with-files`、前端测试调试和 Playwright 技能，运行 session catchup；权威起点为 clean `783a226`。
+- 已完成首轮仓库审计并把 M10–M15、最终门和外部权限边界写入任务计划；当前进入 M10 法律合规。
+- M10 已新增标准 MIT `LICENSE` 与 `THIRD_PARTY_NOTICES.md`，统一 Python/npm/README 许可证和新仓库 URL；首次 wheel 验证确认 SPDX 和 LICENSE，但 notices 未自动进入 wheel，已补 PEP 639 `license-files` 后重验。
+- M10 最终验证通过：wheel metadata 为 `License-Expression: MIT`，同时包含 LICENSE 与 THIRD_PARTY_NOTICES；npm metadata 为 MIT 且所有 repository/homepage/issues URL 指向新仓库。准备独立提交并 push。
+
 ## 2026-08-07 Phase 9 发布加固
 
 - 本轮 session catchup 已完成：确认仍在 `dev_edit`，HEAD 为 Phase 8 提交 `dc7846e`，Phase 9 工作树未提交且与交接摘要一致。

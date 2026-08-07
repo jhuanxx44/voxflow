@@ -1,14 +1,74 @@
-# VoxFlow 完整本地 V1 + Web 回归实施任务
+# VoxFlow 开源发布就绪实施任务
 
 ## 目标
 
-按照 `docs/CLI_MCP_IMPLEMENTATION_PLAN.md` 完成 Phase 0–9：在已完成的 Headless/CLI/MCP 基础上，实现 Web project/revision 迁移、TTS replacement 成片与发布加固，并完成原 Web 核心链路的真实浏览器回归。每完成一个大模块提交一次；全部验收通过后再 push。
+在已完成完整本地 V1 与 Web 回归的基础上，完成开源法律合规、公开仓库安全清理、仓库内可重复 Web E2E、README 价值定位、安装路径统一和新旧架构收敛。每完成一个模块就独立 commit 并 push 当前 `dev_edit`；所有不依赖仓库所有者权限的工作持续完成。
 
 ## 当前阶段
 
-完整本地 V1 与 Web 回归已完成
+M11 公开仓库安全清理
 
 ## 阶段
+
+### M10: 开源法律合规
+
+- [x] 增加正式 MIT `LICENSE` 并统一 Python/npm/README 声明
+- [x] 更新 canonical repository metadata
+- [x] 记录第三方依赖、FFmpeg 与模型权重的独立许可边界
+- [x] 验证 package metadata
+- [x] 独立 commit + push
+- **Status:** complete
+
+### M11: 公开仓库安全清理
+
+- [ ] 清理当前树中的内部地址、用户结果与系统垃圾文件
+- [ ] 增加 `SECURITY.md`、安全边界和凭据轮换/历史清理说明
+- [ ] 增加自动 secret/dependency/security 检查
+- [ ] 审计 Git 历史；不在未授权下 force-rewrite 公共历史
+- [ ] 独立 commit + push
+- **Status:** in_progress
+
+### M12: 可重复 Web E2E
+
+- [ ] 将浏览器回归 fixture、隔离后端和确定性 ASR 路径放入仓库
+- [ ] Playwright 自动覆盖上传、字幕/搜索、删除/重排、speaker、undo/redo、播放和五格式导出
+- [ ] 覆盖 desktop/mobile、console/overlay、刷新持久性
+- [ ] 接入本地脚本与 GitHub Actions
+- [ ] 独立 commit + push
+- **Status:** pending
+
+### M13: README 价值定位
+
+- [ ] 首屏突出 Agent + MCP + preview/apply/revision 的独特价值
+- [ ] 提供清晰场景、能力矩阵、演示路径和差异化说明
+- [ ] 修复过期端口、仓库 URL 和文档导航
+- [ ] 独立 commit + push
+- **Status:** pending
+
+### M14: 首次安装路径统一
+
+- [ ] 统一普通用户 CLI/MCP、Web、贡献者三条安装路径
+- [ ] 消除 README/start.sh/requirements/pyproject 的冲突
+- [ ] 增加全新环境安装 smoke 与故障诊断说明
+- [ ] 独立 commit + push
+- **Status:** pending
+
+### M15: 新旧架构收敛
+
+- [ ] 盘点 legacy routes/services/store/client 的实际引用
+- [ ] 删除未使用重复实现与误导性目录，保留兼容层必须明确 deprecated
+- [ ] 文档化 core/application/adapters/Web 边界和迁移策略
+- [ ] 全量门与真实浏览器回归通过后独立 commit + push
+- **Status:** pending
+
+### Open-source readiness 最终门
+
+- [ ] 六个模块均独立提交并 push
+- [ ] 工作树干净，最终远端 SHA CI 全绿
+- [ ] 明确列出仅仓库所有者可完成的密钥轮换/历史重写设置
+- **Status:** pending
+
+## 已完成的 V1 基线
 
 ### Phase 0: 工程与测试基线
 
@@ -127,6 +187,7 @@
 
 | 错误 | 尝试 | 处理 |
 |---|---:|---|
+| Open-source readiness 首个计划补丁假设 `progress.md` 标题为 `Progress Log` | 1 | 原子 patch 未产生部分修改；读取实际标题后拆分为定向补丁 |
 | Phase 9 计划更新 patch 上下文未匹配 | 1 | 重新读取精确段落，按现有 Markdown 的 `- **Status:**` 形式重做定向 patch |
 | Phase 9 首次 lint 停在 import 排序与嵌套 context manager | 1 | 使用定向 patch 调整 Runtime import 顺序，并合并 telemetry 的两个上下文管理器 |
 | Phase 9 首次 mypy 发现 cleanup 局部变量类型被前序循环收窄 | 1 | 将删除阶段变量改为独立名称，避免 `artifact_id: str` 与 `Any | None` 复用 |
