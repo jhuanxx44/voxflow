@@ -73,6 +73,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     <div className={`w-full ${className}`}>
       {mediaType === 'video' ? (
         <video
+          data-testid="media-player"
           ref={videoRef}
           id="player"
           className="w-full rounded-lg"
@@ -84,6 +85,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         />
       ) : (
         <audio
+          data-testid="media-player"
           ref={audioRef}
           id="player"
           className="w-full"
@@ -167,6 +169,7 @@ export const MediaPlayerWithRef = React.forwardRef<
     <div className={`w-full ${props.className || ''}`}>
       {mediaType === 'video' ? (
         <video
+          data-testid="media-player"
           ref={videoRef}
           id="player"
           className="w-full rounded-lg"
@@ -178,6 +181,7 @@ export const MediaPlayerWithRef = React.forwardRef<
         />
       ) : (
         <audio
+          data-testid="media-player"
           ref={audioRef}
           id="player"
           className="w-full"

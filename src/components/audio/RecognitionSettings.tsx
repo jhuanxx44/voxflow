@@ -120,6 +120,7 @@ export const RecognitionSettings: React.FC<RecognitionSettingsProps> = ({
       {onRecognize && (
         <div className="pt-2">
           <button
+            data-testid="start-transcription"
             onClick={onRecognize}
             disabled={isRecognizing || !hasAudioSource}
             className={`
