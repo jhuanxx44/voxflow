@@ -671,6 +671,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
                   style={{ backgroundColor: getSpeakerColor(spkId) }}
                   onContextMenu={(e) => handleSpeakerContextMenu(e, spkId)}
                   title="右键点击编辑名称或合并说话人"
+                  data-testid={`speaker-${spkId}`}
                 >
                   {speakerNames[spkId] || `说话人 ${spkId + 1}`}
                 </span>
@@ -837,6 +838,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
                 </div>
                 {mediaType === 'video' && (
                   <button
+                    data-testid="export-mp4"
                     className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-button)]"
                     onClick={() => {
                       exportAs('mp4');
@@ -847,6 +849,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
                   </button>
                 )}
                 <button
+                  data-testid="export-mp3"
                   className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-button)]"
                   onClick={() => {
                     exportAs('mp3');
@@ -856,6 +859,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
                   MP3 音频
                 </button>
                 <button
+                  data-testid="export-wav"
                   className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-button)]"
                   onClick={() => {
                     exportAs('wav');
@@ -869,6 +873,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
                   字幕文件
                 </div>
                 <button
+                  data-testid="export-srt"
                   className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-button)]"
                   onClick={() => {
                     exportAs('srt');
@@ -878,6 +883,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
                   SRT 字幕
                 </button>
                 <button
+                  data-testid="export-vtt"
                   className="w-full px-3 py-2 text-left text-sm transition-colors hover:bg-[var(--bg-button)]"
                   onClick={() => {
                     exportAs('vtt');

@@ -5,6 +5,9 @@
 node_modules/
 dist/
 /build/
+.e2e/
+playwright-report/
+test-results/
 __pycache__/
 *.pyc
 *.egg-info/

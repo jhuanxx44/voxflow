@@ -18,6 +18,10 @@
 - OSV 全 extras 剩两条 Torch 本地漏洞：一条修复版 2.13 无匹配 Torchaudio，另一条 upstream 无修复。已建立精确 ID、触发面、控制措施与 2026-09-07 到期复核的 accepted-risk；CI 只忽略这两个 ID，其余漏洞继续阻塞。
 - M11 remediation 最终验证：Torch 2.10 真实 FunASR→MCP→edit→export 成功；70 tests/Ruff/mypy/public audit 全绿；全 extras pip-audit 为 0 known + 2 documented ignores。准备补救提交并 push，随后复核 Dependabot 状态。
 - M11 remediation 已提交/push `7872895`；V1/Security/Dependabot graph 正在运行。首轮远端复核发现 legacy `requirements.txt` 仍产生旧 Flask/Torch alerts，需先同步安全版本，再等待 lock graph 自动关闭可修条目。
+- legacy requirements 安全 pin 已提交/push `bf2e3bc`，push banner 从 7 降到 4 low；uv graph 成功，requirements 侧扫描仍刷新中。M12 开始设计仓库内确定性 Playwright E2E，M11 远端告警保持后台复核。
+- M11 远端已闭环：V1/Security/graph 全绿，可修 alerts 自动关闭；两条相同 Torch JIT manifest 告警按文档化边界、兼容性阻塞和 2026-09-07 到期日暂缓，open alerts 为 0。
+- M12 已加入 test-only deterministic ASR server、运行时音视频 fixture、Playwright desktop/mobile 场景、稳定定位符和 Ubuntu CI job；正在执行真实浏览器回归并修正场景级问题。
+- M12 本地完整矩阵已通过：desktop 完整编辑+五格式真实下载，mobile 音频上传+390×844 布局健康；全量 `make check` 70 tests、TypeScript、Vite build 与 npm production audit 全绿，准备独立提交并 push。
 
 ## 2026-08-07 Phase 9 发布加固
 

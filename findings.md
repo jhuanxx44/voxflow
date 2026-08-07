@@ -2,6 +2,11 @@
 
 ## 2026-08-07 开源发布就绪审计
 
+- M11 远端收尾：最终 SHA `bf2e3bc` 的 VoxFlow V1、Security 与 dependency graph 均成功；可修复告警已自动关闭。仅剩 GHSA-rrmf-rvhw-rf47 的 `requirements.txt`/`uv.lock` 两个 manifest 条目，已按审计文档边界和 2026-09-07 到期日做 `tolerable_risk` 暂缓，当前 open alerts 为 0。
+- M12 采用测试专用进程 monkeypatch：`scripts/run_web_e2e_server.py` 在导入 Flask app 前设置临时 `VOXFLOW_HOME`、inline jobs，并替换 worker 模块已绑定的 `FunASRProvider`；正常 Web/CLI/MCP 配置不暴露 fake provider。fixture 在 `.e2e/` 运行时生成，媒体导出仍调用真实 FFmpeg。
+- Playwright 以 desktop 1600×900 跑完整视频编辑/五格式下载，以 mobile 390×844 跑音频上传与响应式健康；浏览器 console warning/error、pageerror、Vite overlay 与横向溢出均设为阻塞断言。
+- M12 完整本地矩阵通过：desktop 真实视频链路与五格式 export 均成功，MP4/MP3/WAV 经 ffprobe 验证，SRT/VTT 内容验证；mobile 音频链路无横向溢出、console warning/error、pageerror 或 overlay。随后 70 tests、Ruff、mypy、公开内容审计、TypeScript、Vite build 全绿。
+
 - 当前 `dev_edit` 与远端同步且工作树干净，V1 基线 commit 为 `783a226`。
 - 法律硬缺口：仓库没有 `LICENSE`；README/pyproject 声明 MIT，而 `package.json` 声明 ISC；package repository 仍指向已迁移的旧地址。
 - 安全硬缺口：当前 `.env.example` 和若干 legacy 文档/示例暴露组织内部域名或 key 形态；`.DS_Store` 和一个 157 KB `result/*.json` 被跟踪。重新用 `git log --all -- .env` 与 blob 路径核验后，历史中没有 `.env`，先前哈希来自相邻命令输出，已纠正，不能误报凭据历史泄漏。
@@ -25,6 +30,9 @@
 - 进一步检查 FunASR 1.2.7 源码：`trust_remote_code` 没有任何读取点，缓存模型目录也无远程 `.py`；该参数只是误导性遗留，应删除。真正供应链风险是 FunASR 的 `model_revision`/VAD/punc/spk revisions 默认 `master`，需要从已验证缓存元数据找到可复现 revision 或至少记录 model source/禁用自动更新边界。
 - 本机缓存 `.mv` 显示四个 ModelScope 模型均来自 `master`，`.msc` 为 ModelScope 自有二进制缓存元数据；当前没有可直接复用的仓库 commit pin。M11 先删除无效 `trust_remote_code`、保持 FunASR `disable_update=True`、固定模型 ID，并把模型源/缓存列为信任边界；精确 revision pin 作为后续供应链增强而非伪造未知 tag。
 - `7872895` push 后 Dependabot 仍暂显 7 open，其中 Flask/Torch 的一组来自遗留 `requirements.txt`，另一组来自 `uv.lock`；pytest 只来自 uv.lock。Graph Update 正在处理新锁文件。M14 原计划才统一安装路径，但 security 必须先让 legacy requirements 不继续声明已知漏洞版本。
+- `bf2e3bc` 已同步 legacy requirements；push banner 降为 4 low。uv dependency graph 成功后 API 仍暂列 requirements 的 Flask 3.1.3/Torch 2.10 两条已修记录，加上两个 JIT accepted-risk。Dependabot pip update jobs 尚在队列；先等待其刷新，不把已明确 patched manifest 误 dismiss 为 tolerable risk。
+- M12 API 已支持 `current_app.config["VOXFLOW_RUNTIME"]` 注入 Runtime，适合 E2E 隔离；但前端上传固定调用 `/transcriptions`，不能直接走已有 `/transcripts/import`。需要一个仅由显式 `VOXFLOW_E2E=1` 启动脚本注入的 deterministic ASR worker/provider，不能在正常产品配置中暴露 fake model。
+- Web 主链已有大量 `data-testid`（segment/token/media/revision/speaker dialogs 等）和服务端稳定 ID，可直接构建 Playwright page objects；导出 API 是真实 inline job + artifact 下载，因此 CI fixture 只需生成很短的合法 WAV/MP4，五种格式可实际 ffprobe/文本验证。
 
 ## 2026-08-07 完整本地 V1 续作
 

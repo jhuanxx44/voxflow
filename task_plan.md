@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-M12 可重复 Web E2E
+M13 README 价值定位
 
 ## 阶段
 
@@ -33,12 +33,12 @@ M12 可重复 Web E2E
 
 ### M12: 可重复 Web E2E
 
-- [ ] 将浏览器回归 fixture、隔离后端和确定性 ASR 路径放入仓库
-- [ ] Playwright 自动覆盖上传、字幕/搜索、删除/重排、speaker、undo/redo、播放和五格式导出
-- [ ] 覆盖 desktop/mobile、console/overlay、刷新持久性
-- [ ] 接入本地脚本与 GitHub Actions
+- [x] 将浏览器回归 fixture、隔离后端和确定性 ASR 路径放入仓库
+- [x] Playwright 自动覆盖上传、字幕/搜索、删除/重排、speaker、undo/redo、播放和五格式导出
+- [x] 覆盖 desktop/mobile、console/overlay、刷新持久性
+- [x] 接入本地脚本与 GitHub Actions
 - [ ] 独立 commit + push
-- **Status:** in_progress
+- **Status:** verification_complete
 
 ### M13: README 价值定位
 
@@ -190,6 +190,15 @@ M12 可重复 Web E2E
 
 | 错误 | 尝试 | 处理 |
 |---|---:|---|
+| M11 Dependabot dismissal 首次 shell 参数包含英文撇号，导致命令引用提前结束 | 1 | 未改变告警状态；改为不含撇号的明确 comment 后重试 |
+| M11 Dependabot dismissal comment 超过 GitHub 280 字符限制 | 1 | 将相同风险边界压缩到 213 字符；#16/#20 已以 `tolerable_risk` 成功暂缓 |
+| M12 首次 E2E server 以脚本路径启动时无法导入仓库根 `app.py` | 1 | 测试 runner 在导入应用前显式把已解析的仓库根加入 `sys.path`；不修改产品安装路径 |
+| M12 本机 Playwright Chromium/headless-shell 大文件下载两次中断，浏览器 executable 不完整 | 2 | 配置支持显式 `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` 复用本机 Chrome 做本地验证；CI 仍安装固定 Chromium |
+| M12 本机复用 Chrome 后，失败录像仍要求缺失的 Playwright 私有 FFmpeg binary | 1 | 本地保留 trace/screenshot 且关闭录像；CI 完整 `playwright install` 环境继续保留失败录像 |
+| M12 deterministic ASR 首轮 token timestamp 数量与 normalize tokenizer 不一致，逐字编辑未启用 | 1 | fixture 按每段非标点 token 精确生成等距 timestamps，直接覆盖 token edit precision |
+| M12 段删除断言按渲染位置 `segment-2` 判断消失，但后续段会重编号占用该位置 | 1 | 改为断言可见 segment 总数 4→3，undo 后 4、redo/refresh 后 3 |
+| M12 `addInitScript(localStorage.clear)` 在 reload 时再次执行，误删当前 project 指针 | 1 | beforeEach 只在初始页面显式清空一次；刷新阶段保留并验证真实持久化指针 |
+| M12 `export-mp4` 定位符补丁命中更早的 TTS 试听按钮，真实 MP4 菜单项无 ID | 1 | 按 `mediaType === 'video'` 精确上下文移动 ID，并核对五个 export ID 的实际 DOM 位置 |
 | Open-source readiness 首个计划补丁假设 `progress.md` 标题为 `Progress Log` | 1 | 原子 patch 未产生部分修改；读取实际标题后拆分为定向补丁 |
 | M11 定向 Ruff 误把完整 legacy `routes/chat.py`/`utils/llm.py` 纳入当前门，报告 27 个既有风格项 | 1 | 不做跨模块格式化；只修新审计脚本 import，legacy 风格债在 M15 收敛时处理，正式 Makefile 范围不变 |
 | M11 公开内容审计把工作树已删除但 index 尚未 staged 的旧文档当作不可读文件 | 1 | 扫描目标改为拟提交工作树；明确跳过不存在的待删除路径，再重跑敏感内容检查 |

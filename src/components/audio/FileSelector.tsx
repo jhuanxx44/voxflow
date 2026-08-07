@@ -125,10 +125,12 @@ export const FileSelector: React.FC<FileSelectorProps> = ({
           accept="audio/*,video/*"
           onChange={handleInputChange}
           className="hidden"
+          data-testid="media-file-input"
         />
 
         {/* Drag-and-drop zone */}
         <div
+          data-testid="media-drop-zone"
           onClick={handleClick}
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
