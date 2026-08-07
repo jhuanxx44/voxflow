@@ -1,10 +1,9 @@
-#!/bin/bash
-# VoxFlow 启动脚本
-# 用法: ./start.sh        同时启动前后端
-#       ./start.sh -b     仅启动后端
+#!/usr/bin/env bash
+# Start the repository Web app from the authoritative pyproject/uv.lock and package-lock.json.
+
+set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VENV_DIR="$SCRIPT_DIR/.venv"
 BACKEND_ONLY=false
 
 while getopts "b" opt; do
@@ -17,25 +16,32 @@ done
 cleanup() {
     echo ""
     echo "正在停止服务..."
-    [ -n "$BACKEND_PID" ] && kill "$BACKEND_PID" 2>/dev/null
-    [ -n "$FRONTEND_PID" ] && kill "$FRONTEND_PID" 2>/dev/null
+    [ -n "${BACKEND_PID:-}" ] && kill "$BACKEND_PID" 2>/dev/null || true
+    [ -n "${FRONTEND_PID:-}" ] && kill "$FRONTEND_PID" 2>/dev/null || true
     wait 2>/dev/null
     echo "已停止"
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+trap 'exit 130' INT TERM
 
 cd "$SCRIPT_DIR"
 
-# 检查虚拟环境
-if [ ! -d "$VENV_DIR" ]; then
-    echo "虚拟环境不存在，正在创建..."
-    python3.11 -m venv "$VENV_DIR"
-    "$VENV_DIR/bin/pip" install -r "$SCRIPT_DIR/requirements.txt"
+if ! command -v uv >/dev/null 2>&1; then
+    echo "缺少 uv。安装说明: https://docs.astral.sh/uv/getting-started/installation/" >&2
+    exit 1
 fi
+if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+    echo "缺少 ffmpeg/ffprobe；请先安装 FFmpeg。" >&2
+    exit 1
+fi
+
+echo "同步 Web Python 依赖 (pyproject.toml + uv.lock)..."
+uv sync --python 3.11 --frozen --inexact \
+    --extra web --extra asr-local --extra providers --extra tts
 
 # 启动后端
 echo "启动后端 (port 8082)..."
-"$VENV_DIR/bin/python" app.py &
+uv run --frozen --no-sync python app.py &
 BACKEND_PID=$!
 
 if [ "$BACKEND_ONLY" = true ]; then
@@ -47,15 +53,16 @@ if [ "$BACKEND_ONLY" = true ]; then
     echo ""
     wait "$BACKEND_PID"
 else
-    # 检查 node_modules
-    if [ ! -d "$SCRIPT_DIR/node_modules" ]; then
-        echo "正在安装前端依赖..."
-        npm install
+    if ! command -v npm >/dev/null 2>&1; then
+        echo "缺少 Node.js/npm；请安装 Node.js 20+。" >&2
+        exit 1
     fi
+    echo "同步前端依赖 (package-lock.json)..."
+    npm ci
 
     FRONTEND_LOG="$SCRIPT_DIR/.vite.log"
     echo "启动前端 (port 3001)，日志: .vite.log"
-    npx vite --host 127.0.0.1 > "$FRONTEND_LOG" 2>&1 &
+    npm run dev -- --host 127.0.0.1 > "$FRONTEND_LOG" 2>&1 &
     FRONTEND_PID=$!
 
     echo ""
