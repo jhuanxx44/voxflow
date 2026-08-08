@@ -1,6 +1,6 @@
 # Public repository security audit
 
-Audit date: 2026-08-07
+Audit date: 2026-08-08
 
 ## Current repository state
 
@@ -56,40 +56,27 @@ Review deadline: 2026-09-07, or immediately when a compatible Torch/Torchaudio
 pair containing the upstream fixes is published. At that point remove both
 CI ignores and the corresponding Dependabot dismissals.
 
-## History findings
+## History rewrite record
 
-`git log --all -- .env` returns no commits: `.env` was not committed in the
-reachable repository history inspected during this audit.
+On 2026-08-08 the public branch history was rebuilt from reviewed snapshots.
+The rewrite:
 
-The following files were removed from the current tree but remain reachable in
-two older commits each:
+- condensed the exploratory prototype history into thematic commits;
+- removed generated recognition results, organization-specific provider
+  documentation, local Agent work logs, `.DS_Store`, and committed `.env`
+  paths from every published snapshot;
+- replaced personal and organization email addresses in author and committer
+  metadata with the repository owner's GitHub noreply identity;
+- removed obsolete feature and dependency-update branches that retained the
+  pre-rewrite object graph; and
+- preserved a restricted local mirror backup for recovery and verification.
 
-- a generated recognition result under `result/`;
-- the former organization-specific LLM provider guide;
-- `.DS_Store` may also remain in older snapshots.
+No live provider credential was identified in the reviewed history. Historical
+provider-shaped values were low-entropy examples and did not match the current
+ignored local credential fingerprint.
 
-No credential value is reproduced in this report. The generated result should
-be treated as private unless its origin and publication rights are positively
-confirmed.
-
-## Coordinated history rewrite runbook
-
-A history rewrite changes commit IDs for every affected descendant and can
-break open pull requests, forks, clones, signed commits, and release references.
-It is intentionally not performed by an unattended feature commit.
-
-If the repository owner decides the removed result must be purged from all
-reachable Git history:
-
-1. Pause merges and notify every collaborator to discard or rebase old clones.
-2. Back up repository settings, branch protection, tags, releases, and a mirror
-   clone in a restricted location.
-3. Use a current `git-filter-repo` release to remove the exact reviewed paths
-   from all branches and tags. Do not use a broad wildcard.
-4. Verify the rewritten mirror with Gitleaks and `git log --all -- <path>`.
-5. Force-push the coordinated rewritten refs, then contact GitHub Support if
-   cached views or pull-request refs still expose sensitive data.
-6. Recreate or validate branch protection and ask collaborators to re-clone.
-
-If any real credential is ever found, rotate or revoke it before rewriting
-history. History deletion is not a substitute for credential rotation.
+Rewritten commits can invalidate existing clones and pull requests. Contributors
+with a pre-rewrite clone should re-clone or reset explicitly to the new default
+branch. GitHub may retain inaccessible cached objects for a period after refs are
+removed; contact GitHub Support if an old object remains retrievable by its exact
+SHA after repository garbage collection.

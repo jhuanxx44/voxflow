@@ -229,6 +229,7 @@ V1 发布证据、失败恢复、安全与长文件数据见 [V1 发布验收报
 
 ## 文档
 
+- [公开路线图](docs/ROADMAP.md)
 - [CLI / MCP 设计与完整契约](docs/CLI_MCP_IMPLEMENTATION_PLAN.md)
 - [权威架构与 legacy Web 兼容边界](docs/ARCHITECTURE.md)
 - [CLI、MCP、Web 与贡献者安装](docs/INSTALLATION.md)

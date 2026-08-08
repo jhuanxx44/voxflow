@@ -18,6 +18,14 @@ Zustand, and Immer. Before redistributing a bundled application, generate and
 review a complete software bill of materials from the lockfiles and include
 all notices required by the selected dependency versions.
 
+## Vendored UI/UX Pro Max skill
+
+Files under `.claude/skills/ui-ux-pro-max/` are derived from
+[UI/UX Pro Max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill),
+Copyright (c) 2024 Next Level Builder, and are distributed under the MIT
+License. The required copyright and permission notice is preserved in
+[`LICENSES/ui-ux-pro-max-MIT.txt`](LICENSES/ui-ux-pro-max-MIT.txt).
+
 ## FFmpeg
 
 VoxFlow invokes a separately installed `ffmpeg`/`ffprobe`; it does not include

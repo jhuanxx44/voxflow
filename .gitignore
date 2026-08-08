@@ -6,6 +6,7 @@ node_modules/
 dist/
 /build/
 .e2e/
+promo-remotion/
 playwright-report/
 test-results/
 __pycache__/
@@ -22,3 +23,9 @@ __pycache__/
 
 # 本地数据/素材
 data/
+
+# 本地调研与 Agent 工作日志
+.firecrawl/
+/task_plan.md
+/findings.md
+/progress.md

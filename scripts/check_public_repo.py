@@ -8,8 +8,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SELF = "scripts/check_public_repo.py"
 
-BANNED_NAMES = {".DS_Store", ".env"}
-BANNED_PREFIXES = ("result/", "data/")
+BANNED_NAMES = {".DS_Store", ".env", "findings.md", "progress.md", "task_plan.md"}
+BANNED_PREFIXES = ("result/", "data/", ".firecrawl/")
 BANNED_SUFFIXES = (".key", ".pem", ".p12", ".pfx")
 
 PRIVATE_MARKERS = (
@@ -23,6 +23,11 @@ SECRET_PATTERNS = {
     "GitHub fine-grained token": re.compile(r"github_pat_[A-Za-z0-9_]{20,}"),
     "Google API key": re.compile(r"AIza[0-9A-Za-z_-]{30,}"),
     "OpenAI-style secret": re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
+    "organization provider secret": re.compile(r"bsk-[A-Za-z0-9_-]{20,}"),
+    "Hugging Face token": re.compile(r"hf_[A-Za-z0-9]{20,}"),
+    "Slack token": re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}"),
+    "Stripe live secret": re.compile(r"sk_live_[A-Za-z0-9]{16,}"),
+    "JSON Web Token": re.compile(r"eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"),
     "private key": re.compile(r"-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----"),
 }
 

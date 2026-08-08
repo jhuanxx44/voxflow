@@ -159,9 +159,10 @@ npm run build
 make install-local
 
 cd /tmp
-python3.11 <repo-root>/scripts/smoke_cli.py
+REPO_ROOT=/path/to/voxflow
+python3.11 "$REPO_ROOT/scripts/smoke_cli.py"
 
-cd <repo-root>
+cd "$REPO_ROOT"
 .venv/bin/python scripts/smoke_mcp.py
 .venv/bin/python scripts/smoke_mcp_asr.py
 .venv/bin/python scripts/smoke_mcp_long.py
