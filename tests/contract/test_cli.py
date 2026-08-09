@@ -52,6 +52,7 @@ def test_help_discovers_major_capabilities() -> None:
         "mcp",
         "diagnostics",
         "maintenance",
+        "skill",
         "version",
     ):
         assert command in result.stdout
@@ -68,9 +69,52 @@ def test_version_and_release_commands_are_machine_discoverable(tmp_path: Path) -
         ["project", "migrate", "--help"],
         ["diagnostics", "create", "--help"],
         ["maintenance", "cleanup", "--help"],
+        ["skill", "install", "--help"],
     ):
         result = runner.invoke(app, command)
         assert result.exit_code == 0, result.output
+
+
+def test_skill_commands_install_and_check_packaged_companion(tmp_path: Path) -> None:
+    path_result = runner.invoke(app, ["--json", "skill", "path"])
+    assert path_result.exit_code == 0, path_result.output
+    packaged_path = Path(json.loads(path_result.stdout)["data"]["path"])
+    assert (packaged_path / "SKILL.md").is_file()
+    assert json.loads(path_result.stdout)["data"]["supported_targets"] == ["codex", "claude"]
+
+    for target in ("codex", "claude"):
+        target_home = tmp_path / target
+        install = runner.invoke(
+            app,
+            [
+                "--json",
+                "skill",
+                "install",
+                target,
+                "--target-home",
+                str(target_home),
+            ],
+        )
+        assert install.exit_code == 0, install.output
+        installed = json.loads(install.stdout)["data"]
+        assert installed["changed"] is True
+        assert installed["target"] == target
+
+        check = runner.invoke(
+            app,
+            ["--json", "skill", "check", target, "--target-home", str(target_home)],
+        )
+        assert check.exit_code == 0, check.output
+        checked = json.loads(check.stdout)["data"]
+        assert checked["status"] == "ready"
+        assert checked["target"] == target
+
+    unsupported = runner.invoke(
+        app,
+        ["--json", "skill", "check", "other", "--target-home", str(tmp_path)],
+    )
+    assert unsupported.exit_code == 7, unsupported.output
+    assert json.loads(unsupported.stdout)["error"]["code"] == "CONFIG_ERROR"
 
 
 def test_speech_replace_start_emits_persistent_candidate_job(

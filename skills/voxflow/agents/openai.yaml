@@ -1,0 +1,4 @@
+interface:
+  display_name: "VoxFlow Media Editor"
+  short_description: "Safely edit local audio and video with VoxFlow"
+  default_prompt: "Use $voxflow to transcribe this media, preview deterministic edits, and export the accepted result."
