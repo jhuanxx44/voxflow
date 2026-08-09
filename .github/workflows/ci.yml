@@ -47,6 +47,15 @@ jobs:
           PATH=/tmp/voxflow-release-venv/bin:$PATH python "$GITHUB_WORKSPACE/scripts/smoke_cli.py"
           /tmp/voxflow-release-venv/bin/voxflow --json \
             --home /tmp/voxflow-release-version version
+          /tmp/voxflow-release-venv/bin/voxflow --json skill path
+          /tmp/voxflow-release-venv/bin/voxflow --json skill install codex \
+            --target-home /tmp/voxflow-release-codex
+          /tmp/voxflow-release-venv/bin/voxflow --json skill check codex \
+            --target-home /tmp/voxflow-release-codex
+          /tmp/voxflow-release-venv/bin/voxflow --json skill install claude \
+            --target-home /tmp/voxflow-release-claude
+          /tmp/voxflow-release-venv/bin/voxflow --json skill check claude \
+            --target-home /tmp/voxflow-release-claude
 
   web-e2e:
     runs-on: ubuntu-latest

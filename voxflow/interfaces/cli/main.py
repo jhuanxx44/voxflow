@@ -11,6 +11,12 @@ import typer
 
 from voxflow.application.doctor import doctor as run_doctor
 from voxflow.application.runtime import Runtime
+from voxflow.application.skills import (
+    AgentTarget,
+    bundled_skill_path,
+    inspect_companion_skill,
+    install_companion_skill,
+)
 from voxflow.domain.errors import DependencyError
 from voxflow.domain.operations import EditPlan
 from voxflow.infrastructure.files import read_json
@@ -37,6 +43,7 @@ raw_app = typer.Typer(help="Read canonical manifests when high-level commands ar
 mcp_app = typer.Typer(help="Run the VoxFlow MCP server.")
 diagnostics_app = typer.Typer(help="Create privacy-preserving support bundles.")
 maintenance_app = typer.Typer(help="Preview or apply safe local storage maintenance.")
+skill_app = typer.Typer(help="Locate, install, and verify the bundled agent skill.")
 
 for name, group in (
     ("project", project_app),
@@ -51,6 +58,7 @@ for name, group in (
     ("mcp", mcp_app),
     ("diagnostics", diagnostics_app),
     ("maintenance", maintenance_app),
+    ("skill", skill_app),
 ):
     app.add_typer(group, name=name)
 
@@ -108,6 +116,56 @@ def doctor(ctx: typer.Context) -> None:
     """Check Python, FFmpeg, storage, MCP, and optional ASR readiness."""
     state = _context(ctx)
     state.output.run(lambda: run_doctor(state.settings))
+
+
+@skill_app.command("path")
+def skill_path(ctx: typer.Context) -> None:
+    """Print the packaged companion skill path."""
+    state = _context(ctx)
+    state.output.events = None
+    state.output.run(
+        lambda: {
+            "skill": "voxflow",
+            "path": str(bundled_skill_path()),
+            "supported_targets": ["codex", "claude"],
+        }
+    )
+
+
+@skill_app.command("check")
+def skill_check(
+    ctx: typer.Context,
+    target: Annotated[str, typer.Argument(help="Agent target: codex or claude.")] = "codex",
+    target_home: Annotated[
+        Path | None,
+        typer.Option("--target-home", help="Override the selected agent's config directory."),
+    ] = None,
+) -> None:
+    """Verify the bundled skill and report one agent installation state."""
+    state = _context(ctx)
+    state.output.events = None
+    state.output.run(lambda: inspect_companion_skill(target_home, target=cast(AgentTarget, target)))
+
+
+@skill_app.command("install")
+def skill_install(
+    ctx: typer.Context,
+    target: Annotated[str, typer.Argument(help="Agent target: codex or claude.")] = "codex",
+    target_home: Annotated[
+        Path | None,
+        typer.Option("--target-home", help="Override the selected agent's config directory."),
+    ] = None,
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Update an existing different VoxFlow skill."),
+    ] = False,
+) -> None:
+    """Install the packaged skill for Codex or Claude Code."""
+    state = _context(ctx)
+    state.output.events = None
+    state.output.run(
+        lambda: install_companion_skill(target_home, target=cast(AgentTarget, target), force=force)
+    )
 
 
 @project_app.command("create")

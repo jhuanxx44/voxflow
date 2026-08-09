@@ -16,6 +16,21 @@ voxflow --json doctor
 voxflow mcp serve
 ```
 
+The wheel includes one version-matched VoxFlow companion skill for Codex and Claude Code. Install
+the required targets explicitly, then verify that each installed copy matches the wheel:
+
+```bash
+voxflow --json skill install codex
+voxflow --json skill check codex
+voxflow --json skill install claude
+voxflow --json skill check claude
+```
+
+Codex uses `CODEX_HOME` or `~/.codex`; Claude uses `CLAUDE_CONFIG_DIR` or `~/.claude`. Both install
+under their agent home's `skills/voxflow` directory. VoxFlow does not modify either agent during
+ordinary package installation. Use `skill install TARGET --force` only when you intend to replace
+an older or locally modified copy. Use `--target-home` for an explicit project or test location.
+
 This includes local FunASR. For transcript import, editing, export, and MCP without Torch/FunASR,
 install `voxflow[mcp]` from the same URL instead. Run `uv tool upgrade voxflow` to update and
 `uv tool uninstall voxflow` to remove the tool environment. Project data remains in the platform

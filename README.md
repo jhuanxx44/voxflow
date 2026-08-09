@@ -64,6 +64,17 @@ uv tool install --python 3.11 \
 voxflow --json doctor
 ```
 
+安装包同时携带一份 Codex 与 Claude Code 共用的 Agent companion skill。分别安装并验证：
+
+```bash
+voxflow --json skill install codex
+voxflow --json skill check codex
+voxflow --json skill install claude
+voxflow --json skill check claude
+```
+
+Codex 使用 `CODEX_HOME` 或 `~/.codex`；Claude 使用 `CLAUDE_CONFIG_DIR` 或 `~/.claude`。两者都安装到各自的 `skills/voxflow` 子目录；已存在不同版本时不会覆盖，升级可显式传入 `--force`。skill 与 CLI 使用同一 VoxFlow 版本发布，约束 Agent 使用稳定 ID、有界读取、当前 revision 和 preview-before-apply 工作流。
+
 ### 2. Web 用户
 
 ```bash
