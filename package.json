@@ -34,7 +34,7 @@
     "vite": "^8.2.1"
   },
   "dependencies": {
-    "@tailwindcss/postcss": "^4.1.18",
+    "@tailwindcss/postcss": "^4.3.3",
     "clsx": "^2.1.1",
     "immer": "^11.1.16",
     "react": "^19.2.3",
