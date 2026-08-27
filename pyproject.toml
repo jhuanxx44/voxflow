@@ -23,27 +23,27 @@ Repository = "https://github.com/jhuanxx44/voxflow"
 Issues = "https://github.com/jhuanxx44/voxflow/issues"
 
 [project.optional-dependencies]
-mcp = ["mcp>=1.9,<2"]
+mcp = ["mcp>=1.9,<3"]
 web = ["flask==3.1.3", "flask-cors==6.0.1", "gunicorn>=24.1.1"]
 asr-local = [
-  "funasr==1.2.7",
+  "funasr==1.4.2",
   "librosa>=0.10.2",
   "modelscope>=1.32.0",
   "sentencepiece>=0.2.1",
   "soundfile>=0.12.1",
   "torch==2.10.0",
-  "torchaudio==2.10.0",
+  "torchaudio==2.11.0",
 ]
 providers = [
   "google-genai>=1.0.0",
-  "openai==2.14.0",
+  "openai==3.2.0",
   "python-dotenv>=1.0.0",
   "requests>=2.32.0",
 ]
 tts = ["requests>=2.32.0"]
 dev = [
   "hypothesis>=6.120,<7",
-  "mypy>=1.14,<2",
+  "mypy>=1.14,<3",
   "pytest>=9.0.3,<10",
   "pytest-cov>=6,<7",
   "ruff>=0.9,<1",
