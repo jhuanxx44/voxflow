@@ -197,6 +197,39 @@ def _join_token_text(tokens: list[TranscriptToken]) -> str:
     return text
 
 
+def _trim_bounds(
+    clips: list[TimelineClip], clip: TimelineClip, segment: TranscriptSegment
+) -> tuple[int, int]:
+    """Return how far a clip may extend without re-covering a sibling's source range.
+
+    Siblings are other timeline clips cut from the same transcript segment. A clip may grow
+    into source time that no sibling covers (restoring trimmed or deleted content) but never
+    into a sibling, which would play the same source audio twice. The current range is
+    always inside the bounds, so shrinking is always allowed.
+    """
+    start_ms, end_ms = segment.start_ms, segment.end_ms
+    for sibling in clips:
+        if sibling.id == clip.id or sibling.source_segment_id != clip.source_segment_id:
+            continue
+        if sibling.source_in_ms < clip.source_in_ms:
+            start_ms = max(start_ms, min(clip.source_in_ms, sibling.source_out_ms))
+        if sibling.source_out_ms > clip.source_out_ms:
+            end_ms = min(end_ms, max(clip.source_out_ms, sibling.source_in_ms))
+    return start_ms, end_ms
+
+
+def _has_manual_correction(
+    clip: TimelineClip,
+    segment: TranscriptSegment,
+    token_map: dict[str, TranscriptToken],
+) -> bool:
+    """Whether clip text differs from every text the reducer itself would derive for it."""
+    if clip.transcript_text == _join_token_text(_tokens_for_clip(clip, token_map)):
+        return False
+    whole_segment = clip.token_ids == [token.id for token in segment.tokens]
+    return not (whole_segment and clip.transcript_text == segment.text)
+
+
 def _slice_clip(
     clip: TimelineClip,
     *,
@@ -314,6 +347,19 @@ def reduce_edit_plan(
                         "segment_end_ms": segment.end_ms,
                     },
                 )
+            bound_start_ms, bound_end_ms = _trim_bounds(result.clips, clip, segment)
+            if not (
+                bound_start_ms <= operation.source_in_ms and operation.source_out_ms <= bound_end_ms
+            ):
+                raise ValidationError(
+                    "Trim range would overlap another clip from the same source segment",
+                    details={
+                        "clip_id": clip.id,
+                        "source_segment_id": segment.id,
+                        "allowed_start_ms": bound_start_ms,
+                        "allowed_end_ms": bound_end_ms,
+                    },
+                )
             if segment.edit_precision == "token" and segment.tokens:
                 trimmed = _slice_clip(
                     clip,
@@ -323,13 +369,26 @@ def reduce_edit_plan(
                     tokens=segment.tokens,
                     empty_text_fallback="",
                 )
+                segment_token_ids = [token.id for token in segment.tokens]
+                if trimmed.token_ids == clip.token_ids:
+                    # Same words, different silence: keep any manual transcript correction.
+                    trimmed.transcript_text = clip.transcript_text
+                elif _has_manual_correction(clip, segment, token_map):
+                    raise ValidationError(
+                        "Trim would change the words of a manually corrected clip and "
+                        "discard the correction",
+                        details={"clip_id": clip.id},
+                    )
+                elif trimmed.token_ids == segment_token_ids:
+                    trimmed.transcript_text = segment.text
             else:
+                # Segment precision has no word boundaries, so trimming never changes which
+                # words the clip claims; keep its current (possibly corrected) text.
                 trimmed = TimelineClip.model_validate(
                     {
                         **clip.model_dump(mode="python"),
                         "source_in_ms": operation.source_in_ms,
                         "source_out_ms": operation.source_out_ms,
-                        "transcript_text": segment.text,
                         "token_ids": [],
                     }
                 )

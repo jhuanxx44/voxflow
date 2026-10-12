@@ -141,7 +141,8 @@ def test_trim_can_always_restore_the_complete_immutable_segment(start: int, widt
     restored = reduce_edit_plan(trimmed, transcript, outward)
     validate_timeline_invariants(restored.timeline)
     assert restored.timeline.clips[0].token_ids == [f"tok_{index}" for index in range(10)]
-    assert restored.timeline.clips[0].transcript_text == "0 1 2 3 4 5 6 7 8 9"
+    # Restoring every token restores the imported segment text, not a re-joined form.
+    assert restored.timeline.clips[0].transcript_text == transcript.segments[0].text
     assert restored.timeline.duration_ms == timeline.duration_ms
     assert timeline.clips[0].source_in_ms == 0
 

@@ -397,14 +397,17 @@ const sourceAtMs = item.sourceInMs + (playheadMs - item.timelineInMs);
 
 必须测试：向内裁两端、提交后向外恢复、split 后恢复、token/text 恢复、范围越界、零时长、replacement trim、preview/apply 等价和原子失败。
 
-首版明确接受“segment-wide restoration”语义：split 或 token 删除产生的子 clip，可以在同一
-`source_segment_id` 的原始 segment 边界内向外恢复。这可能让两个 sibling clips 引用重叠的
-source time/token IDs；每个 clip 是独立 source reference，因此这是合法结果，不需要 schema v2。
-测试必须固定这一行为，避免实现者自行增加隐式 provenance 边界。
+恢复范围以 sibling 为界（2026-10-12 修订，取代原“segment-wide restoration”）：split 或
+token 删除产生的子 clip，只能向外恢复到同一 `source_segment_id` 中没有被其他 timeline clip
+覆盖的 source time。也就是说，可以恢复已裁掉或已删除的内容，但不能长进 sibling 的范围；
+否则同一段原始音频会在成片中播放两次，同一 token ID 也会同时出现在两个 clip 中。该边界与
+timeline 顺序无关，重排后的 sibling 同样生效；缩短永远合法。Web 侧 `trimBoundsForClip` 与
+domain `_trim_bounds` 使用同一规则，拖拽在本地钳制，不依赖服务端拒绝。
 
-token-rich segment 必须用完整 segment tokens 重建 `token_ids` 和 `transcript_text`；segment
-precision 或无 token 的 segment 使用 segment text。裁边恢复会以 immutable transcript 文本
-替代 clip 上的手工 correction，这是本期有意选择的 source-derived 语义，UI 不做模糊合并。
+文本规则：裁边不改变 token 集合时（只裁静音），保留 clip 当前文本，包括手工 correction；
+token 集合变化时，从 segment tokens 重建文本，恢复到完整 segment 时使用导入的 segment text。
+若该 clip 带有手工 correction 且裁边会改变其词，reducer 返回 `ValidationError`，不静默丢弃
+correction。segment precision clip 没有词边界，裁边始终保留 clip 当前文本。
 
 ## 9. 播放与时间映射
 
@@ -800,6 +803,6 @@ npm run test:e2e
 ### 20.4 明确边界
 
 - segment precision clip 缺乏可靠 token/text 边界，首版禁止 split；不复制完整文本，也不做字符比例猜测。
-- trim 采用 segment-wide restoration；split/token-delete sibling 可以各自在 immutable segment 范围内恢复并产生 source overlap。
+- trim 恢复以同 segment sibling 为界，不产生 source overlap；会改变已校对 clip 词集合的 trim 被拒绝（2026-10-12 修订，见 §8）。
 - unsafe `fit_source` 保持既有 TTS 行为：candidate/preview 给 advisory warning，apply strict reject，UI 禁止提交。
 - 未加入多轨、空隙、多素材、波形、缩略图、特效、fade、关键帧或 Montage Web/WASM。

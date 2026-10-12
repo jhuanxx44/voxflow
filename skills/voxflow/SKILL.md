@@ -46,6 +46,8 @@ Require project schema version 1. If the command is missing or the schema major 
 
 4. Refresh the timeline immediately before a write. Construct an Edit Plan with the current `expected_revision`, a unique `client_request_id`, a reason, and explicit `clip_*` or `tok_*` IDs. Use only operations supported by the current schema, such as `delete_clips`, `delete_ranges`, `move_clip`, `trim_clip`, `split_clip`, `correct_transcript`, `rename_speaker`, and `merge_speakers`.
 
+   `trim_clip` may restore trimmed or deleted source time of the clip's segment, but never into a range another clip from the same segment covers, and it is rejected when it would change the words of a clip whose text was corrected with `correct_transcript`. Replacement clips and segment-precision split are rejected.
+
 5. Preview every plan before applying it:
 
    ```bash

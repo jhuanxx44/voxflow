@@ -150,51 +150,84 @@ def test_move_trim_speaker_and_split_operations() -> None:
     assert len(preview.timeline.clips) == 3
 
 
-def test_source_trim_can_restore_segment_content_after_commit() -> None:
-    base = timeline()
-    base.clips[0].transcript_text = "手工修订"
-    base.clips[0].token_ids = ["tok_b"]
-    inward = EditPlan.model_validate(
+def _trim(base: TimelineRevision, clip_id: str, start: int, end: int, key: str):
+    plan = EditPlan.model_validate(
         {
             "project_id": "prj_test",
-            "expected_revision": 1,
-            "client_request_id": "trim-inward",
+            "expected_revision": base.revision,
+            "client_request_id": key,
             "operations": [
                 {
                     "op": "trim_clip",
-                    "clip_id": "clip_a",
-                    "source_in_ms": 300,
-                    "source_out_ms": 900,
+                    "clip_id": clip_id,
+                    "source_in_ms": start,
+                    "source_out_ms": end,
                 }
             ],
         }
     )
-    trimmed = reduce_edit_plan(base, transcript(), inward).timeline
+    return reduce_edit_plan(base, transcript(), plan).timeline
+
+
+def test_source_trim_can_restore_segment_content_after_commit() -> None:
+    trimmed = _trim(timeline(), "clip_a", 300, 900, "trim-inward")
     assert trimmed.clips[0].token_ids == ["tok_b", "tok_c"]
     assert trimmed.clips[0].transcript_text == "好啊"
 
-    outward = EditPlan.model_validate(
-        {
-            "project_id": "prj_test",
-            "expected_revision": 2,
-            "client_request_id": "trim-outward",
-            "operations": [
-                {
-                    "op": "trim_clip",
-                    "clip_id": "clip_a",
-                    "source_in_ms": 0,
-                    "source_out_ms": 1000,
-                }
-            ],
-        }
-    )
-    restored = reduce_edit_plan(trimmed, transcript(), outward).timeline.clips[0]
+    restored = _trim(trimmed, "clip_a", 0, 1000, "trim-outward").clips[0]
     assert (restored.source_in_ms, restored.source_out_ms) == (0, 1000)
     assert restored.token_ids == ["tok_a", "tok_b", "tok_c"]
     assert restored.transcript_text == "你好啊"
 
 
-def test_split_child_can_restore_across_full_immutable_segment() -> None:
+def test_trim_keeps_manual_correction_when_words_are_unchanged() -> None:
+    base = timeline()
+    base.clips[0].transcript_text = "你好呀"
+    # 900-1000 is trailing silence after tok_c, so the token set is unchanged.
+    trimmed = _trim(base, "clip_a", 0, 950, "trim-silence").clips[0]
+    assert trimmed.token_ids == ["tok_a", "tok_b", "tok_c"]
+    assert trimmed.transcript_text == "你好呀"
+
+
+def test_trim_rejects_word_change_that_would_discard_manual_correction() -> None:
+    base = timeline()
+    base.clips[0].transcript_text = "你好呀"
+    with pytest.raises(ValidationError, match="manually corrected"):
+        _trim(base, "clip_a", 300, 1000, "trim-corrected-words")
+
+
+def test_trim_does_not_treat_imported_segment_text_as_a_correction() -> None:
+    source = transcript()
+    source.segments[0].text = "你好，啊"  # ASR text with punctuation absent from tokens
+    base = timeline()
+    base.clips[0].transcript_text = "你好，啊"
+    plan = EditPlan.model_validate(
+        {
+            "project_id": "prj_test",
+            "expected_revision": 1,
+            "client_request_id": "trim-imported-text",
+            "operations": [
+                {"op": "trim_clip", "clip_id": "clip_a", "source_in_ms": 300, "source_out_ms": 1000}
+            ],
+        }
+    )
+    trimmed = reduce_edit_plan(base, source, plan).timeline
+    assert trimmed.clips[0].transcript_text == "好啊"
+    restore = EditPlan.model_validate(
+        {
+            "project_id": "prj_test",
+            "expected_revision": 2,
+            "client_request_id": "restore-imported-text",
+            "operations": [
+                {"op": "trim_clip", "clip_id": "clip_a", "source_in_ms": 0, "source_out_ms": 1000}
+            ],
+        }
+    )
+    restored = reduce_edit_plan(trimmed, source, restore).timeline.clips[0]
+    assert restored.transcript_text == "你好，啊"
+
+
+def test_split_child_trim_stops_at_its_sibling() -> None:
     split = EditPlan.model_validate(
         {
             "project_id": "prj_test",
@@ -205,28 +238,75 @@ def test_split_child_can_restore_across_full_immutable_segment() -> None:
     )
     split_timeline = reduce_edit_plan(timeline(), transcript(), split).timeline
     left, right = split_timeline.clips
-    restore = EditPlan.model_validate(
+    with pytest.raises(ValidationError, match="overlap another clip"):
+        _trim(split_timeline, left.id, 0, 900, "restore-into-sibling")
+
+    shrunk = _trim(split_timeline, left.id, 0, 300, "shrink-left")
+    regrown = _trim(shrunk, left.id, 0, right.source_in_ms, "regrow-left")
+    assert regrown.clips[0].source_out_ms == right.source_in_ms
+    assert regrown.clips[0].token_ids == ["tok_a", "tok_b"]
+
+
+def test_trim_restores_deleted_words_but_never_duplicates_a_sibling() -> None:
+    delete = EditPlan.model_validate(
         {
             "project_id": "prj_test",
-            "expected_revision": 2,
-            "client_request_id": "restore-split-child",
+            "expected_revision": 1,
+            "client_request_id": "delete-middle-token",
             "operations": [
                 {
-                    "op": "trim_clip",
-                    "clip_id": left.id,
-                    "source_in_ms": 0,
-                    "source_out_ms": 900,
+                    "op": "delete_ranges",
+                    "clip_id": "clip_a",
+                    "start_token_id": "tok_b",
+                    "end_token_id": "tok_b",
                 }
             ],
         }
     )
-    restored = reduce_edit_plan(split_timeline, transcript(), restore).timeline
-    assert restored.clips[0].token_ids == ["tok_a", "tok_b", "tok_c"]
-    assert restored.clips[0].transcript_text == "你好啊"
-    assert restored.clips[0].source_out_ms > right.source_in_ms
+    deleted = reduce_edit_plan(timeline(), transcript(), delete).timeline
+    left, right = deleted.clips
+    assert (left.source_out_ms, right.source_in_ms) == (300, 600)
+
+    restored = _trim(deleted, left.id, 0, 600, "restore-deleted-token")
+    assert restored.clips[0].token_ids == ["tok_a", "tok_b"]
+    assert restored.duration_ms == 1000
+    with pytest.raises(ValidationError, match="overlap another clip"):
+        _trim(deleted, left.id, 0, 1000, "duplicate-sibling")
 
 
-def test_segment_precision_trim_uses_immutable_segment_text() -> None:
+def test_reordered_sibling_still_bounds_trim() -> None:
+    split = EditPlan.model_validate(
+        {
+            "project_id": "prj_test",
+            "expected_revision": 1,
+            "client_request_id": "split-then-move",
+            "operations": [{"op": "split_clip", "clip_id": "clip_a", "at_ms": 600}],
+        }
+    )
+    split_timeline = reduce_edit_plan(timeline(), transcript(), split).timeline
+    left, right = split_timeline.clips
+    move = EditPlan.model_validate(
+        {
+            "project_id": "prj_test",
+            "expected_revision": 2,
+            "client_request_id": "move-right-first",
+            "operations": [
+                {
+                    "op": "move_clip",
+                    "clip_id": right.id,
+                    "anchor_clip_id": left.id,
+                    "position": "before",
+                }
+            ],
+        }
+    )
+    moved = reduce_edit_plan(split_timeline, transcript(), move).timeline
+    assert [clip.id for clip in moved.clips] == [right.id, left.id]
+    with pytest.raises(ValidationError, match="overlap another clip"):
+        _trim(moved, right.id, 300, 1000, "grow-into-reordered-sibling")
+
+
+def test_segment_precision_trim_keeps_clip_text_and_drops_stale_tokens() -> None:
     base = timeline()
     base.clips = [
         TimelineClip(
@@ -254,7 +334,7 @@ def test_segment_precision_trim_uses_immutable_segment_text() -> None:
         }
     )
     result = reduce_edit_plan(base, transcript(), plan).timeline.clips[0]
-    assert result.transcript_text == "后半段"
+    assert result.transcript_text == "手工修订"
     assert result.token_ids == []
 
 
