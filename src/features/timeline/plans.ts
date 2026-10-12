@@ -1,4 +1,4 @@
-import type { EditOperationV1 } from '@/types/project';
+import type { EditOperationV1, TimelineClipV1 } from '@/types/project';
 import type { SourceBounds, TimelineLayoutItem } from './types';
 import { findLayoutItemAtTime, timelineToSourceMs } from './layout';
 
@@ -84,6 +84,29 @@ export function createSplitOperation(
     return null;
   }
   return { op: 'split_clip', clip_id: item.clipId, at_ms: atMs };
+}
+
+/**
+ * Mirrors the domain trim rule: a clip may grow back into source time of its segment that no
+ * other clip from the same segment covers, but never into a sibling's range.
+ */
+export function trimBoundsForClip(
+  clip: TimelineClipV1,
+  clips: readonly TimelineClipV1[],
+  segmentBounds: SourceBounds
+): SourceBounds {
+  let startMs = segmentBounds.startMs;
+  let endMs = segmentBounds.endMs;
+  for (const sibling of clips) {
+    if (sibling.id === clip.id || sibling.source_segment_id !== clip.source_segment_id) continue;
+    if (sibling.source_in_ms < clip.source_in_ms) {
+      startMs = Math.max(startMs, Math.min(clip.source_in_ms, sibling.source_out_ms));
+    }
+    if (sibling.source_out_ms > clip.source_out_ms) {
+      endMs = Math.min(endMs, Math.max(clip.source_out_ms, sibling.source_in_ms));
+    }
+  }
+  return { startMs, endMs };
 }
 
 export function createTrimOperation(options: {

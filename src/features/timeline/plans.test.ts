@@ -8,6 +8,7 @@ import {
   createTrimOperation,
   hasExceededDragThreshold,
   moveByKeyboard,
+  trimBoundsForClip,
 } from './plans';
 
 function clip(id: string, start: number, end: number, kind: 'source' | 'replacement' = 'source'): TimelineClipV1 {
@@ -110,5 +111,22 @@ describe('timeline operation plans', () => {
       requestedSourceMs: 700,
       bounds: { startMs: 0, endMs: 1_000 },
     })).toBeNull();
+  });
+
+  it('bounds trim by siblings from the same segment regardless of timeline order', () => {
+    const segment = { startMs: 0, endMs: 1000 };
+    const left = clip('left', 0, 300);
+    const right = clip('right', 600, 1000);
+    const other = { ...clip('other', 0, 1000), source_segment_id: 'seg_b' };
+    expect(trimBoundsForClip(left, [right, other, left], segment)).toEqual({ startMs: 0, endMs: 600 });
+    expect(trimBoundsForClip(right, [left, right], segment)).toEqual({ startMs: 300, endMs: 1000 });
+    expect(trimBoundsForClip(left, [left], segment)).toEqual(segment);
+  });
+
+  it('never narrows trim bounds inside the current clip range', () => {
+    const segment = { startMs: 0, endMs: 1000 };
+    const current = clip('current', 200, 700);
+    const overlapping = clip('overlapping', 500, 900);
+    expect(trimBoundsForClip(current, [current, overlapping], segment)).toEqual({ startMs: 0, endMs: 700 });
   });
 });

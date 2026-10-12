@@ -13,7 +13,8 @@ interface TimelineTrackProps {
   selectedClipId: string | null;
   draft: TimelineGestureDraft | null;
   busy: boolean;
-  sourceBounds: ReadonlyMap<string, SourceBounds>;
+  /** Allowed trim range per clip ID, from canonical (not draft) clips. */
+  trimBounds: ReadonlyMap<string, SourceBounds>;
   onSelect: (clipId: string) => void;
   onBeginMove: (event: ReactPointerEvent<HTMLElement>, clipId: string) => void;
   onBeginTrim: (
@@ -44,7 +45,7 @@ export function TimelineTrack(props: TimelineTrackProps) {
           selected={item.clipId === props.selectedClipId}
           moving={props.draft?.kind === 'move' && props.draft.clipId === item.clipId}
           busy={props.busy}
-          bounds={props.sourceBounds.get(item.clip.source_segment_id) ?? null}
+          bounds={props.trimBounds.get(item.clipId) ?? null}
           onSelect={props.onSelect}
           onBeginMove={props.onBeginMove}
           onBeginTrim={props.onBeginTrim}

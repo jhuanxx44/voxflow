@@ -352,3 +352,44 @@ test('mobile timeline stays inside the page and scrolls internally', async ({ pa
   await expect(page.locator('vite-error-overlay')).toHaveCount(0);
   expect(browserErrors).toEqual([]);
 });
+
+test('split children can regrow but never trim into each other', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-chromium', 'pointer flow runs on desktop');
+  const browserErrors = collectBrowserErrors(page);
+  await uploadAndTranscribe(page, 'deterministic.mp4');
+
+  await page.getByTestId('timeline-ruler').click({ position: { x: 420, y: 14 } });
+  const idsBeforeSplit = new Set(await clipIds(page));
+  let current = await revision(page);
+  await page.getByTestId('timeline-split').click();
+  await waitForNextRevision(page, current);
+
+  // The split children are the only clip IDs the split created, in timeline order.
+  const [leftId, rightId] = (await clipIds(page)).filter((id) => !idsBeforeSplit.has(id));
+  const leftClip = page.locator(`[data-clip-id="${leftId}"]`);
+  const rightSourceIn = Number(
+    await page.locator(`[data-clip-id="${rightId}"]`).getAttribute('data-source-in-ms')
+  );
+  expect(Number(await leftClip.getAttribute('data-source-out-ms'))).toBe(rightSourceIn);
+
+  async function dragOutEdge(deltaPx: number) {
+    const handle = leftClip.getByTestId('timeline-trim-out');
+    await handle.scrollIntoViewIfNeeded();
+    const box = await handle.boundingBox();
+    if (!box) throw new Error('trim handle has no box');
+    const y = box.y + box.height / 2;
+    await dragPointer(page, { x: box.x + box.width / 2, y }, { x: box.x + box.width / 2 + deltaPx, y });
+  }
+
+  current = await revision(page);
+  await dragOutEdge(-30);
+  await waitForNextRevision(page, current);
+  expect(Number(await leftClip.getAttribute('data-source-out-ms'))).toBeLessThan(rightSourceIn);
+
+  current = await revision(page);
+  await dragOutEdge(400);
+  await waitForNextRevision(page, current);
+  expect(Number(await leftClip.getAttribute('data-source-out-ms'))).toBe(rightSourceIn);
+  await expect(page.getByText('overlap another clip')).toHaveCount(0);
+  expect(browserErrors).toEqual([]);
+});

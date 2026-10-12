@@ -17,7 +17,7 @@ import {
   visibleRange,
   zoomViewport,
 } from './layout';
-import { createSplitOperation, moveByKeyboard } from './plans';
+import { createSplitOperation, moveByKeyboard, trimBoundsForClip } from './plans';
 import type { SourceBounds } from './types';
 import { TimelineToolbar } from './TimelineToolbar';
 import { TimelineRuler } from './TimelineRuler';
@@ -91,16 +91,20 @@ export function TimelineEditor({ mediaRef, mediaElementKey }: TimelineEditorProp
 
   const canonicalLayout = useMemo(() => buildTimelineLayout(clips), [clips]);
   const canonicalDurationMs = timelineDurationMs(canonicalLayout);
-  const sourceBounds = useMemo(
-    () =>
-      new Map<string, SourceBounds>(
-        transcriptSegments.map((segment) => [
-          segment.id,
-          { startMs: segment.start_ms, endMs: segment.end_ms },
-        ])
-      ),
-    [transcriptSegments]
-  );
+  const trimBounds = useMemo(() => {
+    const segmentBounds = new Map<string, SourceBounds>(
+      transcriptSegments.map((segment) => [
+        segment.id,
+        { startMs: segment.start_ms, endMs: segment.end_ms },
+      ])
+    );
+    const result = new Map<string, SourceBounds>();
+    for (const clip of clips) {
+      const bounds = segmentBounds.get(clip.source_segment_id);
+      if (bounds) result.set(clip.id, trimBoundsForClip(clip, clips, bounds));
+    }
+    return result;
+  }, [clips, transcriptSegments]);
 
   const commitOne = useCallback(
     (operation: EditOperationV1, reason: string) => commitEditOperations([operation], reason),
@@ -396,7 +400,7 @@ export function TimelineEditor({ mediaRef, mediaElementKey }: TimelineEditorProp
             selectedClipId={selectedClipId}
             draft={gesture.draft}
             busy={isCommitting}
-            sourceBounds={sourceBounds}
+            trimBounds={trimBounds}
             onSelect={(clipId) => {
               setSelectedClipId(clipId);
               containerRef.current?.focus({ preventScroll: true });
