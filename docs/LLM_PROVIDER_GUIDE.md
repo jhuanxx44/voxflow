@@ -19,8 +19,9 @@ LLM_MODEL=gemini-2.5-flash
 IMAGE_API_KEY=replace-with-your-image-provider-key
 ```
 
-`LLM_BASE_URL` must point to a Gemini-compatible proxy that supports the
-request shape used by `utils/llm.py`. Cover generation currently expects an
+`LLM_BASE_URL` must point to a Gemini-compatible endpoint that supports the
+request shape used by `utils/llm.py`. It is passed to the Gemini SDK unchanged,
+so include any provider-specific path prefix in the value. Cover generation currently expects an
 OpenAI-compatible chat-completions endpoint that can return image metadata.
 These legacy Web adapters are not part of the stable CLI/MCP protocol.
 

@@ -110,6 +110,11 @@ class IndexTTSProvider:
                 )
             if upload.ok:
                 prompt_audio = str(upload.json().get("path") or prompt_audio)
+        if not prompt_audio:
+            raise ValidationError(
+                "TTS needs a reference voice; set TTS_DEFAULT_PROMPT_AUDIO in .env "
+                "or provide a reference clip"
+            )
 
         response = request(
             "post",

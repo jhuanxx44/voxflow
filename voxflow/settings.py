@@ -21,7 +21,7 @@ class Settings:
     export_timeout_seconds: int = 3600
     tts_provider: str = "indextts"
     tts_service_url: str = ""
-    tts_default_prompt_audio: str = "examples/reference.wav"
+    tts_default_prompt_audio: str = ""
     tts_timeout_seconds: int = 180
     tts_min_stretch_ratio: float = 0.8
     tts_max_stretch_ratio: float = 1.25
@@ -56,9 +56,7 @@ class Settings:
             export_timeout_seconds=int(os.environ.get("VOXFLOW_EXPORT_TIMEOUT_SECONDS", "3600")),
             tts_provider=os.environ.get("VOXFLOW_TTS_PROVIDER", "indextts"),
             tts_service_url=os.environ.get("TTS_SERVICE_URL", ""),
-            tts_default_prompt_audio=os.environ.get(
-                "TTS_DEFAULT_PROMPT_AUDIO", "examples/reference.wav"
-            ),
+            tts_default_prompt_audio=os.environ.get("TTS_DEFAULT_PROMPT_AUDIO", ""),
             tts_timeout_seconds=int(os.environ.get("VOXFLOW_TTS_TIMEOUT_SECONDS", "180")),
             tts_min_stretch_ratio=float(os.environ.get("VOXFLOW_TTS_MIN_STRETCH", "0.8")),
             tts_max_stretch_ratio=float(os.environ.get("VOXFLOW_TTS_MAX_STRETCH", "1.25")),

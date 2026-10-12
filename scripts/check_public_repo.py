@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 import sys
@@ -12,8 +13,10 @@ BANNED_NAMES = {".DS_Store", ".env", "findings.md", "progress.md", "task_plan.md
 BANNED_PREFIXES = ("result/", "data/", ".firecrawl/")
 BANNED_SUFFIXES = (".key", ".pem", ".p12", ".pfx")
 
-PRIVATE_MARKERS = (
-)
+# Organization names, private hostnames, and provider key prefixes are themselves identifying,
+# so they live only in the untracked .env (comma-separated, case-insensitive):
+#   PUBLIC_AUDIT_PRIVATE_MARKERS=example-corp,intranet.example,corp-key-
+MARKERS_ENV = "PUBLIC_AUDIT_PRIVATE_MARKERS"
 
 SECRET_PATTERNS = {
     "AWS access key": re.compile(r"AKIA[0-9A-Z]{16}"),
@@ -29,6 +32,17 @@ SECRET_PATTERNS = {
 }
 
 
+def private_markers() -> tuple[str, ...]:
+    raw = os.environ.get(MARKERS_ENV)
+    env_file = ROOT / ".env"
+    if raw is None and env_file.exists():
+        for line in env_file.read_text(encoding="utf-8").splitlines():
+            key, _, value = line.partition("=")
+            if key.strip() == MARKERS_ENV:
+                raw = value.strip().strip("'\"")
+    return tuple(item.strip().lower() for item in (raw or "").split(",") if item.strip())
+
+
 def tracked_files() -> list[str]:
     result = subprocess.run(
         ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"],
@@ -42,6 +56,7 @@ def tracked_files() -> list[str]:
 def main() -> int:
     failures: list[str] = []
     files = tracked_files()
+    markers = private_markers()
 
     for relative in files:
         path = Path(relative)
@@ -71,9 +86,9 @@ def main() -> int:
 
         if relative != SELF:
             lowered = text.lower()
-            for marker in PRIVATE_MARKERS:
+            for marker in markers:
                 if marker in lowered:
-                    failures.append(f"private infrastructure marker in {relative}")
+                    failures.append(f"private marker from {MARKERS_ENV} in {relative}")
             for label, pattern in SECRET_PATTERNS.items():
                 if pattern.search(text):
                     failures.append(f"possible {label} in {relative}")
@@ -84,7 +99,8 @@ def main() -> int:
             print(f"- {failure}", file=sys.stderr)
         return 1
 
-    print(f"Public repository audit passed ({len(files)} tracked files checked).")
+    note = f", {len(markers)} private markers" if markers else f"; {MARKERS_ENV} not set"
+    print(f"Public repository audit passed ({len(files)} tracked files checked{note}).")
     return 0
 
 

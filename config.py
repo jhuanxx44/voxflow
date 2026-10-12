@@ -65,7 +65,7 @@ ADMIN_PASSWORD = _env("ADMIN_PASSWORD")
 # IndexTTS 服务地址
 TTS_SERVICE_URL = _env("TTS_SERVICE_URL")
 # 默认参考音频（TTS 服务器上的路径）
-TTS_DEFAULT_PROMPT_AUDIO = _env("TTS_DEFAULT_PROMPT_AUDIO", "examples/reference.wav")
+TTS_DEFAULT_PROMPT_AUDIO = _env("TTS_DEFAULT_PROMPT_AUDIO")
 # TTS 服务器参考音频上传端点（需在 TTS 服务器上部署 upload-prompt 补丁）
 TTS_UPLOAD_ENABLED = _env_bool("TTS_UPLOAD_ENABLED", True)
 

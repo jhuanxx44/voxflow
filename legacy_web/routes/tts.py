@@ -52,6 +52,8 @@ def tts():
         # 确定参考音频路径
         prompt_audio = TTS_DEFAULT_PROMPT_AUDIO
         use_voice_clone = False
+        if not prompt_audio and not explicit_prompt_audio and not ref_segments:
+            return jsonify({"error": "TTS_DEFAULT_PROMPT_AUDIO 未设置，请在 .env 中配置参考音频"}), 400
 
         if explicit_prompt_audio:
             prompt_audio = explicit_prompt_audio
@@ -113,7 +115,11 @@ def tts():
             error_data = resp.json()
             detail = error_data.get('detail', 'Unknown error')
             # 如果参考音频不存在，回退到默认音色重试
-            if 'does not exist' in str(detail) and prompt_audio != TTS_DEFAULT_PROMPT_AUDIO:
+            if (
+                'does not exist' in str(detail)
+                and TTS_DEFAULT_PROMPT_AUDIO
+                and prompt_audio != TTS_DEFAULT_PROMPT_AUDIO
+            ):
                 print(f"[TTS] Prompt audio not found on server, retrying with default voice")
                 tts_payload["prompt_audio"] = TTS_DEFAULT_PROMPT_AUDIO
                 resp = http_requests.post(
