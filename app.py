@@ -50,7 +50,7 @@ def mark_legacy_api_deprecation(response):
         response.headers["Deprecation"] = "true"
         response.headers["Sunset"] = "Thu, 31 Dec 2026 23:59:59 GMT"
         links = [
-            "<https://github.com/jhuanxx44/voxflow/blob/dev_edit/docs/ARCHITECTURE.md>"
+            "<https://github.com/jhuanxx44/voxflow/blob/main/docs/ARCHITECTURE.md>"
             '; rel="deprecation"'
         ]
         successor = legacy_successors.get(request.path)
