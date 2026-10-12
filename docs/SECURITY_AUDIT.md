@@ -5,10 +5,11 @@ Audit date: 2026-08-08
 ## Current repository state
 
 - GitHub Secret Scanning and push protection are enabled.
-- Dependabot vulnerability alerts and automated security fixes are enabled.
+- Dependabot is disabled (alerts, security fixes, and version updates;
+  2026-10-12). Dependency vulnerabilities are caught by the CI pip-audit and
+  npm audit jobs instead.
 - Private vulnerability reporting is enabled.
 - Current GitHub secret-scanning alerts: 0.
-- Current GitHub Dependabot alerts: 0.
 - The tracked working tree contains no `.env`, private key file, runtime
   `result/` or `data/` file, known high-confidence credential pattern, or
   organization-private service hostname.
@@ -24,9 +25,7 @@ The repeatable current-tree check is:
 python scripts/check_public_repo.py
 ```
 
-CI additionally runs Gitleaks, CodeQL, pip-audit, and npm audit. Scheduled
-Dependabot version-update PRs are disabled; GitHub Dependabot security alerts
-and security fixes remain enabled in repository settings.
+CI additionally runs Gitleaks, CodeQL, pip-audit, and npm audit.
 
 ## Time-bounded PyTorch risk acceptance
 
@@ -56,7 +55,7 @@ Risk controls:
 
 Review deadline: 2026-09-07, or immediately when a compatible Torch/Torchaudio
 pair containing the upstream fixes is published. At that point remove both
-CI ignores and the corresponding Dependabot dismissals.
+CI ignores.
 
 ## History rewrite record
 
