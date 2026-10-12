@@ -171,8 +171,11 @@ export function TimelineEditor({ mediaRef, mediaElementKey }: TimelineEditorProp
 
   useEffect(() => {
     const current = selectedClipId ? clips.some((clip) => clip.id === selectedClipId) : false;
-    if (!current) setSelectedClipId(clips[0]?.id ?? null);
-  }, [clips, selectedClipId]);
+    if (current) return;
+    // A split or token delete replaces the selected clip; follow the playhead into its pieces.
+    const atPlayhead = findLayoutItemAtTime(canonicalLayout, playback.playheadMs);
+    setSelectedClipId(atPlayhead?.clipId ?? clips[0]?.id ?? null);
+  }, [canonicalLayout, clips, playback.playheadMs, selectedClipId]);
 
   useEffect(() => {
     const element = scrollRef.current;
@@ -301,14 +304,13 @@ export function TimelineEditor({ mediaRef, mediaElementKey }: TimelineEditorProp
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (editableTarget(event.target) || event.repeat) return;
-    if (event.altKey && event.key === 'ArrowLeft') {
-      event.preventDefault();
-      keyboardMove(-1);
-      return;
-    }
-    if (event.altKey && event.key === 'ArrowRight') {
-      event.preventDefault();
-      keyboardMove(1);
+    // Leave Cmd/Ctrl chords (save, undo, select all...) to the browser and OS.
+    if (event.metaKey || event.ctrlKey) return;
+    if (event.altKey) {
+      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        event.preventDefault();
+        keyboardMove(event.key === 'ArrowLeft' ? -1 : 1);
+      }
       return;
     }
     if (event.code === 'Space') {
