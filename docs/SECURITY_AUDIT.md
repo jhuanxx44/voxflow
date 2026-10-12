@@ -24,7 +24,9 @@ The repeatable current-tree check is:
 python scripts/check_public_repo.py
 ```
 
-CI additionally runs Gitleaks, CodeQL, pip-audit, npm audit, and Dependabot.
+CI additionally runs Gitleaks, CodeQL, pip-audit, and npm audit. Scheduled
+Dependabot version-update PRs are disabled; GitHub Dependabot security alerts
+and security fixes remain enabled in repository settings.
 
 ## Time-bounded PyTorch risk acceptance
 

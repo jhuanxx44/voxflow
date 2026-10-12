@@ -50,6 +50,6 @@ upload sandbox boundary.
 ## Automated checks
 
 The repository runs a tracked-file hygiene check, dependency audits, secret
-scanning, CodeQL analysis, and Dependabot updates. These checks reduce risk but
+scanning, and CodeQL analysis. These checks reduce risk but
 do not replace review of trust boundaries, provider behavior, model licenses,
 or the FFmpeg build used by a deployment.
