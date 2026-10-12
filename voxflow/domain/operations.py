@@ -15,6 +15,7 @@ from voxflow.domain.models import (
     TimelineClip,
     TimelineRevision,
     Transcript,
+    TranscriptSegment,
     TranscriptToken,
 )
 
@@ -175,6 +176,10 @@ def _token_map(transcript: Transcript) -> dict[str, TranscriptToken]:
     return {token.id: token for segment in transcript.segments for token in segment.tokens}
 
 
+def _segment_map(transcript: Transcript) -> dict[str, TranscriptSegment]:
+    return {segment.id: segment for segment in transcript.segments}
+
+
 def _tokens_for_clip(
     clip: TimelineClip, token_map: dict[str, TranscriptToken]
 ) -> list[TranscriptToken]:
@@ -199,15 +204,27 @@ def _slice_clip(
     start_ms: int,
     end_ms: int,
     tokens: list[TranscriptToken],
+    empty_text_fallback: str | None = None,
 ) -> TimelineClip:
-    included = [token for token in tokens if token.end_ms > start_ms and token.start_ms < end_ms]
+    included = [
+        token
+        for token in tokens
+        if (token.end_ms > start_ms and token.start_ms < end_ms)
+        or (token.start_ms == token.end_ms == end_ms)
+    ]
     return TimelineClip(
         id=clip_id,
         kind=clip.kind,
         source_segment_id=clip.source_segment_id,
         source_in_ms=start_ms,
         source_out_ms=end_ms,
-        transcript_text=_join_token_text(included) or clip.transcript_text,
+        transcript_text=(
+            _join_token_text(included)
+            if included
+            else clip.transcript_text
+            if empty_text_fallback is None
+            else empty_text_fallback
+        ),
         speaker_id=clip.speaker_id,
         token_ids=[token.id for token in included],
         replacement_artifact_id=clip.replacement_artifact_id,
@@ -236,6 +253,7 @@ def reduce_edit_plan(
     result.parent_revision = timeline.revision
     result.reason = plan.reason
     token_map = _token_map(transcript)
+    segment_map = _segment_map(transcript)
     moved: set[str] = set()
     changed: set[str] = set()
 
@@ -267,30 +285,83 @@ def reduce_edit_plan(
         elif isinstance(operation, TrimClip):
             index = _clip_index(result, operation.clip_id)
             clip = result.clips[index]
-            if not (
-                clip.source_in_ms
-                <= operation.source_in_ms
-                < operation.source_out_ms
-                <= clip.source_out_ms
-            ):
+            if clip.kind == "replacement":
                 raise ValidationError(
-                    "Trim range must be contained by the current clip",
+                    "Replacement clips cannot be trimmed",
                     details={"clip_id": clip.id},
                 )
-            tokens = _tokens_for_clip(clip, token_map)
-            trimmed = _slice_clip(
-                clip,
-                clip_id=clip.id,
-                start_ms=operation.source_in_ms,
-                end_ms=operation.source_out_ms,
-                tokens=tokens,
-            )
+            segment = segment_map.get(clip.source_segment_id)
+            if segment is None:
+                raise ValidationError(
+                    "Source transcript segment does not exist",
+                    details={
+                        "clip_id": clip.id,
+                        "source_segment_id": clip.source_segment_id,
+                    },
+                )
+            if not (
+                segment.start_ms
+                <= operation.source_in_ms
+                < operation.source_out_ms
+                <= segment.end_ms
+            ):
+                raise ValidationError(
+                    "Trim range must be contained by the source transcript segment",
+                    details={
+                        "clip_id": clip.id,
+                        "source_segment_id": segment.id,
+                        "segment_start_ms": segment.start_ms,
+                        "segment_end_ms": segment.end_ms,
+                    },
+                )
+            if segment.edit_precision == "token" and segment.tokens:
+                trimmed = _slice_clip(
+                    clip,
+                    clip_id=clip.id,
+                    start_ms=operation.source_in_ms,
+                    end_ms=operation.source_out_ms,
+                    tokens=segment.tokens,
+                    empty_text_fallback="",
+                )
+            else:
+                trimmed = TimelineClip.model_validate(
+                    {
+                        **clip.model_dump(mode="python"),
+                        "source_in_ms": operation.source_in_ms,
+                        "source_out_ms": operation.source_out_ms,
+                        "transcript_text": segment.text,
+                        "token_ids": [],
+                    }
+                )
             result.clips[index] = trimmed
             changed.add(clip.id)
 
         elif isinstance(operation, SplitClip):
             index = _clip_index(result, operation.clip_id)
             clip = result.clips[index]
+            if clip.kind == "replacement":
+                raise ValidationError(
+                    "Replacement clips cannot be split",
+                    details={"clip_id": clip.id},
+                )
+            segment = segment_map.get(clip.source_segment_id)
+            if segment is None:
+                raise ValidationError(
+                    "Source transcript segment does not exist",
+                    details={
+                        "clip_id": clip.id,
+                        "source_segment_id": clip.source_segment_id,
+                    },
+                )
+            if segment.edit_precision != "token":
+                raise ValidationError(
+                    "Segment-precision source clips cannot be split",
+                    details={
+                        "clip_id": clip.id,
+                        "source_segment_id": segment.id,
+                        "edit_precision": segment.edit_precision,
+                    },
+                )
             if not clip.source_in_ms < operation.at_ms < clip.source_out_ms:
                 raise ValidationError(
                     "Split point must be strictly inside the clip",

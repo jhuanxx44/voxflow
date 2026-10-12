@@ -2,7 +2,9 @@ import type {
   ApiEnvelope,
   ApiErrorEnvelope,
   AttachSpeechReplacementV1,
+  EditApplyResultV1,
   EditOperationV1,
+  EditPlanV1,
   EditPreviewV1,
   JobV1,
   ProjectEditorSnapshot,
@@ -130,44 +132,56 @@ export async function loadProjectEditor(projectId: string): Promise<ProjectEdito
   return { project, transcript, timeline };
 }
 
+export function createEditPlan(
+  projectId: string,
+  expectedRevision: number,
+  operations: EditOperationV1[],
+  reason: string
+): EditPlanV1 {
+  return {
+    schema_version: 1,
+    project_id: projectId,
+    expected_revision: expectedRevision,
+    client_request_id: `web-${crypto.randomUUID()}`,
+    reason,
+    operations,
+  };
+}
+
+export function previewEditPlan(plan: EditPlanV1): Promise<EditPreviewV1> {
+  return api<EditPreviewV1>(`/api/v1/projects/${plan.project_id}/edits/preview`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(plan),
+  });
+}
+
+export function applyEditPlan(plan: EditPlanV1): Promise<EditApplyResultV1> {
+  return api<EditApplyResultV1>(`/api/v1/projects/${plan.project_id}/edits`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(plan),
+  });
+}
+
+/** @deprecated Prefer creating one plan and passing it to previewEditPlan/applyEditPlan. */
 export function applyEdit(
   projectId: string,
   expectedRevision: number,
   operations: EditOperationV1[],
   reason: string
-): Promise<{ revision: number }> {
-  return api<{ revision: number }>(`/api/v1/projects/${projectId}/edits`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      schema_version: 1,
-      project_id: projectId,
-      expected_revision: expectedRevision,
-      client_request_id: `web-${crypto.randomUUID()}`,
-      reason,
-      operations,
-    }),
-  });
+): Promise<EditApplyResultV1> {
+  return applyEditPlan(createEditPlan(projectId, expectedRevision, operations, reason));
 }
 
+/** @deprecated Prefer creating one plan and passing it to previewEditPlan/applyEditPlan. */
 export function previewEdit(
   projectId: string,
   expectedRevision: number,
   operations: EditOperationV1[],
   reason: string
 ): Promise<EditPreviewV1> {
-  return api<EditPreviewV1>(`/api/v1/projects/${projectId}/edits/preview`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      schema_version: 1,
-      project_id: projectId,
-      expected_revision: expectedRevision,
-      client_request_id: `web-preview-${crypto.randomUUID()}`,
-      reason,
-      operations,
-    }),
-  });
+  return previewEditPlan(createEditPlan(projectId, expectedRevision, operations, reason));
 }
 
 export async function startSpeechReplacement(

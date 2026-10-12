@@ -3,21 +3,25 @@
 import { create } from 'zustand';
 import type { CharUnit, DisplayMode, Segment } from '@/types';
 import type {
-  AttachSpeechReplacementV1,
+  EditApplyResultV1,
   EditOperationV1,
   ProjectEditorSnapshot,
   SpeechReplacementCandidateV1,
   TimelineClipV1,
+  TranscriptSegmentV1,
   TranscriptTokenV1,
 } from '@/types/project';
 import {
-  applyEdit,
+  applyEditPlan,
+  createEditPlan,
   loadProjectEditor,
+  previewEditPlan,
   ProjectApiError,
   restoreRevision,
 } from '@/services/projectService';
 
 const CURRENT_PROJECT_KEY = 'voxflow.currentProjectId';
+export type EditCommitPhase = 'idle' | 'previewing' | 'applying' | 'reloading';
 
 interface EditorState {
   projectId: string | null;
@@ -25,6 +29,8 @@ interface EditorState {
   revision: number;
   sourceUrl: string | null;
   timelineClips: TimelineClipV1[];
+  transcriptSegments: TranscriptSegmentV1[];
+  commitPhase: EditCommitPhase;
   isCommitting: boolean;
   lastError: string | null;
   revisionConflict: boolean;
@@ -59,6 +65,10 @@ interface EditorState {
   hydrateProject: (snapshot: ProjectEditorSnapshot, preserveHistory?: boolean) => void;
   loadProject: (projectId: string, preserveHistory?: boolean) => Promise<ProjectEditorSnapshot>;
   refreshProject: () => Promise<void>;
+  commitEditOperations: (
+    operations: EditOperationV1[],
+    reason: string
+  ) => Promise<EditApplyResultV1 | undefined>;
   setRecognitionResult: (
     fullText: string,
     segments: Segment[],
@@ -99,7 +109,7 @@ interface EditorState {
   removeTTSCandidate: (segmentIndex: number) => void;
   applySpeechCandidate: (
     segmentIndex: number,
-    operation: AttachSpeechReplacementV1
+    candidate: SpeechReplacementCandidateV1
   ) => Promise<void>;
   setInlineEditIndex: (index: number | null) => void;
   replaceSegmentTextByIndex: (segmentIndex: number, newText: string) => void;
@@ -110,13 +120,6 @@ type SetEditorState = (
     | Partial<EditorState>
     | ((state: EditorState) => Partial<EditorState>)
 ) => void;
-
-let mutationQueue: Promise<void> = Promise.resolve();
-
-function enqueue(task: () => Promise<void>): Promise<void> {
-  mutationQueue = mutationQueue.then(task, task);
-  return mutationQueue;
-}
 
 function revokeBlobUrl(url: string | undefined): void {
   if (url?.startsWith('blob:')) URL.revokeObjectURL(url);
@@ -206,6 +209,7 @@ function snapshotView(snapshot: ProjectEditorSnapshot): Partial<EditorState> {
     revision: snapshot.timeline.revision,
     sourceUrl: snapshot.project.source_url,
     timelineClips: snapshot.timeline.items,
+    transcriptSegments: snapshot.transcript.items,
     lastFullText: snapshot.timeline.items.map((clip) => clip.transcript_text).join(''),
     lastSegments,
     charLevelData,
@@ -228,10 +232,14 @@ function snapshotView(snapshot: ProjectEditorSnapshot): Partial<EditorState> {
   };
 }
 
+function commitState(commitPhase: EditCommitPhase): Pick<EditorState, 'commitPhase' | 'isCommitting'> {
+  return { commitPhase, isCommitting: commitPhase !== 'idle' };
+}
+
 function setApiError(set: SetEditorState, error: unknown): void {
   const message = error instanceof Error ? error.message : String(error);
   set({
-    isCommitting: false,
+    ...commitState('idle'),
     lastError: message,
     revisionConflict:
       error instanceof ProjectApiError && error.code === 'REVISION_CONFLICT',
@@ -239,7 +247,7 @@ function setApiError(set: SetEditorState, error: unknown): void {
   if (error instanceof ProjectApiError && error.code === 'REVISION_CONFLICT') {
     console.info('[VoxFlow project edit] revision conflict handled by refresh');
   } else {
-    console.error('[VoxFlow project edit]', error);
+    console.info('[VoxFlow project edit] handled failure:', message);
   }
 }
 
@@ -249,39 +257,57 @@ function queueEdit(
   buildOperations: (state: EditorState) => EditOperationV1[],
   reason: string
 ): void {
-  enqueue(async () => {
-    const before = get();
-    if (!before.projectId) {
-      set({ lastError: '当前编辑器没有持久化 project' });
-      return;
-    }
-    const operations = buildOperations(before);
-    if (operations.length === 0) return;
-    const projectId = before.projectId;
-    const baseRevision = before.revision;
-    set({ isCommitting: true, lastError: null, revisionConflict: false });
+  const before = get();
+  if (before.isCommitting) return;
+  if (!before.projectId) {
+    set({ lastError: '当前编辑器没有持久化 project' });
+    return;
+  }
+  const operations = buildOperations(before);
+  if (operations.length === 0) return;
+  void get().commitEditOperations(operations, reason).catch(() => undefined);
+}
+
+function restoreProjectRevision(
+  get: () => EditorState,
+  set: SetEditorState,
+  targetRevision: number,
+  updateHistory: (before: EditorState) => Pick<EditorState, '_undoStack' | '_redoStack'>
+): void {
+  const before = get();
+  if (!before.projectId || before.isCommitting) return;
+  const projectId = before.projectId;
+  set({ ...commitState('reloading'), lastError: null, revisionConflict: false });
+  void (async () => {
     try {
-      await applyEdit(projectId, baseRevision, operations, reason);
+      await restoreRevision(projectId, before.revision, targetRevision);
       const snapshot = await loadProjectEditor(projectId);
-      const latest = get();
       set({
         ...snapshotView(snapshot),
-        isCommitting: false,
-        _undoStack: [...latest._undoStack, baseRevision].slice(-latest._maxHistory),
-        _redoStack: [],
+        ...commitState('idle'),
+        ...updateHistory(before),
       });
     } catch (error) {
-      setApiError(set, error);
       if (error instanceof ProjectApiError && error.code === 'REVISION_CONFLICT') {
         try {
           const snapshot = await loadProjectEditor(projectId);
-          set({ ...snapshotView(snapshot), revisionConflict: true });
+          set({
+            ...snapshotView(snapshot),
+            ...commitState('idle'),
+            lastError: error.message,
+            revisionConflict: true,
+            _undoStack: [],
+            _redoStack: [],
+          });
         } catch (refreshError) {
           setApiError(set, refreshError);
+          set({ _undoStack: [], _redoStack: [], revisionConflict: true });
         }
+      } else {
+        setApiError(set, error);
       }
     }
-  });
+  })();
 }
 
 const initialState = {
@@ -290,6 +316,8 @@ const initialState = {
   revision: 0,
   sourceUrl: null,
   timelineClips: [],
+  transcriptSegments: [],
+  commitPhase: 'idle',
   isCommitting: false,
   lastError: null,
   revisionConflict: false,
@@ -323,6 +351,7 @@ const initialState = {
   | 'hydrateProject'
   | 'loadProject'
   | 'refreshProject'
+  | 'commitEditOperations'
   | 'setRecognitionResult'
   | 'deleteAtPosition'
   | 'deleteCharAtPosition'
@@ -367,10 +396,16 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   hydrateProject: (snapshot, preserveHistory = false) => {
     localStorage.setItem(CURRENT_PROJECT_KEY, snapshot.project.id);
+    const current = get();
+    const canPreserveHistory =
+      preserveHistory &&
+      current.projectId === snapshot.project.id &&
+      current.revision === snapshot.timeline.revision;
     set({
       ...snapshotView(snapshot),
-      _undoStack: preserveHistory ? get()._undoStack : [],
-      _redoStack: preserveHistory ? get()._redoStack : [],
+      ...commitState('idle'),
+      _undoStack: canPreserveHistory ? current._undoStack : [],
+      _redoStack: canPreserveHistory ? current._redoStack : [],
     });
   },
 
@@ -386,6 +421,63 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     await get().loadProject(projectId, true);
   },
 
+  commitEditOperations: async (operations, reason) => {
+    const before = get();
+    if (before.isCommitting || operations.length === 0) return undefined;
+    if (!before.projectId) {
+      set({ lastError: '当前编辑器没有持久化 project' });
+      return undefined;
+    }
+
+    const projectId = before.projectId;
+    const baseRevision = before.revision;
+    const plan = createEditPlan(projectId, baseRevision, operations, reason);
+    set({ ...commitState('previewing'), lastError: null, revisionConflict: false });
+
+    try {
+      await previewEditPlan(plan);
+      set(commitState('applying'));
+      const result = await applyEditPlan(plan);
+      set(commitState('reloading'));
+      const snapshot = await loadProjectEditor(projectId);
+      const reloadedCommittedRevision = snapshot.timeline.revision === result.revision;
+      set({
+        ...snapshotView(snapshot),
+        ...commitState('idle'),
+        lastError: reloadedCommittedRevision
+          ? null
+          : '项目在提交后又被其他入口更新，已加载最新 revision',
+        revisionConflict: !reloadedCommittedRevision,
+        _undoStack: reloadedCommittedRevision
+          ? [...before._undoStack, baseRevision].slice(-before._maxHistory)
+          : [],
+        _redoStack: [],
+      });
+      return result;
+    } catch (error) {
+      if (error instanceof ProjectApiError && error.code === 'REVISION_CONFLICT') {
+        set({ ...commitState('reloading'), lastError: error.message, revisionConflict: true });
+        try {
+          const snapshot = await loadProjectEditor(projectId);
+          set({
+            ...snapshotView(snapshot),
+            ...commitState('idle'),
+            lastError: error.message,
+            revisionConflict: true,
+            _undoStack: [],
+            _redoStack: [],
+          });
+        } catch (refreshError) {
+          setApiError(set, refreshError);
+          set({ _undoStack: [], _redoStack: [], revisionConflict: true });
+        }
+      } else {
+        setApiError(set, error);
+      }
+      return undefined;
+    }
+  },
+
   setRecognitionResult: (fullText, segments, charLevelData = []) => {
     localStorage.removeItem(CURRENT_PROJECT_KEY);
     set({
@@ -393,6 +485,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       revision: 0,
       sourceUrl: null,
       timelineClips: [],
+      transcriptSegments: [],
+      ...commitState('idle'),
       lastFullText: fullText,
       lastSegments: segments,
       charLevelData,
@@ -518,25 +612,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setInsertAfterIndex: (insertAfterIndex) => set({ insertAfterIndex }),
 
   resetEdits: () => {
-    if (!get().projectId || get().revision <= 1) return;
-    const target = 1;
-    enqueue(async () => {
-      const before = get();
-      if (!before.projectId) return;
-      set({ isCommitting: true, lastError: null });
-      try {
-        await restoreRevision(before.projectId, before.revision, target);
-        const snapshot = await loadProjectEditor(before.projectId);
-        set({
-          ...snapshotView(snapshot),
-          isCommitting: false,
-          _undoStack: [...before._undoStack, before.revision],
-          _redoStack: [],
-        });
-      } catch (error) {
-        setApiError(set, error);
-      }
-    });
+    if (get().revision <= 1) return;
+    restoreProjectRevision(get, set, 1, (before) => ({
+      _undoStack: [...before._undoStack, before.revision],
+      _redoStack: [],
+    }));
   },
 
   clearAll: () => {
@@ -634,45 +714,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   getEffectiveSpeaker: (spkId) => getEffectiveSpeaker(spkId, get().speakerMerges),
 
   undo: () => {
-    enqueue(async () => {
-      const before = get();
-      const target = before._undoStack.at(-1);
-      if (!before.projectId || target === undefined || before.isCommitting) return;
-      set({ isCommitting: true, lastError: null });
-      try {
-        await restoreRevision(before.projectId, before.revision, target);
-        const snapshot = await loadProjectEditor(before.projectId);
-        set({
-          ...snapshotView(snapshot),
-          isCommitting: false,
-          _undoStack: before._undoStack.slice(0, -1),
-          _redoStack: [...before._redoStack, before.revision],
-        });
-      } catch (error) {
-        setApiError(set, error);
-      }
-    });
+    const target = get()._undoStack.at(-1);
+    if (target === undefined) return;
+    restoreProjectRevision(get, set, target, (before) => ({
+      _undoStack: before._undoStack.slice(0, -1),
+      _redoStack: [...before._redoStack, before.revision],
+    }));
   },
 
   redo: () => {
-    enqueue(async () => {
-      const before = get();
-      const target = before._redoStack.at(-1);
-      if (!before.projectId || target === undefined || before.isCommitting) return;
-      set({ isCommitting: true, lastError: null });
-      try {
-        await restoreRevision(before.projectId, before.revision, target);
-        const snapshot = await loadProjectEditor(before.projectId);
-        set({
-          ...snapshotView(snapshot),
-          isCommitting: false,
-          _undoStack: [...before._undoStack, before.revision],
-          _redoStack: before._redoStack.slice(0, -1),
-        });
-      } catch (error) {
-        setApiError(set, error);
-      }
-    });
+    const target = get()._redoStack.at(-1);
+    if (target === undefined) return;
+    restoreProjectRevision(get, set, target, (before) => ({
+      _undoStack: [...before._undoStack, before.revision],
+      _redoStack: before._redoStack.slice(0, -1),
+    }));
   },
   canUndo: () => get()._undoStack.length > 0 && !get().isCommitting,
   canRedo: () => get()._redoStack.length > 0 && !get().isCommitting,
@@ -725,42 +781,27 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       delete ttsCandidateMap[segmentIndex];
       return { ttsCandidateMap };
     }),
-  applySpeechCandidate: (segmentIndex, operation) =>
-    enqueue(async () => {
-      const before = get();
-      if (!before.projectId || before.isCommitting) return;
-      const projectId = before.projectId;
-      const baseRevision = before.revision;
-      set({ isCommitting: true, lastError: null, revisionConflict: false });
-      try {
-        await applyEdit(projectId, baseRevision, [operation], 'Web: attach speech replacement');
-        const snapshot = await loadProjectEditor(projectId);
-        const latest = get();
-        set({
-          ...snapshotView(snapshot),
-          isCommitting: false,
-          _undoStack: [...latest._undoStack, baseRevision].slice(-latest._maxHistory),
-          _redoStack: [],
-        });
-      } catch (error) {
-        setApiError(set, error);
-        if (error instanceof ProjectApiError && error.code === 'REVISION_CONFLICT') {
-          try {
-            const snapshot = await loadProjectEditor(projectId);
-            set({ ...snapshotView(snapshot), revisionConflict: true });
-          } catch (refreshError) {
-            setApiError(set, refreshError);
-          }
-        }
-        throw error;
-      } finally {
-        set((state) => {
-          const ttsGeneratingMap = { ...state.ttsGeneratingMap };
-          delete ttsGeneratingMap[segmentIndex];
-          return { ttsGeneratingMap };
-        });
-      }
-    }),
+  applySpeechCandidate: async (segmentIndex, candidate) => {
+    const before = get();
+    if (!before.projectId) throw new Error('当前编辑器没有持久化 project');
+    if (before.isCommitting) throw new Error('当前有编辑正在提交');
+    if (candidate.baseRevision !== before.revision) {
+      throw new Error('语音候选基于旧 revision，请重新生成');
+    }
+    try {
+      const result = await get().commitEditOperations(
+        [candidate.operation],
+        'Web: attach speech replacement'
+      );
+      if (!result) throw new Error('语音候选未提交');
+    } finally {
+      set((state) => {
+        const ttsGeneratingMap = { ...state.ttsGeneratingMap };
+        delete ttsGeneratingMap[segmentIndex];
+        return { ttsGeneratingMap };
+      });
+    }
+  },
   setInlineEditIndex: (inlineEditIndex) => set({ inlineEditIndex }),
   replaceSegmentTextByIndex: (segmentIndex, newText) =>
     queueEdit(

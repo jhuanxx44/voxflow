@@ -2,18 +2,11 @@
 
 import { useCallback, useState } from 'react';
 import { useEditorStore } from '@/stores/editorStore';
-import {
-  previewEdit,
-  startSpeechReplacement,
-} from '@/services/projectService';
+import { startSpeechReplacement } from '@/services/projectService';
 import type {
   SpeechDurationPolicy,
   SpeechReplacementCandidateV1,
 } from '@/types/project';
-
-function uniqueWarnings(...groups: string[][]): string[] {
-  return [...new Set(groups.flat().filter(Boolean))];
-}
 
 export function useTTSRegenerate() {
   const [progress, setProgress] = useState('');
@@ -42,6 +35,9 @@ export function useTTSRegenerate() {
       if (!state.projectId || !clip || !segment) {
         throw new Error('当前片段尚未关联持久化 VoxFlow project');
       }
+      if (state.isCommitting) {
+        throw new Error('当前有编辑正在提交，请稍后再生成语音候选');
+      }
       const textToSynthesize = (newText ?? segment.text).trim();
       if (!textToSynthesize) return undefined;
 
@@ -61,20 +57,14 @@ export function useTTSRegenerate() {
             },
           }
         );
-        const preview = await previewEdit(
-          state.projectId,
-          state.revision,
-          [candidate.operation],
-          'Web: preview speech replacement'
-        );
-        const ready = {
-          ...candidate,
-          warnings: uniqueWarnings(candidate.warnings, preview.diff.warnings),
-        };
-        setTTSAudio(segmentIndex, ready.previewUrl, ready.durationMs);
-        setTTSCandidate(segmentIndex, ready);
+        const latest = useEditorStore.getState();
+        if (latest.projectId !== state.projectId || latest.revision !== candidate.baseRevision) {
+          throw new Error('语音候选生成期间 project revision 已更新，请重新生成');
+        }
+        setTTSAudio(segmentIndex, candidate.previewUrl, candidate.durationMs);
+        setTTSCandidate(segmentIndex, candidate);
         setProgress('候选已生成：请先试听，再应用到时间线');
-        return ready;
+        return candidate;
       } catch (error) {
         setTTSGenerating(segmentIndex, false);
         setProgress('');
@@ -88,6 +78,11 @@ export function useTTSRegenerate() {
     async (segmentIndex: number) => {
       const candidate = useEditorStore.getState().ttsCandidateMap[segmentIndex];
       if (!candidate) throw new Error('语音候选不存在或已失效');
+      const current = useEditorStore.getState();
+      if (candidate.baseRevision !== current.revision) {
+        removeTTSCandidate(segmentIndex);
+        throw new Error('语音候选基于旧 revision，请重新生成');
+      }
       if (
         candidate.operation.duration_policy === 'fit_source' &&
         !candidate.safeStretch
@@ -95,10 +90,10 @@ export function useTTSRegenerate() {
         throw new Error('拉伸比例超出安全范围，请改用 pad/trim 策略重新生成');
       }
       setProgress('正在应用候选并创建新 revision…');
-      await applySpeechCandidate(segmentIndex, candidate.operation);
+      await applySpeechCandidate(segmentIndex, candidate);
       setProgress('语音 replacement 已提交');
     },
-    [applySpeechCandidate]
+    [applySpeechCandidate, removeTTSCandidate]
   );
 
   const discardCandidateByIndex = useCallback(

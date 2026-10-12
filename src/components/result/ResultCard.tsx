@@ -18,14 +18,18 @@ import { SentenceSpan } from './SentenceSpan';
 import { ParagraphGroup } from './ParagraphGroup';
 import { useComposition } from '@/hooks/useComposition';
 import { useDragAndDrop } from '@/hooks/useDragAndDrop';
-import { useHighlight } from '@/hooks/useHighlight';
-import { useEditedPlayback } from '@/hooks/useEditedPlayback';
 import { useExport } from '@/hooks/useExport';
 import { useTTSRegenerate } from '@/hooks/useTTSRegenerate';
 import { groupSegmentsToParagraphs } from '@/utils/paragraphGrouping';
 import { getSpeakerColor } from '@/utils/constants';
 import { searchTranscript } from '@/services/projectService';
 import type { DisplayMode, SearchMatchV1 } from '@/types';
+import { TimelineEditor } from '@/features/timeline/TimelineEditor';
+import {
+  dispatchTimelineCommand,
+  TIMELINE_ACTIVE_CLIP_EVENT,
+  type TimelineActiveClipDetail,
+} from '@/features/timeline/events';
 
 interface ResultCardProps {
   audioRef: React.RefObject<HTMLMediaElement | null>;
@@ -41,7 +45,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
     displayMode,
     smartParagraphGroups,
     isSmartParagraphManuallyEdited,
-    hasEdited,
+    timelineClips,
     speakerNames,
     speakerMerges,
     setDisplayMode,
@@ -73,7 +77,8 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
   const { showContextMenu } = useUIStore();
   const mediaType = useASRStore((state) => state.mediaType);
 
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
+  const [activeClipId, setActiveClipId] = useState<string | null>(null);
+  const [activeTokenKey, setActiveTokenKey] = useState<string | null>(null);
   const [fillerText, setFillerText] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchMatches, setSearchMatches] = useState<SearchMatchV1[]>([]);
@@ -128,17 +133,9 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
 
   // Hooks
   const { reorderComposition } = useComposition();
-  const { highlightNow, startHighlightLoop, stopHighlightLoop, findActiveIndex } = useHighlight({
-    audioRef,
-  });
-  const { startEditedPlayback, stopEditedPlayback, isPlaying } = useEditedPlayback({
-    audioRef,
-    ttsAudioRef,
-    onHighlight: () => {
-      const index = findActiveIndex();
-      setActiveIndex(index);
-    },
-  });
+  const stopEditedPlayback = useCallback(() => {
+    dispatchTimelineCommand({ type: 'stop' });
+  }, []);
   const { handleDragStart, handleDragOver, handleDragLeave, handleDrop } = useDragAndDrop({
     onReorder: reorderComposition,
   });
@@ -161,71 +158,59 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
 
   const seekSearchMatch = useCallback(
     (match: SearchMatchV1) => {
-      const clip = useEditorStore
-        .getState()
-        .timelineClips.find((item) => item.source_segment_id === match.segment.id);
-      if (!clip || !audioRef.current) return;
-      audioRef.current.currentTime = clip.source_in_ms / 1000;
-      audioRef.current.focus();
+      const clipIds = new Set(match.clip_ids);
+      const clip = useEditorStore.getState().timelineClips.find((item) => clipIds.has(item.id));
+      if (!clip) return;
+      dispatchTimelineCommand({
+        type: 'seek-clip',
+        clipId: clip.id,
+        sourceMs: clip.source_in_ms,
+        autoplay: true,
+      });
+      audioRef.current?.focus();
     },
     [audioRef]
   );
 
-  /**
-   * Handle audio play event
-   */
+  const timedTokensByClip = useMemo(() => {
+    const result = new Map<string, Array<{ key: string; start: number; end: number }>>();
+    charLevelData.forEach((unit, index) => {
+      if (!unit.clipId) return;
+      const key = unit.tokenId ?? `${unit.clipId}:${unit.start}:${unit.end}:${index}`;
+      result.set(unit.clipId, [
+        ...(result.get(unit.clipId) ?? []),
+        { key, start: unit.start, end: unit.end },
+      ]);
+    });
+    return result;
+  }, [charLevelData]);
+
   useEffect(() => {
-    const player = audioRef.current;
-    if (!player) return;
-
-    const handlePlay = () => {
-      startHighlightLoop();
+    const handleActiveClip = (event: Event) => {
+      const detail = (event as CustomEvent<TimelineActiveClipDetail>).detail;
+      setActiveClipId(detail.clipId);
+      const tokens = detail.clipId ? timedTokensByClip.get(detail.clipId) ?? [] : [];
+      const token = detail.sourceMs === null
+        ? undefined
+        : tokens.find((item) => item.start === item.end
+          ? Math.abs(detail.sourceMs! - item.start) < 1
+          : detail.sourceMs! >= item.start && detail.sourceMs! < item.end);
+      setActiveTokenKey(token?.key ?? null);
     };
+    window.addEventListener(TIMELINE_ACTIVE_CLIP_EVENT, handleActiveClip);
+    return () => window.removeEventListener(TIMELINE_ACTIVE_CLIP_EVENT, handleActiveClip);
+  }, [timedTokensByClip]);
 
-    const handlePause = () => {
-      stopHighlightLoop();
-      if (!isPlaying) {
-        setActiveIndex(null);
-      }
-    };
-
-    const handleEnded = () => {
-      stopHighlightLoop();
-      setActiveIndex(null);
-      stopEditedPlayback();
-    };
-
-    player.addEventListener('play', handlePlay);
-    player.addEventListener('pause', handlePause);
-    player.addEventListener('ended', handleEnded);
-
-    return () => {
-      player.removeEventListener('play', handlePlay);
-      player.removeEventListener('pause', handlePause);
-      player.removeEventListener('ended', handleEnded);
-    };
-  }, [audioRef, startHighlightLoop, stopHighlightLoop, isPlaying, stopEditedPlayback]);
-
-  /**
-   * Update active index during playback using timeupdate event
-   */
-  useEffect(() => {
-    const player = audioRef.current;
-    if (!player) return;
-
-    const handleTimeUpdate = () => {
-      if (!player.paused) {
-        const index = findActiveIndex();
-        setActiveIndex(index);
-      }
-    };
-
-    player.addEventListener('timeupdate', handleTimeUpdate);
-
-    return () => {
-      player.removeEventListener('timeupdate', handleTimeUpdate);
-    };
-  }, [audioRef, findActiveIndex]);
+  const isActiveUnit = useCallback(
+    (itemIndex: number) => {
+      if (!isCharEditMode) return timelineClips[itemIndex]?.id === activeClipId;
+      const unit = charLevelData[itemIndex];
+      if (!unit || unit.clipId !== activeClipId || activeTokenKey === null) return false;
+      const key = unit.tokenId ?? `${unit.clipId}:${unit.start}:${unit.end}:${itemIndex}`;
+      return key === activeTokenKey;
+    },
+    [activeClipId, activeTokenKey, charLevelData, isCharEditMode, timelineClips]
+  );
 
   /**
    * Handle seek to specific time or start edited playback
@@ -233,19 +218,33 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
    * If segment has TTS audio, play the TTS audio instead
    */
   const handleSeek = useCallback(
-    (time: number, renderIndex?: number, originalIndex?: number) => {
+    (time: number, _renderIndex?: number, originalIndex?: number) => {
       if (!audioRef.current) return;
 
-      // Check if this segment has TTS audio
-      if (originalIndex !== undefined && ttsAudioMap[originalIndex] && ttsAudioRef.current) {
+      if (
+        !isCharEditMode &&
+        originalIndex !== undefined &&
+        ttsCandidateMap[originalIndex] &&
+        ttsAudioMap[originalIndex] &&
+        ttsAudioRef.current
+      ) {
+        dispatchTimelineCommand({ type: 'stop' });
         ttsAudioRef.current.src = ttsAudioMap[originalIndex];
         ttsAudioRef.current.play().catch(() => {});
         return;
       }
 
-      // If edited and we have a valid render index, use edited playback
-      if (hasEdited && renderIndex !== undefined && renderIndex >= 0) {
-        startEditedPlayback(renderIndex);
+      if (originalIndex !== undefined && originalIndex >= 0) {
+        const clipId = isCharEditMode
+          ? charLevelData[originalIndex]?.clipId
+          : timelineClips[originalIndex]?.id;
+        if (!clipId) return;
+        dispatchTimelineCommand({
+          type: 'seek-clip',
+          clipId,
+          sourceMs: time * 1000,
+          autoplay: true,
+        });
         return;
       }
 
@@ -254,9 +253,8 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
       if (!isNaN(audioRef.current.duration)) {
         audioRef.current.play().catch(() => {});
       }
-      highlightNow();
     },
-    [audioRef, highlightNow, hasEdited, startEditedPlayback, ttsAudioMap]
+    [audioRef, charLevelData, isCharEditMode, timelineClips, ttsAudioMap, ttsCandidateMap]
   );
 
   /**
@@ -575,7 +573,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
               segments={unit!.segments}
               renderIndices={unit!.renderIndices}
               originalIndices={unit!.originalIndices}
-              activeIndex={activeIndex}
+              activeIndex={activeComposition.findIndex(isActiveUnit)}
               onSeek={handleSeek}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
@@ -599,7 +597,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
               data={item}
               renderIndex={idx}
               originalIndex={activeComposition[idx]}
-              isActive={idx === activeIndex}
+              isActive={isActiveUnit(activeComposition[idx])}
               onSeek={handleSeek}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
@@ -626,7 +624,7 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
               data={item}
               renderIndex={idx}
               originalIndex={activeComposition[idx]}
-              isActive={idx === activeIndex}
+              isActive={isActiveUnit(activeComposition[idx])}
               onSeek={handleSeek}
               onDragStart={handleDragStart}
               onDragOver={handleDragOver}
@@ -648,6 +646,8 @@ export const ResultCard: React.FC<ResultCardProps> = ({ audioRef }) => {
 
   return (
     <div className="rounded-lg border border-[var(--border-input)] bg-[var(--bg-card)] p-4">
+      <TimelineEditor mediaRef={audioRef} mediaElementKey={mediaType} />
+
       {/* Header with speaker stats */}
       <div className="flex items-center justify-between mb-4">
         <div>

@@ -22,6 +22,7 @@ os.environ["VOXFLOW_HOME"] = str(HOME)
 os.environ["VOXFLOW_JOB_INLINE"] = "1"
 os.environ["VOXFLOW_WEB_HOST"] = "127.0.0.1"
 os.environ["VOXFLOW_WEB_PORT"] = "8082"
+os.environ["VOXFLOW_TTS_PROVIDER"] = "fake"
 
 
 def _write_fixtures() -> None:

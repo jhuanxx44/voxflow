@@ -191,7 +191,7 @@ def test_stale_fingerprint_and_candidate_metadata_tampering_are_rejected(
         runtime.edits.preview(_attach_plan(project_id, 2, operation, "stale-fingerprint"))
 
 
-def test_unsafe_video_fit_source_warns_then_rejects_and_pad_or_trim_applies(
+def test_unsafe_video_fit_source_is_advisory_in_preview_but_apply_rejects(
     settings: Settings, video_file: Path
 ) -> None:
     runtime = _runtime(settings)
@@ -207,6 +207,7 @@ def test_unsafe_video_fit_source_warns_then_rejects_and_pad_or_trim_applies(
     unsafe_plan = _attach_plan(
         project_id, 1, dict(unsafe["recommended_operation"]), "unsafe-fit-source"
     )
+    assert unsafe["warnings"]
     preview = runtime.edits.preview(unsafe_plan)
     assert preview.diff.warnings
     with pytest.raises(ValidationError, match="Unsafe fit_source stretch"):

@@ -194,6 +194,7 @@ export const SentenceSpan: React.FC<SentenceSpanProps> = ({
   }
 
   // Build class names
+  const reorderable = 'text' in data;
   const classNames = [
     'sentence',
     isActive && 'active',
@@ -213,9 +214,9 @@ export const SentenceSpan: React.FC<SentenceSpanProps> = ({
       ref={spanRef}
       className={classNames}
       style={style}
-      draggable={!isDeleted}
+      draggable={!isDeleted && reorderable}
       tabIndex={isDeleted ? -1 : 0}
-      aria-label={`${text}，Alt 加方向键调整顺序`}
+      aria-label={reorderable ? `${text}，Alt 加方向键调整顺序` : text}
       data-start={start}
       data-end={end}
       data-idx={originalIndex}
@@ -223,10 +224,10 @@ export const SentenceSpan: React.FC<SentenceSpanProps> = ({
       data-spk={typeof spk === 'number' ? spk : undefined}
       data-testid={'char' in data ? `token-${renderIndex}` : `segment-${renderIndex}`}
       onClick={handleClick}
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
+      onDragStart={reorderable ? handleDragStart : undefined}
+      onDragOver={reorderable ? handleDragOver : undefined}
+      onDragLeave={reorderable ? handleDragLeave : undefined}
+      onDrop={reorderable ? handleDrop : undefined}
       onKeyDown={handleKeyDown}
       onContextMenu={handleContextMenu}
     >

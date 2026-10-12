@@ -126,6 +126,28 @@ def test_cli_web_and_mcp_share_project_and_conflict(settings: Settings, wav_file
     assert web_applied.status_code == 201
     assert web_applied.get_json()["data"]["revision"] == 2
 
+    cli_timeline = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "voxflow.interfaces.cli.main",
+            "--json",
+            "--home",
+            str(settings.home),
+            "timeline",
+            "get",
+            project_id,
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    cli_timeline_data = json.loads(cli_timeline.stdout)["data"]
+    assert cli_timeline_data["revision"] == 2
+    assert cli_timeline_data["items"][0]["id"] == clip_id
+    assert cli_timeline_data["speaker_labels"]["spk_0"] == "Host"
+
     mcp_applied = anyio.run(_mcp_edit, settings.home, project_id, clip_id)
     assert mcp_applied["ok"] is True
     assert mcp_applied["data"]["revision"] == 3

@@ -123,6 +123,13 @@ export type EditOperationV1 =
       anchor_clip_id: string;
       position: 'before' | 'after';
     }
+  | {
+      op: 'trim_clip';
+      clip_id: string;
+      source_in_ms: number;
+      source_out_ms: number;
+    }
+  | { op: 'split_clip'; clip_id: string; at_ms: number }
   | { op: 'correct_transcript'; clip_id: string; text: string }
   | { op: 'rename_speaker'; speaker_id: string; name: string }
   | {
@@ -149,17 +156,56 @@ export type AttachSpeechReplacementV1 = Extract<
   { op: 'attach_speech_replacement' }
 >;
 
+export interface EditPlanV1 {
+  schema_version: 1;
+  project_id: string;
+  expected_revision: number;
+  client_request_id: string;
+  reason: string;
+  operations: EditOperationV1[];
+}
+
+/** Domain revision returned by edit preview; distinct from paginated TimelineV1. */
+export interface TimelineRevisionV1 {
+  schema_version: 1;
+  project_id: string;
+  revision: number;
+  parent_revision: number | null;
+  created_at: string;
+  reason: string;
+  source: string;
+  clips: TimelineClipV1[];
+  speaker_labels: Record<string, string>;
+  speaker_merges: Record<string, string>;
+  client_request_id: string | null;
+  operation_digest: string | null;
+  metadata: Record<string, unknown>;
+}
+
+export interface EditDiffV1 {
+  base_revision: number;
+  result_revision: number;
+  deleted_clip_ids: string[];
+  added_clip_ids: string[];
+  moved_clip_ids: string[];
+  changed_clip_ids: string[];
+  duration_before_ms: number;
+  duration_after_ms: number;
+  duration_delta_ms: number;
+  warnings: string[];
+}
+
 export interface EditPreviewV1 {
   project_id: string;
-  timeline: TimelineV1;
-  diff: {
-    base_revision: number;
-    result_revision: number;
-    duration_before_ms: number;
-    duration_after_ms: number;
-    duration_delta_ms: number;
-    warnings: string[];
-  };
+  timeline: TimelineRevisionV1;
+  diff: EditDiffV1;
+}
+
+export interface EditApplyResultV1 {
+  project_id: string;
+  revision: number;
+  diff: EditDiffV1;
+  idempotent_replay: boolean;
 }
 
 export interface SpeechReplacementCandidateV1 {

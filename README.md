@@ -47,7 +47,7 @@ flowchart LR
 - 删除、裁剪、分割、词级删除、重排、文本修正、speaker 重命名/合并。
 - TTS replacement 候选、试听、duration policy、preview/apply 后进入正式 timeline。
 - MP4、MP3、WAV、SRT、VTT 真实导出；artifact 与 revision 持久化。
-- React Web 编辑器：字幕搜索、逐字/逐段编辑、拖拽、播放同步、Undo/Redo。
+- React Web 编辑器：单轨 ripple 时间线、播放头、切分、可恢复裁边、删除、拖拽重排、缩放、字幕搜索和 Undo/Redo。
 - stdio MCP server 与稳定 JSON CLI；长任务使用 start/status 模式，不阻塞 Agent 调用。
 
 > 当前定位是单机、本地优先的编辑引擎。Web 默认只监听 loopback，未提供多租户认证，不应直接暴露到公网。安全边界见 [SECURITY.md](SECURITY.md)。
@@ -82,6 +82,11 @@ git clone https://github.com/jhuanxx44/voxflow.git
 cd voxflow
 ./start.sh
 ```
+
+识别完成后，播放器下方会出现 canonical 单轨时间线。拖动片段可重排，拖动左右边缘可在
+原 transcript segment 范围内裁切或恢复，点击时间尺移动播放头；`S` 切分，
+`Delete/Backspace` 删除，`Alt+←/→` 键盘重排，`Space` 播放/暂停。所有写操作都会先 preview，
+再用同一份 Edit Plan apply；刷新、CLI 或 MCP 读取到的是同一 revision。
 
 打开 `http://127.0.0.1:3001`。`./start.sh -b` 只启动 8082 后端。
 

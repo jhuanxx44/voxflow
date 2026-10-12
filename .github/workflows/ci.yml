@@ -79,7 +79,11 @@ jobs:
           npm ci
           npx playwright install --with-deps chromium
       - name: Run deterministic browser regression
-        run: npm run test:e2e
+        run: |
+          npm run test:unit
+          npx tsc --noEmit
+          npm run build
+          npm run test:e2e
       - name: Upload Playwright evidence
         if: always()
         uses: actions/upload-artifact@v7

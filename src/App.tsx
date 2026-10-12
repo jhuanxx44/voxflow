@@ -32,6 +32,7 @@ import { useUIStore } from './stores/uiStore';
 import { useASRRecognition } from './hooks/useASRRecognition';
 import { useServerStatus } from './hooks/useServerStatus';
 import { useComposition } from './hooks/useComposition';
+import { TIMELINE_MEDIA_PAUSE_EVENT } from './features/timeline/events';
 
 function App() {
   // Use HTMLMediaElement to support both audio and video
@@ -119,13 +120,20 @@ function App() {
   // Global undo/redo keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+      ) {
+        return;
+      }
       const mod = e.metaKey || e.ctrlKey;
       if (!mod) return;
 
-      if (e.key === 'z' && !e.shiftKey) {
+      if (e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault();
         useEditorStore.getState().undo();
-      } else if ((e.key === 'z' && e.shiftKey) || e.key === 'y') {
+      } else if ((e.key.toLowerCase() === 'z' && e.shiftKey) || e.key.toLowerCase() === 'y') {
         e.preventDefault();
         useEditorStore.getState().redo();
       }
@@ -220,7 +228,11 @@ function App() {
           </div>
 
           {/* Media Player - renders video or audio based on mediaType */}
-          <MediaPlayerWithRef ref={mediaRef} className="mb-4" />
+          <MediaPlayerWithRef
+            ref={mediaRef}
+            className="mb-4"
+            onPause={() => window.dispatchEvent(new Event(TIMELINE_MEDIA_PAUSE_EVENT))}
+          />
 
           {/* Recognition Settings */}
           <RecognitionSettings

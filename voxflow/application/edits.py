@@ -31,7 +31,9 @@ class EditService:
         )
         return hashlib.sha256(canonical.encode()).hexdigest()
 
-    def _validate_replacements(self, plan: EditPlan, *, strict: bool) -> dict[str, list[str]]:
+    def _validate_replacements(
+        self, plan: EditPlan, *, reject_unsafe_fit: bool
+    ) -> dict[str, list[str]]:
         project = self.store.get(plan.project_id)
         warnings_by_clip: dict[str, list[str]] = {}
         for operation in plan.operations:
@@ -77,7 +79,7 @@ class EditService:
                 raise ValidationError("Video speech replacement cannot use natural ripple in v1")
             warnings = [str(item) for item in metadata.get("warnings", [])]
             safe_stretch = bool(metadata.get("safe_stretch", False))
-            if strict and operation.duration_policy == "fit_source" and not safe_stretch:
+            if reject_unsafe_fit and operation.duration_policy == "fit_source" and not safe_stretch:
                 raise ValidationError(
                     "Unsafe fit_source stretch is rejected; regenerate with pad_or_trim",
                     details={
@@ -104,21 +106,22 @@ class EditService:
         return preview
 
     def preview(self, plan: EditPlan) -> EditPreview:
-        project = self.store.get(plan.project_id)
-        if project.revision != plan.expected_revision:
-            raise RevisionConflictError(
-                "Edit Plan is based on an outdated revision",
-                details={
-                    "expected_revision": plan.expected_revision,
-                    "current_revision": project.revision,
-                },
+        with self.store.lock(plan.project_id):
+            project = self.store.get(plan.project_id)
+            if project.revision != plan.expected_revision:
+                raise RevisionConflictError(
+                    "Edit Plan is based on an outdated revision",
+                    details={
+                        "expected_revision": plan.expected_revision,
+                        "current_revision": project.revision,
+                    },
+                )
+            transcript = self.store.get_transcript(plan.project_id)
+            timeline = self.store.get_timeline(plan.project_id)
+            warnings = self._validate_replacements(plan, reject_unsafe_fit=False)
+            return self._apply_replacement_warnings(
+                reduce_edit_plan(timeline, transcript, plan), warnings
             )
-        transcript = self.store.get_transcript(plan.project_id)
-        timeline = self.store.get_timeline(plan.project_id)
-        warnings = self._validate_replacements(plan, strict=False)
-        return self._apply_replacement_warnings(
-            reduce_edit_plan(timeline, transcript, plan), warnings
-        )
 
     def apply(self, plan: EditPlan) -> dict[str, Any]:
         payload_hash = self._plan_hash(plan)
@@ -167,7 +170,7 @@ class EditService:
                 )
             transcript = self.store.get_transcript(plan.project_id)
             timeline = self.store.get_timeline(plan.project_id)
-            warnings = self._validate_replacements(plan, strict=True)
+            warnings = self._validate_replacements(plan, reject_unsafe_fit=True)
             preview = self._apply_replacement_warnings(
                 reduce_edit_plan(timeline, transcript, plan), warnings
             )

@@ -216,3 +216,144 @@ def test_api_v1_speech_candidate_preview_and_attach(settings: Settings, wav_file
     assert timeline["revision"] == 2
     assert timeline["items"][0]["kind"] == "replacement"
     assert timeline["items"][0]["replacement_artifact_id"] == artifact_id
+
+
+def test_api_v1_recoverable_trim_preview_apply_and_idempotency(
+    settings: Settings, wav_file: Path
+) -> None:
+    runtime = Runtime.create(settings)
+    project = runtime.store.create(wav_file)
+    runtime.transcripts.import_payload(
+        project.id,
+        [
+            {
+                "text": "甲乙丙",
+                "sentence_info": [
+                    {
+                        "text": "甲乙丙",
+                        "start": 0,
+                        "end": 1000,
+                        "timestamp": [[0, 300], [300, 600], [600, 1000]],
+                    }
+                ],
+            }
+        ],
+    )
+    clip = runtime.store.get_timeline(project.id).clips[0]
+    app.config["TESTING"] = True
+    app.config["VOXFLOW_RUNTIME"] = runtime
+    client = app.test_client()
+
+    inward = {
+        "schema_version": 1,
+        "project_id": project.id,
+        "expected_revision": 1,
+        "client_request_id": "web-trim-inward",
+        "reason": "trim inward",
+        "operations": [
+            {
+                "op": "trim_clip",
+                "clip_id": clip.id,
+                "source_in_ms": 300,
+                "source_out_ms": 1000,
+            }
+        ],
+    }
+    assert client.post(f"/api/v1/projects/{project.id}/edits", json=inward).status_code == 201
+
+    outward = {
+        **inward,
+        "expected_revision": 2,
+        "client_request_id": "web-trim-outward",
+        "reason": "restore immutable source",
+        "operations": [
+            {
+                "op": "trim_clip",
+                "clip_id": clip.id,
+                "source_in_ms": 0,
+                "source_out_ms": 1000,
+            }
+        ],
+    }
+    preview_response = client.post(f"/api/v1/projects/{project.id}/edits/preview", json=outward)
+    assert preview_response.status_code == 200
+    preview = preview_response.get_json()["data"]
+    assert runtime.store.get(project.id).revision == 2
+    assert not runtime.store.revision_path(project.id, 3).exists()
+    assert preview["timeline"]["clips"][0]["transcript_text"] == "甲乙丙"
+    assert len(preview["timeline"]["clips"][0]["token_ids"]) == 3
+
+    applied_response = client.post(f"/api/v1/projects/{project.id}/edits", json=outward)
+    assert applied_response.status_code == 201
+    applied = applied_response.get_json()["data"]
+    assert applied["diff"] == preview["diff"]
+    persisted = runtime.store.get_timeline(project.id)
+    assert persisted.clips[0].model_dump(mode="json") == preview["timeline"]["clips"][0]
+
+    replay = client.post(f"/api/v1/projects/{project.id}/edits", json=outward)
+    assert replay.status_code == 201
+    assert replay.get_json()["data"]["idempotent_replay"] is True
+
+    conflicting = {**outward, "reason": "same key, different payload"}
+    conflict = client.post(f"/api/v1/projects/{project.id}/edits", json=conflicting)
+    assert conflict.status_code == 409
+    assert conflict.get_json()["error"]["code"] == "IDEMPOTENCY_CONFLICT"
+
+
+def test_api_v1_split_preview_apply_uses_same_derived_ids(
+    settings: Settings, wav_file: Path
+) -> None:
+    runtime = Runtime.create(settings)
+    project = runtime.store.create(wav_file)
+    runtime.transcripts.import_payload(
+        project.id,
+        [
+            {
+                "text": "甲乙丙",
+                "sentence_info": [
+                    {
+                        "text": "甲乙丙",
+                        "start": 0,
+                        "end": 1000,
+                        "timestamp": [[0, 300], [300, 600], [600, 1000]],
+                    }
+                ],
+            }
+        ],
+    )
+    clip = runtime.store.get_timeline(project.id).clips[0]
+    app.config["TESTING"] = True
+    app.config["VOXFLOW_RUNTIME"] = runtime
+    client = app.test_client()
+    plan = {
+        "schema_version": 1,
+        "project_id": project.id,
+        "expected_revision": 1,
+        "client_request_id": "web-split-same-plan",
+        "reason": "split contract",
+        "operations": [{"op": "split_clip", "clip_id": clip.id, "at_ms": 500}],
+    }
+
+    preview_response = client.post(f"/api/v1/projects/{project.id}/edits/preview", json=plan)
+    assert preview_response.status_code == 200
+    preview = preview_response.get_json()["data"]
+    preview_ids = [item["id"] for item in preview["timeline"]["clips"]]
+    assert runtime.store.get(project.id).revision == 1
+    assert not runtime.store.revision_path(project.id, 2).exists()
+
+    applied_response = client.post(f"/api/v1/projects/{project.id}/edits", json=plan)
+    assert applied_response.status_code == 201
+    assert applied_response.get_json()["data"]["revision"] == 2
+    persisted = client.get(f"/api/v1/projects/{project.id}/timeline?limit=200").get_json()["data"]
+    assert [item["id"] for item in persisted["items"]] == preview_ids
+
+    replay = client.post(f"/api/v1/projects/{project.id}/edits", json=plan)
+    assert replay.status_code == 201
+    assert replay.get_json()["data"]["idempotent_replay"] is True
+
+    conflict = client.post(
+        f"/api/v1/projects/{project.id}/edits",
+        json={**plan, "reason": "same request id changed"},
+    )
+    assert conflict.status_code == 409
+    assert conflict.get_json()["error"]["code"] == "IDEMPOTENCY_CONFLICT"

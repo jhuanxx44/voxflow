@@ -104,6 +104,48 @@ def test_trim_never_escapes_source_range(start: int, width: int) -> None:
     assert result.timeline.duration_ms == end - start
 
 
+@given(start=st.integers(min_value=1, max_value=899), width=st.integers(min_value=1, max_value=100))
+def test_trim_can_always_restore_the_complete_immutable_segment(start: int, width: int) -> None:
+    timeline, transcript = _fixture()
+    inward = EditPlan.model_validate(
+        {
+            "project_id": timeline.project_id,
+            "expected_revision": timeline.revision,
+            "client_request_id": "property-trim-inward",
+            "operations": [
+                {
+                    "op": "trim_clip",
+                    "clip_id": "clip_property",
+                    "source_in_ms": start,
+                    "source_out_ms": min(999, start + width),
+                }
+            ],
+        }
+    )
+    trimmed = reduce_edit_plan(timeline, transcript, inward).timeline
+    outward = EditPlan.model_validate(
+        {
+            "project_id": timeline.project_id,
+            "expected_revision": trimmed.revision,
+            "client_request_id": "property-trim-outward",
+            "operations": [
+                {
+                    "op": "trim_clip",
+                    "clip_id": "clip_property",
+                    "source_in_ms": 0,
+                    "source_out_ms": 1000,
+                }
+            ],
+        }
+    )
+    restored = reduce_edit_plan(trimmed, transcript, outward)
+    validate_timeline_invariants(restored.timeline)
+    assert restored.timeline.clips[0].token_ids == [f"tok_{index}" for index in range(10)]
+    assert restored.timeline.clips[0].transcript_text == "0 1 2 3 4 5 6 7 8 9"
+    assert restored.timeline.duration_ms == timeline.duration_ms
+    assert timeline.clips[0].source_in_ms == 0
+
+
 @given(
     first=st.integers(min_value=0, max_value=9),
     second=st.integers(min_value=0, max_value=9),

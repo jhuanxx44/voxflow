@@ -93,6 +93,32 @@ def test_failed_multi_operation_plan_is_atomic_and_stale_client_conflicts(
     assert runtime.store.get_timeline(project_id).clips[0].transcript_text == "第一段"
     assert not runtime.store.revision_path(project_id, 2).exists()
 
+    invalid_trim = EditPlan.model_validate(
+        {
+            "project_id": project_id,
+            "expected_revision": 1,
+            "client_request_id": "atomic-trim-failure",
+            "operations": [
+                {
+                    "op": "correct_transcript",
+                    "clip_id": timeline.clips[0].id,
+                    "text": "must roll back",
+                },
+                {
+                    "op": "trim_clip",
+                    "clip_id": timeline.clips[0].id,
+                    "source_in_ms": 0,
+                    "source_out_ms": 1001,
+                },
+            ],
+        }
+    )
+    with pytest.raises(ValidationError, match="source transcript segment"):
+        runtime.edits.apply(invalid_trim)
+    assert runtime.store.get(project_id).revision == 1
+    assert runtime.store.get_timeline(project_id).clips[0].transcript_text == "第一段"
+    assert not runtime.store.revision_path(project_id, 2).exists()
+
     first_client = EditPlan.model_validate(
         {
             "project_id": project_id,
@@ -253,6 +279,92 @@ def test_token_range_deletion_renders_expected_duration(
     assert preview.diff.duration_after_ms == 1500
     assert applied["diff"] == preview.diff.model_dump(mode="json")
     output = tmp_path / "word-deleted.wav"
+    submitted = runtime.exports.start(project.id, output_format="wav", out=output, run_inline=True)
+    assert runtime.jobs.get(submitted["id"]).status == JobStatus.SUCCEEDED
+    probe = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert abs(float(probe.stdout.strip()) - 1.5) <= 0.03
+
+
+def test_recoverable_trim_restores_tokens_and_rendered_duration(
+    settings: Settings, wav_file: Path, tmp_path: Path
+) -> None:
+    runtime = Runtime.create(settings)
+    project = runtime.store.create(wav_file)
+    runtime.transcripts.import_payload(
+        project.id,
+        [
+            {
+                "text": "甲乙丙",
+                "sentence_info": [
+                    {
+                        "text": "甲乙丙",
+                        "start": 0,
+                        "end": 1500,
+                        "timestamp": [[0, 500], [500, 1000], [1000, 1500]],
+                    }
+                ],
+            }
+        ],
+    )
+    original = runtime.store.get_timeline(project.id).clips[0]
+    inward = EditPlan.model_validate(
+        {
+            "project_id": project.id,
+            "expected_revision": 1,
+            "client_request_id": "integration-trim-inward",
+            "operations": [
+                {
+                    "op": "trim_clip",
+                    "clip_id": original.id,
+                    "source_in_ms": 500,
+                    "source_out_ms": 1500,
+                }
+            ],
+        }
+    )
+    runtime.edits.apply(inward)
+    assert runtime.store.get_timeline(project.id).clips[0].transcript_text == "乙丙"
+
+    outward = EditPlan.model_validate(
+        {
+            "project_id": project.id,
+            "expected_revision": 2,
+            "client_request_id": "integration-trim-outward",
+            "operations": [
+                {
+                    "op": "trim_clip",
+                    "clip_id": original.id,
+                    "source_in_ms": 0,
+                    "source_out_ms": 1500,
+                }
+            ],
+        }
+    )
+    preview = runtime.edits.preview(outward)
+    assert runtime.store.get(project.id).revision == 2
+    applied = runtime.edits.apply(outward)
+    replay = runtime.edits.apply(outward)
+    assert applied["diff"] == preview.diff.model_dump(mode="json")
+    assert replay["idempotent_replay"] is True
+    restored = runtime.store.get_timeline(project.id).clips[0]
+    assert restored.token_ids == original.token_ids
+    assert restored.transcript_text == "甲乙丙"
+
+    output = tmp_path / "restored-trim.wav"
     submitted = runtime.exports.start(project.id, output_format="wav", out=output, run_inline=True)
     assert runtime.jobs.get(submitted["id"]).status == JobStatus.SUCCEEDED
     probe = subprocess.run(

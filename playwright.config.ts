@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const reuseExistingServer = process.env.PLAYWRIGHT_REUSE_EXISTING_SERVER === '1';
+
 export default defineConfig({
   testDir: './e2e',
   timeout: 90_000,
@@ -25,13 +27,13 @@ export default defineConfig({
     {
       command: 'uv run python scripts/run_web_e2e_server.py',
       url: 'http://127.0.0.1:8082/api/v1/capabilities',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer,
       timeout: 120_000,
     },
     {
       command: 'npm run dev -- --host 127.0.0.1',
       url: 'http://127.0.0.1:3001',
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer,
       timeout: 120_000,
     },
   ],
