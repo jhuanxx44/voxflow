@@ -32,7 +32,6 @@ import { useUIStore } from './stores/uiStore';
 import { useASRRecognition } from './hooks/useASRRecognition';
 import { useServerStatus } from './hooks/useServerStatus';
 import { useComposition } from './hooks/useComposition';
-import { TIMELINE_MEDIA_PAUSE_EVENT } from './features/timeline/events';
 
 function App() {
   // Use HTMLMediaElement to support both audio and video
@@ -228,11 +227,7 @@ function App() {
           </div>
 
           {/* Media Player - renders video or audio based on mediaType */}
-          <MediaPlayerWithRef
-            ref={mediaRef}
-            className="mb-4"
-            onPause={() => window.dispatchEvent(new Event(TIMELINE_MEDIA_PAUSE_EVENT))}
-          />
+          <MediaPlayerWithRef ref={mediaRef} className="mb-4" />
 
           {/* Recognition Settings */}
           <RecognitionSettings

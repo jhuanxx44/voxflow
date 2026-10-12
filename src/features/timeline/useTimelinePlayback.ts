@@ -7,7 +7,6 @@ import {
   timelineDurationMs,
   timelineToSourceMs,
 } from './layout';
-import { TIMELINE_MEDIA_PAUSE_EVENT } from './events';
 
 interface UseTimelinePlaybackOptions {
   layout: readonly TimelineLayoutItem[];
@@ -15,6 +14,10 @@ interface UseTimelinePlaybackOptions {
   mediaElementKey: string;
   revision: number;
 }
+
+// Within this distance of a source clip's out point, a timer ends the clip instead of waiting
+// for the next animation frame, so cuts do not leak a frame of deleted source audio.
+const CLIP_TAIL_TIMER_MS = 50;
 
 function clampTime(value: number, duration: number): number {
   return Math.max(0, Math.min(duration, Number.isFinite(value) ? value : 0));
@@ -36,6 +39,10 @@ export function useTimelinePlayback({
   const layoutRef = useRef(layout);
   const itemByIdRef = useRef(new Map(layout.map((item) => [item.clipId, item])));
   const rafRef = useRef<number | null>(null);
+  const tailTimerRef = useRef<number | null>(null);
+  // Counts pause() calls VoxFlow itself made on the source media; their asynchronous `pause`
+  // events must not be mistaken for the user pausing the native player.
+  const internalPauseCountRef = useRef(0);
   const replacementRef = useRef<HTMLAudioElement | null>(null);
   const internalPlayRef = useRef(false);
   const internalSeekTargetRef = useRef<number | null>(null);
@@ -60,14 +67,23 @@ export function useTimelinePlayback({
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
+    if (tailTimerRef.current !== null) {
+      clearTimeout(tailTimerRef.current);
+      tailTimerRef.current = null;
+    }
+  }, []);
+
+  const pauseSourceInternally = useCallback((media: HTMLMediaElement | null) => {
+    if (!media || media.paused) return;
+    internalPauseCountRef.current += 1;
+    media.pause();
   }, []);
 
   const pausePlayers = useCallback(() => {
-    const media = mediaRef.current;
-    if (media && !media.paused) media.pause();
+    pauseSourceInternally(mediaRef.current);
     const replacement = replacementRef.current;
     if (replacement && !replacement.paused) replacement.pause();
-  }, [mediaRef]);
+  }, [mediaRef, pauseSourceInternally]);
 
   const stop = useCallback(() => {
     cancelRaf();
@@ -139,6 +155,15 @@ export function useTimelinePlayback({
           finishItem(item);
           return;
         }
+        const remainingMs = (item.sourceOutMs - sourceMs) / (media.playbackRate || 1);
+        if (remainingMs <= CLIP_TAIL_TIMER_MS) {
+          tailTimerRef.current = window.setTimeout(() => {
+            tailTimerRef.current = null;
+            const current = stateRef.current;
+            if (current.isPlaying && current.activeClipId === item.clipId) finishItem(item);
+          }, remainingMs);
+          return;
+        }
       }
       rafRef.current = requestAnimationFrame(monitorRef.current);
     };
@@ -160,7 +185,7 @@ export function useTimelinePlayback({
       });
 
       if (item.kind === 'replacement' && item.clip.replacement_artifact_id) {
-        if (media && !media.paused) media.pause();
+        pauseSourceInternally(media);
         const replacement = previousReplacement ?? new Audio();
         replacementRef.current = replacement;
         const expectedSrc = `/api/v1/artifacts/${item.clip.replacement_artifact_id}/content`;
@@ -197,7 +222,7 @@ export function useTimelinePlayback({
         stop();
       });
     };
-  }, [cancelRaf, mediaRef, stop, updateState]);
+  }, [cancelRaf, mediaRef, pauseSourceInternally, stop, updateState]);
 
   const seek = useCallback(
     (timelineMs: number, autoplay = false) => {
@@ -246,7 +271,8 @@ export function useTimelinePlayback({
         internalPlayRef.current = false;
         return;
       }
-      media.pause();
+      // The native control started raw source playback; hand it to the canonical timeline.
+      pauseSourceInternally(media);
       play();
     };
     const handleNativeSeeking = () => {
@@ -274,11 +300,16 @@ export function useTimelinePlayback({
       }
     };
     const handleNativePause = () => {
+      if (internalPauseCountRef.current > 0) {
+        internalPauseCountRef.current -= 1;
+        return;
+      }
       const active = stateRef.current.activeClipId
         ? itemByIdRef.current.get(stateRef.current.activeClipId)
         : undefined;
       if (stateRef.current.isPlaying && active?.kind === 'source') stop();
     };
+    internalPauseCountRef.current = 0;
     media.addEventListener('play', handleNativePlay);
     media.addEventListener('pause', handleNativePause);
     media.addEventListener('seeking', handleNativeSeeking);
@@ -287,17 +318,25 @@ export function useTimelinePlayback({
       media.removeEventListener('pause', handleNativePause);
       media.removeEventListener('seeking', handleNativeSeeking);
     };
-  }, [cancelRaf, mediaElementKey, mediaRef, pausePlayers, play, stop, updateState]);
+  }, [
+    cancelRaf,
+    mediaElementKey,
+    mediaRef,
+    pausePlayers,
+    pauseSourceInternally,
+    play,
+    stop,
+    updateState,
+  ]);
 
   useEffect(() => {
-    const handlePause = () => {
-      const active = stateRef.current.activeClipId
-        ? itemByIdRef.current.get(stateRef.current.activeClipId)
-        : undefined;
-      if (stateRef.current.isPlaying && active?.kind === 'source') stop();
+    // Hidden tabs suspend animation frames while media keeps playing, which would run past
+    // clip out points into deleted or reordered source audio. Pause instead.
+    const handleVisibility = () => {
+      if (document.hidden && stateRef.current.isPlaying) stop();
     };
-    window.addEventListener(TIMELINE_MEDIA_PAUSE_EVENT, handlePause);
-    return () => window.removeEventListener(TIMELINE_MEDIA_PAUSE_EVENT, handlePause);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, [stop]);
 
   useEffect(() => {

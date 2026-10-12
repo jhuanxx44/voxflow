@@ -353,6 +353,47 @@ test('mobile timeline stays inside the page and scrolls internally', async ({ pa
   expect(browserErrors).toEqual([]);
 });
 
+async function expectPlaybackAdvancing(page: Page) {
+  const editor = page.getByTestId('timeline-editor');
+  const start = Number(await editor.getAttribute('data-playhead-ms'));
+  await expect
+    .poll(async () => Number(await editor.getAttribute('data-playhead-ms')))
+    .toBeGreaterThan(start + 150);
+  expect(await page.getByTestId('media-player').evaluate((media: HTMLMediaElement) => media.paused))
+    .toBe(false);
+}
+
+test('playback survives transcript seeks and native play; modifier chords never edit', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop-chromium', 'playback flow runs on desktop');
+  const browserErrors = collectBrowserErrors(page);
+  await uploadAndTranscribe(page, 'deterministic.mp4');
+
+  // Seeking from the transcript while playing must keep playing, not stop on the internal pause.
+  await page.getByTestId('timeline-play-toggle').click();
+  await expectPlaybackAdvancing(page);
+  await page.getByTestId('segment-2').click();
+  await expectPlaybackAdvancing(page);
+  await page.getByTestId('timeline-play-toggle').click();
+  await expect(page.getByTestId('timeline-play-toggle')).toContainText('播放');
+
+  // The native media control hands playback to the canonical timeline instead of stopping.
+  await page.getByTestId('media-player').evaluate((media: HTMLMediaElement) => void media.play());
+  await expectPlaybackAdvancing(page);
+  await page.getByTestId('timeline-play-toggle').click();
+
+  const before = await revision(page);
+  const clipCount = await page.getByTestId('timeline-clip').count();
+  await page.getByTestId('timeline-ruler').click({ position: { x: 420, y: 14 } });
+  await page.getByTestId('timeline-editor').focus();
+  for (const chord of ['Meta+s', 'Control+s', 'Meta+Backspace', 'Control+Delete']) {
+    await page.keyboard.press(chord);
+  }
+  await page.waitForTimeout(500);
+  expect(await revision(page)).toBe(before);
+  await expect(page.getByTestId('timeline-clip')).toHaveCount(clipCount);
+  expect(browserErrors).toEqual([]);
+});
+
 test('split children can regrow but never trim into each other', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop-chromium', 'pointer flow runs on desktop');
   const browserErrors = collectBrowserErrors(page);
